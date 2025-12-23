@@ -1,0 +1,434 @@
+{
+  "public.module_ct_cabinet_leads": [
+    {
+      "column_name": "id",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "ordinal_position": 1
+    },
+    {
+      "column_name": "external_id",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 2
+    },
+    {
+      "column_name": "activation_city",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 3
+    },
+    {
+      "column_name": "active_1",
+      "data_type": "boolean",
+      "is_nullable": "YES",
+      "ordinal_position": 4
+    },
+    {
+      "column_name": "active_5",
+      "data_type": "boolean",
+      "is_nullable": "YES",
+      "ordinal_position": 5
+    },
+    {
+      "column_name": "active_10",
+      "data_type": "boolean",
+      "is_nullable": "YES",
+      "ordinal_position": 6
+    },
+    {
+      "column_name": "active_15",
+      "data_type": "boolean",
+      "is_nullable": "YES",
+      "ordinal_position": 7
+    },
+    {
+      "column_name": "active_25",
+      "data_type": "boolean",
+      "is_nullable": "YES",
+      "ordinal_position": 8
+    },
+    {
+      "column_name": "active_50",
+      "data_type": "boolean",
+      "is_nullable": "YES",
+      "ordinal_position": 9
+    },
+    {
+      "column_name": "active_100",
+      "data_type": "boolean",
+      "is_nullable": "YES",
+      "ordinal_position": 10
+    },
+    {
+      "column_name": "asset_color",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 11
+    },
+    {
+      "column_name": "asset_model",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 12
+    },
+    {
+      "column_name": "asset_plate_number",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 13
+    },
+    {
+      "column_name": "last_name",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 14
+    },
+    {
+      "column_name": "first_name",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 15
+    },
+    {
+      "column_name": "middle_name",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 16
+    },
+    {
+      "column_name": "last_active_date",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "ordinal_position": 17
+    },
+    {
+      "column_name": "lead_created_at",
+      "data_type": "timestamp without time zone",
+      "is_nullable": "YES",
+      "ordinal_position": 18
+    },
+    {
+      "column_name": "park_name",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 19
+    },
+    {
+      "column_name": "park_phone",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 20
+    },
+    {
+      "column_name": "status",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 21
+    },
+    {
+      "column_name": "tariff",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 22
+    },
+    {
+      "column_name": "target_city",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 23
+    },
+    {
+      "column_name": "created_at",
+      "data_type": "timestamp without time zone",
+      "is_nullable": "YES",
+      "ordinal_position": 24
+    }
+  ],
+  "public.module_ct_scouting_daily": [
+    {
+      "column_name": "id",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "ordinal_position": 1
+    },
+    {
+      "column_name": "registration_date",
+      "data_type": "date",
+      "is_nullable": "NO",
+      "ordinal_position": 2
+    },
+    {
+      "column_name": "scout_id",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "ordinal_position": 3
+    },
+    {
+      "column_name": "driver_license",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 4
+    },
+    {
+      "column_name": "driver_name",
+      "data_type": "character varying",
+      "is_nullable": "NO",
+      "ordinal_position": 5
+    },
+    {
+      "column_name": "driver_phone",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 6
+    },
+    {
+      "column_name": "acquisition_method",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 7
+    },
+    {
+      "column_name": "created_at",
+      "data_type": "timestamp without time zone",
+      "is_nullable": "YES",
+      "ordinal_position": 8
+    },
+    {
+      "column_name": "updated_at",
+      "data_type": "timestamp without time zone",
+      "is_nullable": "YES",
+      "ordinal_position": 9
+    }
+  ],
+  "public.drivers": [
+    {
+      "column_name": "driver_id",
+      "data_type": "character varying",
+      "is_nullable": "NO",
+      "ordinal_position": 1
+    },
+    {
+      "column_name": "park_id",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 2
+    },
+    {
+      "column_name": "first_name",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 3
+    },
+    {
+      "column_name": "last_name",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 4
+    },
+    {
+      "column_name": "middle_name",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 5
+    },
+    {
+      "column_name": "full_name",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 6
+    },
+    {
+      "column_name": "phone",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 7
+    },
+    {
+      "column_name": "rating",
+      "data_type": "double precision",
+      "is_nullable": "YES",
+      "ordinal_position": 8
+    },
+    {
+      "column_name": "work_status",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 9
+    },
+    {
+      "column_name": "hire_date",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "ordinal_position": 10
+    },
+    {
+      "column_name": "fire_date",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "ordinal_position": 11
+    },
+    {
+      "column_name": "is_selfemployed",
+      "data_type": "boolean",
+      "is_nullable": "YES",
+      "ordinal_position": 12
+    },
+    {
+      "column_name": "car_id",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 13
+    },
+    {
+      "column_name": "car_brand",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 14
+    },
+    {
+      "column_name": "car_model",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 15
+    },
+    {
+      "column_name": "car_color",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 16
+    },
+    {
+      "column_name": "car_number",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 17
+    },
+    {
+      "column_name": "car_callsign",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 18
+    },
+    {
+      "column_name": "car_normalized_number",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 19
+    },
+    {
+      "column_name": "license_number",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 20
+    },
+    {
+      "column_name": "license_country",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 21
+    },
+    {
+      "column_name": "license_expiration_date",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "ordinal_position": 22
+    },
+    {
+      "column_name": "license_issue_date",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "ordinal_position": 23
+    },
+    {
+      "column_name": "license_normalized_number",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 24
+    },
+    {
+      "column_name": "account_balance",
+      "data_type": "numeric",
+      "is_nullable": "YES",
+      "ordinal_position": 25
+    },
+    {
+      "column_name": "account_balance_limit",
+      "data_type": "numeric",
+      "is_nullable": "YES",
+      "ordinal_position": 26
+    },
+    {
+      "column_name": "account_id",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 27
+    },
+    {
+      "column_name": "current_status",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 28
+    },
+    {
+      "column_name": "status_updated_at",
+      "data_type": "date",
+      "is_nullable": "YES",
+      "ordinal_position": 29
+    },
+    {
+      "column_name": "account_type",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 30
+    },
+    {
+      "column_name": "account_number",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 31
+    },
+    {
+      "column_name": "recipient_name",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 32
+    },
+    {
+      "column_name": "document_type",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 33
+    },
+    {
+      "column_name": "document_number",
+      "data_type": "character varying",
+      "is_nullable": "YES",
+      "ordinal_position": 34
+    },
+    {
+      "column_name": "created_at",
+      "data_type": "timestamp without time zone",
+      "is_nullable": "YES",
+      "ordinal_position": 35
+    },
+    {
+      "column_name": "updated_at",
+      "data_type": "timestamp without time zone",
+      "is_nullable": "YES",
+      "ordinal_position": 36
+    },
+    {
+      "column_name": "id",
+      "data_type": "bigint",
+      "is_nullable": "NO",
+      "ordinal_position": 37
+    },
+    {
+      "column_name": "active",
+      "data_type": "boolean",
+      "is_nullable": "YES",
+      "ordinal_position": 38
+    }
+  ]
+}
