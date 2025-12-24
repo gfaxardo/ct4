@@ -340,4 +340,28 @@ export async function getWindowMetrics(
   return res.json()
 }
 
+export interface Alert {
+  id: number
+  alert_type: string
+  severity: 'info' | 'warning' | 'error'
+  week_label: string
+  message: string
+  details?: Record<string, any>
+  created_at?: string
+  run_id?: number
+}
+
+export async function listAlerts(limit: number = 100): Promise<Alert[]> {
+  const res = await fetch(`${API_URL}/api/v1/ops/alerts?limit=${limit}`)
+  if (!res.ok) throw new Error('Error obteniendo alertas')
+  return res.json()
+}
+
+export async function acknowledgeAlert(alertId: number): Promise<void> {
+  const res = await fetch(`${API_URL}/api/v1/ops/alerts/${alertId}/acknowledge`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error('Error reconociendo alerta')
+}
+
 

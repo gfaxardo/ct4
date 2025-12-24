@@ -51,6 +51,9 @@ class PopulateEventsRequest(BaseModel):
 
 class ProcessLedgerRequest(BaseModel):
     person_keys: Optional[list[UUID]] = Field(None, description="Personas específicas a procesar. Si None, procesa todas")
+    date_from: Optional[date] = Field(None, description="Fecha inicio del rango de eventos a procesar")
+    date_to: Optional[date] = Field(None, description="Fecha fin del rango de eventos a procesar")
+    source_tables: Optional[list[str]] = Field(None, description="Tablas fuente a considerar. Si None, usa ['module_ct_scouting_daily', 'module_ct_cabinet_leads', 'module_ct_migrations']")
 
 
 class AttributionStats(BaseModel):

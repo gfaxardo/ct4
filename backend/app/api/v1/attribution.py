@@ -19,22 +19,49 @@ def populate_events(
     request: PopulateEventsRequest,
     db: Session = Depends(get_db)
 ):
-    service = LeadAttributionService(db)
-    stats = {"scouting": {}, "cabinet": {}}
+    import logging
+    logger = logging.getLogger(__name__)
     
-    source_tables = request.source_tables or ["module_ct_scouting_daily", "module_ct_cabinet_leads"]
+    logger.info(f"Iniciando populate_events. source_tables={request.source_tables}, date_from={request.date_from}, date_to={request.date_to}")
+    
+    service = LeadAttributionService(db)
+    stats = {"scouting": {}, "cabinet": {}, "migrations": {}}
+    
+    source_tables = request.source_tables or ["module_ct_scouting_daily", "module_ct_cabinet_leads", "module_ct_migrations"]
     
     if "module_ct_scouting_daily" in source_tables:
+        logger.info("Procesando module_ct_scouting_daily...")
         stats["scouting"] = service.populate_events_from_scouting(
             date_from=request.date_from,
-            date_to=request.date_to
+            date_to=request.date_to,
+            run_id=None  # TODO: obtener run_id del request si está disponible
         )
+        logger.info(f"Scouting completado: {stats['scouting']}")
     
     if "module_ct_cabinet_leads" in source_tables:
+        logger.info("Procesando module_ct_cabinet_leads...")
         stats["cabinet"] = service.populate_events_from_cabinet(
             date_from=request.date_from,
             date_to=request.date_to
         )
+        logger.info(f"Cabinet completado: {stats['cabinet']}")
+    
+    if "module_ct_migrations" in source_tables:
+        logger.info("Procesando module_ct_migrations...")
+        migrations_stats = service.populate_events_from_migrations(
+            date_from=request.date_from,
+            date_to=request.date_to,
+            run_id=None  # TODO: obtener run_id del request si está disponible
+        )
+        # Mapear métricas al formato requerido
+        stats["migrations"] = {
+            "migrations_total": migrations_stats.get("processed", 0),
+            "migrations_inserted": migrations_stats.get("created", 0),
+            "migrations_errors": migrations_stats.get("errors", 0)
+        }
+        logger.info(f"Migrations completado: {stats['migrations']}")
+    
+    logger.info("populate_events completado exitosamente")
     
     return {
         "status": "completed",
@@ -48,7 +75,12 @@ def process_ledger(
     db: Session = Depends(get_db)
 ):
     service = LeadAttributionService(db)
-    stats = service.process_ledger(person_keys=request.person_keys)
+    stats = service.process_ledger(
+        date_from=request.date_from,
+        date_to=request.date_to,
+        source_tables=request.source_tables,
+        person_keys=request.person_keys
+    )
     
     return {
         "status": "completed",

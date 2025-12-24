@@ -77,9 +77,15 @@ def normalize_license(license: Optional[str]) -> Optional[str]:
 
 
 def normalize_plate(plate: Optional[str]) -> Optional[str]:
+    """
+    Normaliza placa: quita todo lo que no sea alfanumérico y convierte a MAYÚSCULAS.
+    Coincide con la normalización usada en canon.drivers_index.
+    """
     if not plate:
         return None
+    # Primero quitar espacios y guiones, luego quitar todo lo que no sea alfanumérico
     cleaned = re.sub(r'[\s\-]', '', plate.upper())
+    cleaned = re.sub(r'[^A-Z0-9]', '', cleaned)
     return cleaned if cleaned else None
 
 
