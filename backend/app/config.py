@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     park_id_objetivo: str = os.getenv("PARK_ID_OBJETIVO", "08e20910d81d42658d4334d3f6d10ac0")
     name_similarity_threshold: float = float(os.getenv("NAME_SIMILARITY_THRESHOLD", "0.66"))
+    admin_token: str = os.getenv("ADMIN_TOKEN", "")
 
     class Config:
         env_file = ".env"

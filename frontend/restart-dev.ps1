@@ -37,3 +37,8 @@ Write-Host "`n=== Presiona Ctrl+C para detener el servidor ===" -ForegroundColor
 npm run dev
 
 
+
+
+
+
+

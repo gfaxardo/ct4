@@ -32,118 +32,143 @@ def upgrade() -> None:
     """)
     
     # Tabla: ops.partner_payment_rules
-    op.create_table(
-        'partner_payment_rules',
-        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('origin_tag', sa.String(50), nullable=False),
-        sa.Column('window_days', sa.Integer(), nullable=False),
-        sa.Column('milestone_trips', sa.Integer(), nullable=False),
-        sa.Column('amount', sa.Numeric(12, 2), nullable=False),
-        sa.Column('currency', sa.String(3), nullable=False, server_default='PEN'),
-        sa.Column('valid_from', sa.Date(), nullable=False),
-        sa.Column('valid_to', sa.Date(), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
-        sa.Column('notes', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.PrimaryKeyConstraint('id'),
-        sa.CheckConstraint("origin_tag IN ('cabinet', 'fleet_migration')", name='chk_partner_origin_tag'),
-        sa.CheckConstraint('window_days > 0', name='chk_partner_window_days'),
-        sa.CheckConstraint('milestone_trips > 0', name='chk_partner_milestone_trips'),
-        sa.CheckConstraint("currency IN ('PEN', 'COP', 'USD')", name='chk_partner_currency'),
-        sa.CheckConstraint('valid_to IS NULL OR valid_to >= valid_from', name='chk_partner_valid_dates'),
-        sa.CheckConstraint('amount >= 0', name='chk_partner_amount'),
-        sa.UniqueConstraint('origin_tag', 'window_days', 'milestone_trips', 'valid_from', name='uq_partner_payment_rule'),
-        schema='ops'
-    )
+    # Verificar si la tabla ya existe antes de crearla
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names(schema='ops')
+    
+    if 'partner_payment_rules' not in tables:
+        op.create_table(
+            'partner_payment_rules',
+            sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column('origin_tag', sa.String(50), nullable=False),
+            sa.Column('window_days', sa.Integer(), nullable=False),
+            sa.Column('milestone_trips', sa.Integer(), nullable=False),
+            sa.Column('amount', sa.Numeric(12, 2), nullable=False),
+            sa.Column('currency', sa.String(3), nullable=False, server_default='PEN'),
+            sa.Column('valid_from', sa.Date(), nullable=False),
+            sa.Column('valid_to', sa.Date(), nullable=True),
+            sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+            sa.Column('notes', sa.Text(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+            sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+            sa.PrimaryKeyConstraint('id'),
+            sa.CheckConstraint("origin_tag IN ('cabinet', 'fleet_migration')", name='chk_partner_origin_tag'),
+            sa.CheckConstraint('window_days > 0', name='chk_partner_window_days'),
+            sa.CheckConstraint('milestone_trips > 0', name='chk_partner_milestone_trips'),
+            sa.CheckConstraint("currency IN ('PEN', 'COP', 'USD')", name='chk_partner_currency'),
+            sa.CheckConstraint('valid_to IS NULL OR valid_to >= valid_from', name='chk_partner_valid_dates'),
+            sa.CheckConstraint('amount >= 0', name='chk_partner_amount'),
+            sa.UniqueConstraint('origin_tag', 'window_days', 'milestone_trips', 'valid_from', name='uq_partner_payment_rule'),
+            schema='ops'
+        )
     
     # Tabla: ops.scout_payment_rules
-    op.create_table(
-        'scout_payment_rules',
-        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('origin_tag', sa.String(50), nullable=False),
-        sa.Column('window_days', sa.Integer(), nullable=False),
-        sa.Column('milestone_trips', sa.Integer(), nullable=False),
-        sa.Column('amount', sa.Numeric(12, 2), nullable=False),
-        sa.Column('currency', sa.String(3), nullable=False, server_default='PEN'),
-        sa.Column('valid_from', sa.Date(), nullable=False),
-        sa.Column('valid_to', sa.Date(), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
-        sa.Column('notes', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.PrimaryKeyConstraint('id'),
-        sa.CheckConstraint("origin_tag IN ('cabinet', 'fleet_migration')", name='chk_scout_origin_tag'),
-        sa.CheckConstraint('window_days > 0', name='chk_scout_window_days'),
-        sa.CheckConstraint('milestone_trips > 0', name='chk_scout_milestone_trips'),
-        sa.CheckConstraint("currency IN ('PEN', 'COP', 'USD')", name='chk_scout_currency'),
-        sa.CheckConstraint('valid_to IS NULL OR valid_to >= valid_from', name='chk_scout_valid_dates'),
-        sa.CheckConstraint('amount >= 0', name='chk_scout_amount'),
-        sa.UniqueConstraint('origin_tag', 'window_days', 'milestone_trips', 'valid_from', name='uq_scout_payment_rule'),
-        schema='ops'
-    )
+    # Verificar si la tabla ya existe antes de crearla
+    if 'scout_payment_rules' not in tables:
+        op.create_table(
+            'scout_payment_rules',
+            sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column('origin_tag', sa.String(50), nullable=False),
+            sa.Column('window_days', sa.Integer(), nullable=False),
+            sa.Column('milestone_trips', sa.Integer(), nullable=False),
+            sa.Column('amount', sa.Numeric(12, 2), nullable=False),
+            sa.Column('currency', sa.String(3), nullable=False, server_default='PEN'),
+            sa.Column('valid_from', sa.Date(), nullable=False),
+            sa.Column('valid_to', sa.Date(), nullable=True),
+            sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
+            sa.Column('notes', sa.Text(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+            sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+            sa.PrimaryKeyConstraint('id'),
+            sa.CheckConstraint("origin_tag IN ('cabinet', 'fleet_migration')", name='chk_scout_origin_tag'),
+            sa.CheckConstraint('window_days > 0', name='chk_scout_window_days'),
+            sa.CheckConstraint('milestone_trips > 0', name='chk_scout_milestone_trips'),
+            sa.CheckConstraint("currency IN ('PEN', 'COP', 'USD')", name='chk_scout_currency'),
+            sa.CheckConstraint('valid_to IS NULL OR valid_to >= valid_from', name='chk_scout_valid_dates'),
+            sa.CheckConstraint('amount >= 0', name='chk_scout_amount'),
+            sa.UniqueConstraint('origin_tag', 'window_days', 'milestone_trips', 'valid_from', name='uq_scout_payment_rule'),
+            schema='ops'
+        )
+    
+    # Actualizar la lista de tablas después de crear las nuevas
+    tables = inspector.get_table_names(schema='ops')
     
     # Índices para partner_payment_rules
-    op.create_index(
-        'idx_partner_payment_rules_origin_tag',
-        'partner_payment_rules',
-        ['origin_tag'],
-        schema='ops'
-    )
-    
-    op.create_index(
-        'idx_partner_payment_rules_active',
-        'partner_payment_rules',
-        ['is_active'],
-        schema='ops',
-        postgresql_where=sa.text('is_active = true')
-    )
-    
-    op.create_index(
-        'idx_partner_payment_rules_validity',
-        'partner_payment_rules',
-        ['valid_from', 'valid_to'],
-        schema='ops',
-        postgresql_where=sa.text('is_active = true')
-    )
-    
-    op.create_index(
-        'idx_partner_payment_rules_lookup',
-        'partner_payment_rules',
-        ['origin_tag', 'window_days', 'milestone_trips', 'is_active', 'valid_from', 'valid_to'],
-        schema='ops'
-    )
+    if 'partner_payment_rules' in tables:
+        indexes = [idx['name'] for idx in inspector.get_indexes('partner_payment_rules', schema='ops')]
+        
+        if 'idx_partner_payment_rules_origin_tag' not in indexes:
+            op.create_index(
+                'idx_partner_payment_rules_origin_tag',
+                'partner_payment_rules',
+                ['origin_tag'],
+                schema='ops'
+            )
+        
+        if 'idx_partner_payment_rules_active' not in indexes:
+            op.create_index(
+                'idx_partner_payment_rules_active',
+                'partner_payment_rules',
+                ['is_active'],
+                schema='ops',
+                postgresql_where=sa.text('is_active = true')
+            )
+        
+        if 'idx_partner_payment_rules_validity' not in indexes:
+            op.create_index(
+                'idx_partner_payment_rules_validity',
+                'partner_payment_rules',
+                ['valid_from', 'valid_to'],
+                schema='ops',
+                postgresql_where=sa.text('is_active = true')
+            )
+        
+        if 'idx_partner_payment_rules_lookup' not in indexes:
+            op.create_index(
+                'idx_partner_payment_rules_lookup',
+                'partner_payment_rules',
+                ['origin_tag', 'window_days', 'milestone_trips', 'is_active', 'valid_from', 'valid_to'],
+                schema='ops'
+            )
     
     # Índices para scout_payment_rules
-    op.create_index(
-        'idx_scout_payment_rules_origin_tag',
-        'scout_payment_rules',
-        ['origin_tag'],
-        schema='ops'
-    )
-    
-    op.create_index(
-        'idx_scout_payment_rules_active',
-        'scout_payment_rules',
-        ['is_active'],
-        schema='ops',
-        postgresql_where=sa.text('is_active = true')
-    )
-    
-    op.create_index(
-        'idx_scout_payment_rules_validity',
-        'scout_payment_rules',
-        ['valid_from', 'valid_to'],
-        schema='ops',
-        postgresql_where=sa.text('is_active = true')
-    )
-    
-    op.create_index(
-        'idx_scout_payment_rules_lookup',
-        'scout_payment_rules',
-        ['origin_tag', 'window_days', 'milestone_trips', 'is_active', 'valid_from', 'valid_to'],
-        schema='ops'
-    )
+    if 'scout_payment_rules' in tables:
+        indexes = [idx['name'] for idx in inspector.get_indexes('scout_payment_rules', schema='ops')]
+        
+        if 'idx_scout_payment_rules_origin_tag' not in indexes:
+            op.create_index(
+                'idx_scout_payment_rules_origin_tag',
+                'scout_payment_rules',
+                ['origin_tag'],
+                schema='ops'
+            )
+        
+        if 'idx_scout_payment_rules_active' not in indexes:
+            op.create_index(
+                'idx_scout_payment_rules_active',
+                'scout_payment_rules',
+                ['is_active'],
+                schema='ops',
+                postgresql_where=sa.text('is_active = true')
+            )
+        
+        if 'idx_scout_payment_rules_validity' not in indexes:
+            op.create_index(
+                'idx_scout_payment_rules_validity',
+                'scout_payment_rules',
+                ['valid_from', 'valid_to'],
+                schema='ops',
+                postgresql_where=sa.text('is_active = true')
+            )
+        
+        if 'idx_scout_payment_rules_lookup' not in indexes:
+            op.create_index(
+                'idx_scout_payment_rules_lookup',
+                'scout_payment_rules',
+                ['origin_tag', 'window_days', 'milestone_trips', 'is_active', 'valid_from', 'valid_to'],
+                schema='ops'
+            )
     
     # Triggers para actualizar updated_at
     op.execute("""

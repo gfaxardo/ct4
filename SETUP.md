@@ -62,7 +62,10 @@ Si necesitas cambiarlas, edita estos archivos o crea un `.env` en `backend/`:
 ```env
 DATABASE_URL=postgresql://yego_user:37>MNA&-35+@168.119.226.236:5432/yego_integral
 LOG_LEVEL=INFO
+ADMIN_TOKEN=tu_token_secreto_aqui
 ```
+
+**Nota sobre ADMIN_TOKEN**: Este token se usa para autenticar operaciones administrativas como marcar items como pagados en el dashboard de liquidación. Debe ser un string secreto y seguro. En producción, usa un token fuerte generado aleatoriamente.
 
 #### 2.6 Aplicar migraciones de base de datos
 
@@ -275,6 +278,10 @@ No necesitas volver a ejecutar `pip install` ni `npm install` a menos que actual
 ---
 
 ¡Listo! Tu aplicación debería estar corriendo correctamente.
+
+
+
+
 
 
 

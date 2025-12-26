@@ -458,3 +458,8 @@ ls backend/app/services/scouting_observation.py
 - Ejecutar manualmente `check_scouting_alerts` desde Python
 
 
+
+
+
+
+

@@ -364,4 +364,377 @@ export async function acknowledgeAlert(alertId: number): Promise<void> {
   if (!res.ok) throw new Error('Error reconociendo alerta')
 }
 
+// Dashboard APIs
+export interface ScoutSummary {
+  totals: {
+    payable_amount: number
+    payable_items: number
+    payable_drivers: number
+    payable_scouts: number
+    blocked_amount: number
+    blocked_items: number
+  }
+  by_week: Array<{
+    week_start_monday: string
+    iso_year_week: string
+    payable_amount: number
+    payable_items: number
+    blocked_amount: number
+    blocked_items: number
+  }>
+  top_scouts: Array<{
+    acquisition_scout_id: number | null
+    acquisition_scout_name: string | null
+    amount: number
+    items: number
+    drivers: number
+  }>
+}
+
+export interface ScoutOpenItem {
+  payment_item_key: string
+  person_key: string
+  lead_origin: string | null
+  scout_id: number | null
+  acquisition_scout_id: number | null
+  acquisition_scout_name: string | null
+  attribution_confidence: string | null
+  attribution_rule: string | null
+  milestone_type: string | null
+  milestone_value: number | null
+  payable_date: string | null
+  achieved_date: string | null
+  amount: number
+  currency: string | null
+  driver_id: string | null
+}
+
+export interface ScoutOpenItems {
+  items: ScoutOpenItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface YangoSummary {
+  totals: {
+    receivable_amount: number
+    receivable_items: number
+    receivable_drivers: number
+  }
+  by_week: Array<{
+    week_start_monday: string
+    iso_year_week: string
+    amount: number
+    items: number
+    drivers: number
+  }>
+}
+
+export interface YangoReceivableItem {
+  pay_week_start_monday: string
+  pay_iso_year_week: string
+  payable_date: string
+  achieved_date: string | null
+  lead_date: string | null
+  lead_origin: string | null
+  payer: string
+  milestone_type: string | null
+  milestone_value: number | null
+  window_days: number | null
+  trips_in_window: number | null
+  person_key: string
+  driver_id: string | null
+  amount: number
+  currency: string | null
+  created_at_export: string | null
+}
+
+export interface YangoReceivableItems {
+  items: YangoReceivableItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export async function getScoutSummary(params?: {
+  week_start?: string
+  week_end?: string
+  scout_id?: number
+  lead_origin?: 'cabinet' | 'migration'
+}): Promise<ScoutSummary> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.week_start) searchParams.append('week_start', params.week_start)
+    if (params.week_end) searchParams.append('week_end', params.week_end)
+    if (params.scout_id) searchParams.append('scout_id', String(params.scout_id))
+    if (params.lead_origin) searchParams.append('lead_origin', params.lead_origin)
+  }
+  const res = await fetch(`${API_URL}/api/v1/dashboard/scout/summary?${searchParams}`)
+  if (!res.ok) throw new Error('Error obteniendo resumen scout')
+  return res.json()
+}
+
+export async function getScoutOpenItems(params?: {
+  week_start_monday?: string
+  scout_id?: number
+  confidence?: 'policy' | 'high' | 'medium' | 'unknown'
+  limit?: number
+  offset?: number
+}): Promise<ScoutOpenItems> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.week_start_monday) searchParams.append('week_start_monday', params.week_start_monday)
+    if (params.scout_id) searchParams.append('scout_id', String(params.scout_id))
+    if (params.confidence) searchParams.append('confidence', params.confidence)
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    if (params.offset) searchParams.append('offset', String(params.offset))
+  }
+  const res = await fetch(`${API_URL}/api/v1/dashboard/scout/open_items?${searchParams}`)
+  if (!res.ok) throw new Error('Error obteniendo items abiertos scout')
+  return res.json()
+}
+
+export async function getYangoSummary(params?: {
+  week_start?: string
+  week_end?: string
+}): Promise<YangoSummary> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.week_start) searchParams.append('week_start', params.week_start)
+    if (params.week_end) searchParams.append('week_end', params.week_end)
+  }
+  const res = await fetch(`${API_URL}/api/v1/dashboard/yango/summary?${searchParams}`)
+  if (!res.ok) throw new Error('Error obteniendo resumen Yango')
+  return res.json()
+}
+
+export async function getYangoReceivableItems(params?: {
+  week_start_monday?: string
+  limit?: number
+  offset?: number
+}): Promise<YangoReceivableItems> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.week_start_monday) searchParams.append('week_start_monday', params.week_start_monday)
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    if (params.offset) searchParams.append('offset', String(params.offset))
+  }
+  const res = await fetch(`${API_URL}/api/v1/dashboard/yango/receivable_items?${searchParams}`)
+  if (!res.ok) throw new Error('Error obteniendo items por cobrar Yango')
+  return res.json()
+}
+
+// Yango Reconciliation APIs
+export interface YangoReconciliationSummaryRow {
+  pay_week_start_monday?: string | null
+  milestone_value?: number | null
+  reconciliation_status?: string | null
+  count_items?: number | null
+  count_drivers_with_driver_id?: number | null
+  count_drivers_with_person_key?: number | null
+  count_drivers_total?: number | null
+  sum_amount_expected?: number | null
+  count_paid?: number | null
+  count_pending?: number | null
+  count_anomalies?: number | null
+  min_payable_date?: string | null
+  max_payable_date?: string | null
+  min_paid_date?: string | null
+  max_paid_date?: string | null
+}
+
+export interface YangoReconciliationSummaryResponse {
+  status: string
+  count: number
+  filters: Record<string, any>
+  rows: YangoReconciliationSummaryRow[]
+}
+
+export interface YangoReconciliationItemRow {
+  pay_week_start_monday?: string | null
+  pay_iso_year_week?: string | null
+  payable_date?: string | null
+  achieved_date?: string | null
+  lead_date?: string | null
+  lead_origin?: string | null
+  payer?: string | null
+  milestone_type?: string | null
+  milestone_value?: number | null
+  window_days?: number | null
+  trips_in_window?: number | null
+  person_key?: string | null
+  driver_id?: string | null
+  expected_amount?: number | null
+  currency?: string | null
+  created_at_export?: string | null
+  paid_payment_key?: string | null
+  paid_snapshot_at?: string | null
+  paid_source_pk?: string | null
+  paid_date?: string | null
+  paid_time?: string | null
+  paid_raw_driver_name?: string | null
+  paid_driver_name_normalized?: string | null
+  paid_is_paid?: boolean | null
+  is_paid_effective?: boolean | null
+  paid_match_rule?: string | null
+  paid_match_confidence?: string | null
+  match_method?: string | null
+  reconciliation_status?: string | null
+  sort_date?: string | null
+}
+
+export interface YangoReconciliationItemsResponse {
+  status: string
+  count: number
+  filters: Record<string, any>
+  rows: YangoReconciliationItemRow[]
+}
+
+export async function getYangoReconciliationSummary(params?: {
+  week_start?: string
+  milestone_value?: number
+  status?: 'paid' | 'pending' | 'anomaly_paid_without_expected'
+  limit?: number
+}): Promise<YangoReconciliationSummaryResponse> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.week_start) searchParams.append('week_start', params.week_start)
+    if (params.milestone_value) searchParams.append('milestone_value', String(params.milestone_value))
+    if (params.status) searchParams.append('status', params.status)
+    if (params.limit) searchParams.append('limit', String(params.limit))
+  }
+  const res = await fetch(`${API_URL}/api/v1/yango/payments/reconciliation/summary?${searchParams}`)
+  if (!res.ok) throw new Error('Error obteniendo resumen de reconciliación Yango')
+  return res.json()
+}
+
+export async function getYangoReconciliationItems(params?: {
+  status?: 'paid' | 'pending' | 'anomaly_paid_without_expected'
+  week_start?: string
+  milestone_value?: number
+  driver_id?: string
+  person_key?: string
+  limit?: number
+  offset?: number
+}): Promise<YangoReconciliationItemsResponse> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.status) searchParams.append('status', params.status)
+    if (params.week_start) searchParams.append('week_start', params.week_start)
+    if (params.milestone_value) searchParams.append('milestone_value', String(params.milestone_value))
+    if (params.driver_id) searchParams.append('driver_id', params.driver_id)
+    if (params.person_key) searchParams.append('person_key', params.person_key)
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    if (params.offset) searchParams.append('offset', String(params.offset))
+  }
+  const url = `${API_URL}/api/v1/yango/payments/reconciliation/items?${searchParams}`
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getYangoReconciliationItems:request',message:'Making API request',data:{url,params},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  const res = await fetch(url)
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getYangoReconciliationItems:response',message:'API response received',data:{ok:res.ok,status:res.status,statusText:res.statusText,url},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  if (!res.ok) {
+    // #region agent log
+    const errorText = await res.text().catch(() => 'Unable to read error')
+    fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getYangoReconciliationItems:error',message:'API request failed',data:{status:res.status,statusText:res.statusText,errorText,url},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    throw new Error('Error obteniendo items de reconciliación Yango')
+  }
+  const data = await res.json()
+  // #region agent log
+  // Sample first 5 items to check paid field values
+  const sampleItems = (data.rows || []).slice(0, 5).map((item: any) => ({
+    reconciliation_status: item.reconciliation_status,
+    paid_is_paid: item.paid_is_paid,
+    is_paid_effective: item.is_paid_effective,
+    paid_payment_key: item.paid_payment_key,
+    paid_date: item.paid_date,
+    paid_snapshot_at: item.paid_snapshot_at,
+    paid_source_pk: item.paid_source_pk,
+    expected_amount: item.expected_amount
+  }))
+  // Count items by paid field patterns
+  const paidPatterns = {
+    paid_is_paid_true: (data.rows || []).filter((r: any) => r.paid_is_paid === true).length,
+    paid_is_paid_false: (data.rows || []).filter((r: any) => r.paid_is_paid === false).length,
+    paid_is_paid_null: (data.rows || []).filter((r: any) => r.paid_is_paid == null).length,
+    has_paid_payment_key: (data.rows || []).filter((r: any) => r.paid_payment_key != null).length,
+    has_paid_date: (data.rows || []).filter((r: any) => r.paid_date != null).length,
+    has_paid_snapshot_at: (data.rows || []).filter((r: any) => r.paid_snapshot_at != null).length,
+    has_paid_source_pk: (data.rows || []).filter((r: any) => r.paid_source_pk != null).length,
+    has_any_paid_indicator: (data.rows || []).filter((r: any) => 
+      r.paid_is_paid === true || 
+      r.paid_payment_key != null || 
+      r.paid_date != null || 
+      r.paid_snapshot_at != null || 
+      r.paid_source_pk != null
+    ).length,
+    is_paid_effective_true: (data.rows || []).filter((r: any) => r.is_paid_effective === true).length,
+    is_paid_effective_false: (data.rows || []).filter((r: any) => r.is_paid_effective === false).length,
+    is_paid_effective_null: (data.rows || []).filter((r: any) => r.is_paid_effective == null).length,
+    status_paid: (data.rows || []).filter((r: any) => r.reconciliation_status === 'paid').length,
+    status_pending: (data.rows || []).filter((r: any) => r.reconciliation_status === 'pending').length,
+    status_anomaly: (data.rows || []).filter((r: any) => r.reconciliation_status === 'anomaly_paid_without_expected').length
+  }
+  fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getYangoReconciliationItems:paid-fields-analysis',message:'Analysis of paid field values',data:{itemsCount:data.rows?.length||0,count:data.count,sampleItems,paidPatterns},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,B,C'})}).catch(()=>{});
+  // #endregion
+  return data
+}
+
+// Liquidation APIs
+export interface ScoutPreview {
+  preview_items: number
+  preview_amount: number
+}
+
+export interface ScoutMarkPaidRequest {
+  scout_id: number
+  cutoff_date: string
+  paid_by: string
+  payment_ref: string
+  notes?: string
+}
+
+export interface ScoutMarkPaidResponse {
+  inserted_items: number
+  inserted_amount: number
+  preview_items: number
+  preview_amount: number
+  message: string
+}
+
+export async function scoutLiquidationPreview(
+  scout_id: number,
+  cutoff_date: string
+): Promise<ScoutPreview> {
+  const searchParams = new URLSearchParams()
+  searchParams.append('scout_id', String(scout_id))
+  searchParams.append('cutoff_date', cutoff_date)
+  const res = await fetch(`${API_URL}/api/v1/liquidation/scout/preview?${searchParams}`)
+  if (!res.ok) throw new Error('Error obteniendo preview de liquidación')
+  return res.json()
+}
+
+export async function scoutLiquidationMarkPaid(
+  payload: ScoutMarkPaidRequest,
+  adminToken: string
+): Promise<ScoutMarkPaidResponse> {
+  const res = await fetch(`${API_URL}/api/v1/liquidation/scout/mark_paid`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Admin-Token': adminToken,
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Error marcando items como pagados' }))
+    throw new Error(error.detail || 'Error marcando items como pagados')
+  }
+  return res.json()
+}
+
 
