@@ -530,6 +530,7 @@ export interface YangoReconciliationSummaryRow {
   pay_week_start_monday?: string | null
   milestone_value?: number | null
   reconciliation_status?: string | null
+  // Campos de summary original (compatibilidad)
   count_items?: number | null
   count_drivers_with_driver_id?: number | null
   count_drivers_with_person_key?: number | null
@@ -542,6 +543,26 @@ export interface YangoReconciliationSummaryRow {
   max_payable_date?: string | null
   min_paid_date?: string | null
   max_paid_date?: string | null
+  // Campos de summary_ui (actuales, desde claims)
+  rows_count?: number | null
+  amount_expected_sum?: number | null
+  amount_paid_confirmed_sum?: number | null  // Pagos con identidad confirmada (upstream)
+  amount_paid_enriched_sum?: number | null  // Pagos con identidad enriquecida (match por nombre)
+  amount_paid_total_visible?: number | null  // Total visible: confirmed + enriched
+  amount_paid_sum?: number | null  // Para compatibilidad, alias de amount_paid_total_visible
+  amount_paid_assumed?: number | null  // Pagos estimados (pending_active)
+  amount_pending_active_sum?: number | null
+  amount_pending_expired_sum?: number | null
+  amount_diff?: number | null
+  amount_diff_assumed?: number | null  // Diff estimado (expected - assumed)
+  count_expected?: number | null
+  count_paid_confirmed?: number | null  // Count de pagos confirmados
+  count_paid_enriched?: number | null  // Count de pagos enriquecidos
+  // count_paid ya está definido arriba (compatibilidad, debería ser confirmed + enriched)
+  count_pending_active?: number | null
+  count_pending_expired?: number | null
+  count_drivers?: number | null
+  anomalies_total?: number | null  // Alias para count_pending_expired
 }
 
 export interface YangoReconciliationSummaryResponse {
@@ -569,19 +590,33 @@ export interface YangoReconciliationItemRow {
   currency?: string | null
   created_at_export?: string | null
   paid_payment_key?: string | null
+  paid_payment_key_confirmed?: string | null  // Payment key del pago confirmado
+  paid_payment_key_enriched?: string | null  // Payment key del pago enriquecido
   paid_snapshot_at?: string | null
   paid_source_pk?: string | null
   paid_date?: string | null
+  paid_date_confirmed?: string | null  // Fecha del pago confirmado
+  paid_date_enriched?: string | null  // Fecha del pago enriquecido
   paid_time?: string | null
   paid_raw_driver_name?: string | null
   paid_driver_name_normalized?: string | null
   paid_is_paid?: boolean | null
+  is_paid_confirmed?: boolean | null  // Si el pago está confirmado
+  is_paid_enriched?: boolean | null  // Si el pago está enriquecido
   is_paid_effective?: boolean | null
-  paid_match_rule?: string | null
-  paid_match_confidence?: string | null
+  paid_match_rule?: string | null  // Deprecated, usar match_rule
+  paid_match_confidence?: string | null  // Deprecated, usar match_confidence
   match_method?: string | null
-  reconciliation_status?: string | null
+  reconciliation_status?: string | null  // Mapeado desde paid_status para compatibilidad
   sort_date?: string | null
+  // Campos nuevos de claims view
+  due_date?: string | null  // Fecha de vencimiento (lead_date + 14 días)
+  window_status?: 'active' | 'expired' | null  // Estado de la ventana: 'active' o 'expired'
+  paid_status?: 'paid_confirmed' | 'paid_enriched' | 'pending_active' | 'pending_expired' | null  // Estado real del pago
+  // Campos de identity enrichment
+  identity_status?: 'confirmed' | 'enriched' | 'ambiguous' | 'no_match' | null  // Estado de identidad desde ledger enriquecido
+  match_rule?: string | null  // 'source_upstream' | 'name_full_unique' | 'name_tokens_unique' | 'ambiguous' | 'no_match'
+  match_confidence?: 'high' | 'medium' | 'low' | null  // Confianza del match
 }
 
 export interface YangoReconciliationItemsResponse {
@@ -595,6 +630,7 @@ export async function getYangoReconciliationSummary(params?: {
   week_start?: string
   milestone_value?: number
   status?: 'paid' | 'pending' | 'anomaly_paid_without_expected'
+  mode?: 'real' | 'assumed'  // Modo: 'real' (pagos reales) o 'assumed' (pagos estimados)
   limit?: number
 }): Promise<YangoReconciliationSummaryResponse> {
   const searchParams = new URLSearchParams()
@@ -602,6 +638,7 @@ export async function getYangoReconciliationSummary(params?: {
     if (params.week_start) searchParams.append('week_start', params.week_start)
     if (params.milestone_value) searchParams.append('milestone_value', String(params.milestone_value))
     if (params.status) searchParams.append('status', params.status)
+    if (params.mode) searchParams.append('mode', params.mode)
     if (params.limit) searchParams.append('limit', String(params.limit))
   }
   const res = await fetch(`${API_URL}/api/v1/yango/payments/reconciliation/summary?${searchParams}`)
@@ -610,7 +647,7 @@ export async function getYangoReconciliationSummary(params?: {
 }
 
 export async function getYangoReconciliationItems(params?: {
-  status?: 'paid' | 'pending' | 'anomaly_paid_without_expected'
+  status?: 'paid' | 'pending' | 'pending_active' | 'pending_expired' | 'anomaly_paid_without_expected'
   week_start?: string
   milestone_value?: number
   driver_id?: string
@@ -629,59 +666,108 @@ export async function getYangoReconciliationItems(params?: {
     if (params.offset) searchParams.append('offset', String(params.offset))
   }
   const url = `${API_URL}/api/v1/yango/payments/reconciliation/items?${searchParams}`
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getYangoReconciliationItems:request',message:'Making API request',data:{url,params},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
   const res = await fetch(url)
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getYangoReconciliationItems:response',message:'API response received',data:{ok:res.ok,status:res.status,statusText:res.statusText,url},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
-  if (!res.ok) {
-    // #region agent log
-    const errorText = await res.text().catch(() => 'Unable to read error')
-    fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getYangoReconciliationItems:error',message:'API request failed',data:{status:res.status,statusText:res.statusText,errorText,url},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-    throw new Error('Error obteniendo items de reconciliación Yango')
+  if (!res.ok) throw new Error('Error obteniendo items de reconciliación Yango')
+  return res.json()
+}
+
+export interface YangoLedgerUnmatchedRow {
+  payment_key?: string | null
+  pay_date?: string | null
+  is_paid?: boolean | null
+  milestone_value?: number | null
+  driver_id?: string | null  // Alias de driver_id_final
+  person_key?: string | null  // Alias de person_key_final
+  raw_driver_name?: string | null
+  driver_name_normalized?: string | null
+  match_rule?: string | null
+  match_confidence?: string | null
+  latest_snapshot_at?: string | null
+  source_pk?: string | null
+  identity_source?: string | null  // 'original' | 'enriched_by_name' | 'none' (deprecated, usar identity_status)
+  identity_enriched?: boolean | null
+  driver_id_final?: string | null
+  person_key_final?: string | null
+  identity_status?: 'confirmed' | 'enriched' | 'ambiguous' | 'no_match' | null  // Estado de identidad desde ledger enriquecido
+}
+
+export interface YangoLedgerUnmatchedResponse {
+  status: string
+  count: number
+  total: number
+  filters: Record<string, any>
+  rows: YangoLedgerUnmatchedRow[]
+}
+
+export async function getYangoLedgerUnmatched(params?: {
+  is_paid?: boolean
+  milestone_value?: number
+  limit?: number
+  offset?: number
+}): Promise<YangoLedgerUnmatchedResponse> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.is_paid !== undefined) searchParams.append('is_paid', String(params.is_paid))
+    if (params.milestone_value) searchParams.append('milestone_value', String(params.milestone_value))
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    if (params.offset) searchParams.append('offset', String(params.offset))
   }
-  const data = await res.json()
-  // #region agent log
-  // Sample first 5 items to check paid field values
-  const sampleItems = (data.rows || []).slice(0, 5).map((item: any) => ({
-    reconciliation_status: item.reconciliation_status,
-    paid_is_paid: item.paid_is_paid,
-    is_paid_effective: item.is_paid_effective,
-    paid_payment_key: item.paid_payment_key,
-    paid_date: item.paid_date,
-    paid_snapshot_at: item.paid_snapshot_at,
-    paid_source_pk: item.paid_source_pk,
-    expected_amount: item.expected_amount
-  }))
-  // Count items by paid field patterns
-  const paidPatterns = {
-    paid_is_paid_true: (data.rows || []).filter((r: any) => r.paid_is_paid === true).length,
-    paid_is_paid_false: (data.rows || []).filter((r: any) => r.paid_is_paid === false).length,
-    paid_is_paid_null: (data.rows || []).filter((r: any) => r.paid_is_paid == null).length,
-    has_paid_payment_key: (data.rows || []).filter((r: any) => r.paid_payment_key != null).length,
-    has_paid_date: (data.rows || []).filter((r: any) => r.paid_date != null).length,
-    has_paid_snapshot_at: (data.rows || []).filter((r: any) => r.paid_snapshot_at != null).length,
-    has_paid_source_pk: (data.rows || []).filter((r: any) => r.paid_source_pk != null).length,
-    has_any_paid_indicator: (data.rows || []).filter((r: any) => 
-      r.paid_is_paid === true || 
-      r.paid_payment_key != null || 
-      r.paid_date != null || 
-      r.paid_snapshot_at != null || 
-      r.paid_source_pk != null
-    ).length,
-    is_paid_effective_true: (data.rows || []).filter((r: any) => r.is_paid_effective === true).length,
-    is_paid_effective_false: (data.rows || []).filter((r: any) => r.is_paid_effective === false).length,
-    is_paid_effective_null: (data.rows || []).filter((r: any) => r.is_paid_effective == null).length,
-    status_paid: (data.rows || []).filter((r: any) => r.reconciliation_status === 'paid').length,
-    status_pending: (data.rows || []).filter((r: any) => r.reconciliation_status === 'pending').length,
-    status_anomaly: (data.rows || []).filter((r: any) => r.reconciliation_status === 'anomaly_paid_without_expected').length
+  const url = `${API_URL}/api/v1/yango/payments/reconciliation/ledger/unmatched?${searchParams}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('Error obteniendo ledger sin match')
+  return res.json()
+}
+
+export async function getYangoLedgerMatched(params?: {
+  milestone_value?: number
+  limit?: number
+  offset?: number
+}): Promise<YangoLedgerUnmatchedResponse> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.milestone_value) searchParams.append('milestone_value', String(params.milestone_value))
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    if (params.offset) searchParams.append('offset', String(params.offset))
   }
-  fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getYangoReconciliationItems:paid-fields-analysis',message:'Analysis of paid field values',data:{itemsCount:data.rows?.length||0,count:data.count,sampleItems,paidPatterns},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,B,C'})}).catch(()=>{});
-  // #endregion
-  return data
+  const url = `${API_URL}/api/v1/yango/payments/reconciliation/ledger/matched?${searchParams}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('Error obteniendo ledger con match')
+  return res.json()
+}
+
+export interface ClaimDetailRow {
+  milestone_value?: number | null
+  expected_amount?: number | null
+  currency?: string | null
+  lead_date?: string | null
+  due_date?: string | null
+  pay_week_start_monday?: string | null
+  paid_status?: string | null
+  paid_payment_key?: string | null
+  paid_date?: string | null
+  is_paid_effective?: boolean | null
+  match_method?: string | null
+}
+
+export interface YangoDriverDetailResponse {
+  status: string
+  driver_id: string
+  person_key?: string | null
+  claims: ClaimDetailRow[]
+  summary: {
+    total_expected: number
+    total_paid: number
+    count_paid: number
+    count_pending_active: number
+    count_pending_expired: number
+  }
+}
+
+export async function getYangoDriverDetail(driver_id: string): Promise<YangoDriverDetailResponse> {
+  const url = `${API_URL}/api/v1/yango/payments/reconciliation/driver/${encodeURIComponent(driver_id)}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Error obteniendo detalle del conductor ${driver_id}`)
+  return res.json()
 }
 
 // Liquidation APIs

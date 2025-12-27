@@ -2,9 +2,8 @@
 
 import { useEffect, useState, useMemo } from 'react'
 import { getYangoReconciliationItems, YangoReconciliationItemRow } from '@/lib/api'
-import { computeAnomalyReason, getSeverityColor, isAnomaly } from './utils/reasons'
-import { effectiveWeekStartMonday } from './utils/week'
 import { exportToCSV } from './utils/csv'
+import DebugPanel from './DebugPanel'
 
 interface YangoWeekDrilldownProps {
   weekStart: string
@@ -12,32 +11,26 @@ interface YangoWeekDrilldownProps {
   initialReasonFilter?: string
 }
 
-type TabType = 'resumen' | 'anomalias' | 'pendientes' | 'pagados'
+type TabType = 'pagados' | 'pending_active' | 'vencidos' | 'todos'
 
 export default function YangoWeekDrilldown({
   weekStart,
   onClose,
   initialReasonFilter
 }: YangoWeekDrilldownProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('resumen')
+  const [activeTab, setActiveTab] = useState<TabType>('vencidos') // Default: vencidos (pending_expired)
   const [loading, setLoading] = useState(true)
-  const [items, setItems] = useState<YangoReconciliationItemRow[]>([])
   const [allItems, setAllItems] = useState<YangoReconciliationItemRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [searchText, setSearchText] = useState('')
-  const [filterReason, setFilterReason] = useState<string>(initialReasonFilter || 'all')
-  const [filterSeverity, setFilterSeverity] = useState<string>('all')
   const [filterMilestone, setFilterMilestone] = useState<string>('all')
-  const [filterConfidence, setFilterConfidence] = useState<string>('all')
+  const [sinConductor, setSinConductor] = useState(false)
+  const [showDriverDetail, setShowDriverDetail] = useState(false)
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null)
+  const [driverDetail, setDriverDetail] = useState<YangoDriverDetailResponse | null>(null)
+  const [driverDetailLoading, setDriverDetailLoading] = useState(false)
   const [page, setPage] = useState(0)
   const limit = 50
-
-  // Si hay filtro inicial de motivo, cambiar a tab anomalías
-  useEffect(() => {
-    if (initialReasonFilter) {
-      setActiveTab('anomalias')
-    }
-  }, [initialReasonFilter])
 
   useEffect(() => {
     loadItems()
@@ -47,15 +40,16 @@ export default function YangoWeekDrilldown({
     setLoading(true)
     setError(null)
     try {
-      let status: 'paid' | 'pending' | 'anomaly_paid_without_expected' | undefined
+      let status: 'paid' | 'pending_active' | 'pending_expired' | undefined
       
-      if (activeTab === 'anomalias') {
-        status = 'anomaly_paid_without_expected'
-      } else if (activeTab === 'pendientes') {
-        status = 'pending'
-      } else if (activeTab === 'pagados') {
+      if (activeTab === 'pagados') {
         status = 'paid'
+      } else if (activeTab === 'pending_active') {
+        status = 'pending_active'
+      } else if (activeTab === 'vencidos') {
+        status = 'pending_expired'
       }
+      // 'todos' no envía status (muestra todos)
 
       // Cargar todos los items de la semana con paginación (backend limita a 1000)
       const allItemsLoaded: YangoReconciliationItemRow[] = []
@@ -83,14 +77,7 @@ export default function YangoWeekDrilldown({
         }
       }
       
-      // Filtrar items por effective_week (no confiar solo en week_start del backend)
-      const weekItems = allItemsLoaded.filter(item => {
-        const effectiveWeek = effectiveWeekStartMonday(item)
-        return effectiveWeek === weekStart
-      })
-      
-      setAllItems(weekItems)
-      setItems(weekItems)
+      setAllItems(allItemsLoaded)
     } catch (err) {
       console.error('Error cargando items Yango:', err)
       setError('Error al cargar datos')
@@ -99,41 +86,18 @@ export default function YangoWeekDrilldown({
     }
   }
 
-  // Items con campos derivados
-  const itemsWithDerived = useMemo(() => {
-    return allItems.map(item => {
-      const reason = computeAnomalyReason(item)
-      const effectiveWeek = effectiveWeekStartMonday(item)
-      return {
-        ...item,
-        reason,
-        isAnomaly: isAnomaly(item),
-        effectiveWeek
-      }
-    })
-  }, [allItems])
-
   // Filtrar items según búsqueda y filtros
   const filteredItems = useMemo(() => {
-    let filtered = [...itemsWithDerived]
+    let filtered = [...allItems]
 
-    // Filtro por texto (driver name)
+    // Filtro por texto (driver_id, person_key, driver name)
     if (searchText) {
       const searchLower = searchText.toLowerCase()
       filtered = filtered.filter(item =>
-        (item.paid_raw_driver_name || '').toLowerCase().includes(searchLower) ||
-        (item.driver_id || '').toLowerCase().includes(searchLower)
+        (item.driver_id || '').toLowerCase().includes(searchLower) ||
+        (item.person_key || '').toLowerCase().includes(searchLower) ||
+        (item.paid_raw_driver_name || '').toLowerCase().includes(searchLower)
       )
-    }
-
-    // Filtro por motivo (reason)
-    if (filterReason !== 'all') {
-      filtered = filtered.filter(item => item.reason.code === filterReason)
-    }
-
-    // Filtro por severidad
-    if (filterSeverity !== 'all') {
-      filtered = filtered.filter(item => item.reason.severity === filterSeverity)
     }
 
     // Filtro por milestone
@@ -143,45 +107,38 @@ export default function YangoWeekDrilldown({
       )
     }
 
-    // Filtro por match confidence
-    if (filterConfidence !== 'all') {
-      filtered = filtered.filter(item => 
-        item.paid_match_confidence === filterConfidence
-      )
-    }
-
-    // En tab Anomalías, solo mostrar items con isAnomaly = true
-    if (activeTab === 'anomalias') {
-      filtered = filtered.filter(item => item.isAnomaly)
+    // Filtro "Solo SIN CONDUCTOR"
+    if (sinConductor) {
+      filtered = filtered.filter(item => !item.driver_id || item.driver_id === null || item.driver_id === '')
     }
 
     return filtered
-  }, [itemsWithDerived, searchText, filterReason, filterSeverity, filterMilestone, filterConfidence, activeTab])
+  }, [allItems, searchText, filterMilestone, sinConductor])
 
   // Paginación
   const paginatedItems = filteredItems.slice(page * limit, (page + 1) * limit)
   const totalPages = Math.ceil(filteredItems.length / limit)
 
-  // Obtener motivos únicos para filtro (solo anomalías)
-  const uniqueReasons = useMemo(() => {
-    const reasonsMap = new Map<string, { label: string; severity: 'high' | 'medium' | 'low' }>()
-    itemsWithDerived
-      .filter(item => item.isAnomaly)
-      .forEach(item => {
-        if (!reasonsMap.has(item.reason.code)) {
-          reasonsMap.set(item.reason.code, {
-            label: item.reason.label,
-            severity: item.reason.severity
-          })
-        }
-      })
-    return Array.from(reasonsMap.entries())
-      .map(([code, data]) => ({ code, ...data }))
-      .sort((a, b) => {
-        const severityOrder = { high: 0, medium: 1, low: 2 }
-        return severityOrder[a.severity] - severityOrder[b.severity]
-      })
-  }, [itemsWithDerived])
+  // Calcular resumen desde paid_status real
+  const summary = useMemo(() => {
+    const statusCounts = {
+      paid: allItems.filter(i => i.paid_status === 'paid').length,
+      pending_active: allItems.filter(i => i.paid_status === 'pending_active').length,
+      pending_expired: allItems.filter(i => i.paid_status === 'pending_expired').length
+    }
+    const totalExpected = allItems.reduce((sum, i) => sum + (i.expected_amount || 0), 0)
+    const totalPaid = allItems
+      .filter(i => i.paid_status === 'paid')
+      .reduce((sum, i) => sum + (i.expected_amount || 0), 0)
+    
+    return {
+      total: allItems.length,
+      ...statusCounts,
+      totalExpected,
+      totalPaid,
+      totalDiff: totalExpected - totalPaid
+    }
+  }, [allItems])
 
   const formatCurrency = (amount: number | null | undefined) => {
     if (amount == null) return '-'
@@ -194,81 +151,119 @@ export default function YangoWeekDrilldown({
     return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
   }
 
+  // Obtener color del chip según paid_status
+  const getPaidStatusColor = (paidStatus: string | null | undefined) => {
+    switch (paidStatus) {
+      case 'paid':
+        return 'bg-green-100 text-green-800'
+      case 'pending_active':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'pending_expired':
+        return 'bg-red-100 text-red-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  // Obtener etiqueta según paid_status
+  const getPaidStatusLabel = (paidStatus: string | null | undefined) => {
+    switch (paidStatus) {
+      case 'paid':
+        return 'Pagado'
+      case 'pending_active':
+        return 'Pendiente Activo'
+      case 'pending_expired':
+        return 'Vencido'
+      default:
+        return paidStatus || '-'
+    }
+  }
+
+  // Obtener color según window_status
+  const getWindowStatusColor = (windowStatus: string | null | undefined) => {
+    switch (windowStatus) {
+      case 'active':
+        return 'bg-blue-100 text-blue-800'
+      case 'expired':
+        return 'bg-red-100 text-red-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  // Obtener color del badge según identity_status
+  const getIdentityStatusColor = (identityStatus: string | null | undefined) => {
+    switch (identityStatus) {
+      case 'confirmed':
+        return 'bg-green-100 text-green-800'
+      case 'enriched':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'ambiguous':
+        return 'bg-orange-100 text-orange-800'
+      case 'no_match':
+        return 'bg-gray-100 text-gray-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  // Obtener etiqueta según identity_status
+  const getIdentityStatusLabel = (identityStatus: string | null | undefined) => {
+    switch (identityStatus) {
+      case 'confirmed':
+        return 'Confirmado'
+      case 'enriched':
+        return 'Enriquecido'
+      case 'ambiguous':
+        return 'Ambiguo'
+      case 'no_match':
+        return 'Sin Match'
+      default:
+        return identityStatus || '-'
+    }
+  }
+
+  // Obtener color del badge según match_confidence
+  const getMatchConfidenceColor = (matchConfidence: string | null | undefined) => {
+    switch (matchConfidence) {
+      case 'high':
+        return 'bg-green-100 text-green-800'
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'low':
+        return 'bg-orange-100 text-orange-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
+  }
+
   const handleExportCSV = () => {
     const csvData = filteredItems.map(item => ({
-      'Semana Efectiva': item.effectiveWeek || '',
-      'Semana Original': item.pay_week_start_monday || '',
-      'Fecha': item.sort_date || item.payable_date || item.paid_date || '',
-      'Driver': item.paid_raw_driver_name || '',
+      'Semana': item.pay_week_start_monday || '',
+      'Driver ID': item.driver_id || 'SIN CONDUCTOR',
+      'Person Key': item.person_key || '',
       'Milestone': item.milestone_value || '',
       'Expected Amount': item.expected_amount || 0,
-      'Paid': item.paid_is_paid ? 'Sí' : 'No',
-      'Status': item.reconciliation_status || '',
-      'Reason Code': item.reason.code,
-      'Reason Label': item.reason.label,
-      'Severity': item.reason.severity,
-      'Is Anomaly': item.isAnomaly ? 'Sí' : 'No',
-      'Match Rule': item.paid_match_rule || '',
-      'Match Confidence': item.paid_match_confidence || '',
-      'Driver ID': item.driver_id || '',
-      'Person Key': item.person_key || ''
+      'Currency': item.currency || '',
+      'Lead Date': item.lead_date || '',
+      'Due Date': item.due_date || '',
+      'Window Status': item.window_status || '',
+      'Paid Status': item.paid_status || '',
+      'Paid Payment Key': item.paid_payment_key || '',
+      'Paid Date': item.paid_date || '',
+      'Is Paid Effective': item.is_paid_effective ? 'Sí' : 'No',
+      'Identity Status': item.identity_status || '',
+      'Match Method': item.match_method || '',
+      'Match Rule': item.match_rule || '',
+      'Match Confidence': item.match_confidence || ''
     }))
 
     const filename = `yango_reconciliation_${weekStart}_${new Date().toISOString().split('T')[0]}.csv`
     exportToCSV(csvData, filename)
   }
 
-  // Calcular resumen por tab usando items con campos derivados
-  const summary = useMemo(() => {
-    const realAnomalies = itemsWithDerived.filter(i => i.isAnomaly).length
-    const statusCounts = {
-      paid: itemsWithDerived.filter(i => i.reconciliation_status === 'paid').length,
-      pending: itemsWithDerived.filter(i => i.reconciliation_status === 'pending').length,
-      anomaly: realAnomalies
-    }
-    const totalExpected = itemsWithDerived.reduce((sum, i) => sum + (i.expected_amount || 0), 0)
-    // Para paid: sumar expected_amount de items donde paid_is_paid = true Y expected_amount != null
-    const totalPaid = itemsWithDerived
-      .filter(i => (i.paid_is_paid === true || i.paid_payment_key != null) && i.expected_amount != null)
-      .reduce((sum, i) => sum + (i.expected_amount || 0), 0)
-    
-    return {
-      total: itemsWithDerived.length,
-      ...statusCounts,
-      totalExpected,
-      totalPaid,
-      totalDiff: totalExpected - totalPaid
-    }
-  }, [itemsWithDerived])
-
-  // Items para mostrar según tab activo
-  // En resumen: mostrar todos (limitado a primeros 200 para performance)
-  // En otros tabs: mostrar paginados
-  const displayItems = useMemo(() => {
-    const items = activeTab === 'resumen' 
-      ? filteredItems.slice(0, 200) // Limitar resumen a 200 items
-      : paginatedItems // Mostrar paginados en otros tabs
-    
-    // #region agent log
-    // Detect duplicate keys using NEW unique key generation logic (same as render)
-    const uniqueKeys = items.map((item, idx) => {
-      return item.paid_payment_key || 
-        `${item.person_key || 'no-person'}_${item.milestone_value ?? 'no-milestone'}_${item.sort_date || item.payable_date || item.paid_date || 'no-date'}_${idx}`
-    })
-    const keyCounts = new Map<string, number>()
-    uniqueKeys.forEach(key => {
-      keyCounts.set(key, (keyCounts.get(key) || 0) + 1)
-    })
-    const duplicates = Array.from(keyCounts.entries()).filter(([_, count]) => count > 1)
-    if (duplicates.length > 0) {
-      fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'YangoWeekDrilldown.tsx:displayItems-duplicate-keys-NEW',message:'Found duplicate UNIQUE keys in displayItems',data:{totalItems:items.length,duplicateKeys:duplicates,duplicateCount:duplicates.length,sampleDuplicate:duplicates[0],itemsWithDuplicateKey:items.filter((item,idx)=>uniqueKeys[idx]===duplicates[0]?.[0]).slice(0,5).map((item,idx)=>({idx,uniqueKey:uniqueKeys[items.indexOf(item)],paid_payment_key:item.paid_payment_key,person_key:item.person_key,milestone_value:item.milestone_value,sort_date:item.sort_date}))},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-    } else {
-      fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'YangoWeekDrilldown.tsx:displayItems-no-duplicates',message:'No duplicate unique keys found',data:{totalItems:items.length,uniqueKeysCount:uniqueKeys.length,allKeysUnique:uniqueKeys.length===new Set(uniqueKeys).size},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'D'})}).catch(()=>{});
-    }
-    // #endregion
-    
-    return items
-  }, [activeTab, filteredItems, paginatedItems])
+  // Items para mostrar (paginados)
+  const displayItems = paginatedItems
 
   if (loading) {
     return (
@@ -281,6 +276,12 @@ export default function YangoWeekDrilldown({
     )
   }
 
+  const filtersSent = {
+    week_start: weekStart,
+    status: activeTab === 'todos' ? undefined : activeTab === 'pagados' ? 'paid' : activeTab === 'pending_active' ? 'pending_active' : 'pending_expired',
+    limit: 1000
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-7xl max-h-[90vh] flex flex-col">
@@ -291,6 +292,9 @@ export default function YangoWeekDrilldown({
             <p className="text-sm text-gray-600 mt-1">
               Total: {summary.total} items | Expected: {formatCurrency(summary.totalExpected)} | 
               Paid: {formatCurrency(summary.totalPaid)} | Diff: {formatCurrency(summary.totalDiff)}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Pagados: {summary.paid} | Pendientes Activos: {summary.pending_active} | Vencidos: {summary.pending_expired}
             </p>
           </div>
           <button
@@ -306,45 +310,6 @@ export default function YangoWeekDrilldown({
           <div className="flex space-x-4 px-6">
             <button
               onClick={() => {
-                setActiveTab('resumen')
-                setPage(0)
-              }}
-              className={`px-4 py-2 font-medium border-b-2 ${
-                activeTab === 'resumen'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Resumen ({summary.total})
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('anomalias')
-                setPage(0)
-              }}
-              className={`px-4 py-2 font-medium border-b-2 ${
-                activeTab === 'anomalias'
-                  ? 'border-orange-500 text-orange-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Anomalías ({summary.anomaly})
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('pendientes')
-                setPage(0)
-              }}
-              className={`px-4 py-2 font-medium border-b-2 ${
-                activeTab === 'pendientes'
-                  ? 'border-yellow-500 text-yellow-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Pendientes ({summary.pending})
-            </button>
-            <button
-              onClick={() => {
                 setActiveTab('pagados')
                 setPage(0)
               }}
@@ -356,14 +321,53 @@ export default function YangoWeekDrilldown({
             >
               Pagados ({summary.paid})
             </button>
+            <button
+              onClick={() => {
+                setActiveTab('pending_active')
+                setPage(0)
+              }}
+              className={`px-4 py-2 font-medium border-b-2 ${
+                activeTab === 'pending_active'
+                  ? 'border-yellow-500 text-yellow-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Pendientes Activos ({summary.pending_active})
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('vencidos')
+                setPage(0)
+              }}
+              className={`px-4 py-2 font-medium border-b-2 ${
+                activeTab === 'vencidos'
+                  ? 'border-red-500 text-red-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Vencidos ({summary.pending_expired})
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('todos')
+                setPage(0)
+              }}
+              className={`px-4 py-2 font-medium border-b-2 ${
+                activeTab === 'todos'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Todos ({summary.total})
+            </button>
           </div>
         </div>
 
         {/* Filtros y Búsqueda */}
         <div className="px-6 py-4 bg-gray-50 border-b">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Búsqueda (Driver)</label>
+              <label className="block text-sm font-medium mb-1">Búsqueda (Driver ID / Person Key)</label>
               <input
                 type="text"
                 value={searchText}
@@ -371,46 +375,10 @@ export default function YangoWeekDrilldown({
                   setSearchText(e.target.value)
                   setPage(0)
                 }}
-                placeholder="Buscar por nombre..."
+                placeholder="Buscar por ID..."
                 className="w-full px-3 py-2 border rounded-md"
               />
             </div>
-            {activeTab === 'anomalias' && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Motivo</label>
-                  <select
-                    value={filterReason}
-                    onChange={(e) => {
-                      setFilterReason(e.target.value)
-                      setPage(0)
-                    }}
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option value="all">Todos</option>
-                    {uniqueReasons.map(reason => (
-                      <option key={reason.code} value={reason.code}>{reason.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Severidad</label>
-                  <select
-                    value={filterSeverity}
-                    onChange={(e) => {
-                      setFilterSeverity(e.target.value)
-                      setPage(0)
-                    }}
-                    className="w-full px-3 py-2 border rounded-md"
-                  >
-                    <option value="all">Todas</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                </div>
-              </>
-            )}
             <div>
               <label className="block text-sm font-medium mb-1">Milestone</label>
               <select
@@ -427,21 +395,19 @@ export default function YangoWeekDrilldown({
                 <option value="25">25</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Match Confidence</label>
-              <select
-                value={filterConfidence}
-                onChange={(e) => {
-                  setFilterConfidence(e.target.value)
-                  setPage(0)
-                }}
-                className="w-full px-3 py-2 border rounded-md"
-              >
-                <option value="all">Todos</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="unknown">Unknown</option>
-              </select>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sinConductor}
+                  onChange={(e) => {
+                    setSinConductor(e.target.checked)
+                    setPage(0)
+                  }}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Solo SIN CONDUCTOR</span>
+              </label>
             </div>
           </div>
           <div className="mt-4 flex justify-between items-center">
@@ -470,42 +436,44 @@ export default function YangoWeekDrilldown({
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Milestone</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Expected</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Paid</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    {(activeTab === 'anomalias' || activeTab === 'resumen') && (
-                      <>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Motivo</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match Rule</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Confidence</th>
-                      </>
-                    )}
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Person Key</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Milestone</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Expected Amount</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Currency</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Window Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Identity Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid Payment Key</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Is Paid Effective</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match Method</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match Rule</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match Confidence</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {displayItems.map((item, idx) => {
-                    // #region agent log
-                    const oldKey = `${item.paid_payment_key || item.person_key || idx}`
-                    fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'YangoWeekDrilldown.tsx:table-row-key',message:'Generating key for table row',data:{idx,oldKey,paid_payment_key:item.paid_payment_key,person_key:item.person_key,milestone_value:item.milestone_value,sort_date:item.sort_date,payable_date:item.payable_date,paid_date:item.paid_date,hasPaidPaymentKey:!!item.paid_payment_key,hasPersonKey:!!item.person_key},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A,B,C'})}).catch(()=>{});
-                    // #endregion
-                    // Generate unique key combining multiple fields to ensure uniqueness
-                    // Priority: paid_payment_key (if exists) > person_key + milestone + date + idx
                     const uniqueKey = item.paid_payment_key || 
-                      `${item.person_key || 'no-person'}_${item.milestone_value ?? 'no-milestone'}_${item.sort_date || item.payable_date || item.paid_date || 'no-date'}_${idx}`
-                    // #region agent log
-                    fetch('http://127.0.0.1:7243/ingest/baceb9d4-bf74-4f4f-b924-f2a8877afe92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'YangoWeekDrilldown.tsx:table-row-key-unique',message:'Generated unique key',data:{idx,uniqueKey,oldKey,isDifferent:uniqueKey!==oldKey},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'C'})}).catch(()=>{});
-                    // #endregion
+                      `${item.person_key || 'no-person'}_${item.milestone_value ?? 'no-milestone'}_${item.lead_date || 'no-date'}_${idx}`
                     return (
                       <tr key={uniqueKey} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {item.paid_raw_driver_name || '-'}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono">
+                          {item.driver_id ? (
+                            <button
+                              onClick={() => loadDriverDetail(item.driver_id!)}
+                              className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                            >
+                              {item.driver_id}
+                            </button>
+                          ) : (
+                            <span className="text-red-600 font-semibold">SIN CONDUCTOR</span>
+                          )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {formatDate(item.sort_date || item.payable_date || item.paid_date)}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-xs">
+                          {item.person_key || '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {item.milestone_value || '-'}
@@ -513,47 +481,57 @@ export default function YangoWeekDrilldown({
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                           {formatCurrency(item.expected_amount)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            item.paid_is_paid ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {item.paid_is_paid ? 'Sí' : 'No'}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {item.currency || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {formatDate(item.lead_date)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {formatDate(item.due_date)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {item.window_status ? (
+                            <span className={`px-2 py-1 rounded-full text-xs ${getWindowStatusColor(item.window_status)}`}>
+                              {item.window_status}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <span className={`px-2 py-1 rounded-full text-xs ${getPaidStatusColor(item.paid_status)}`}>
+                            {getPaidStatusLabel(item.paid_status)}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            item.reconciliation_status === 'paid' ? 'bg-green-100 text-green-800' :
-                            item.reconciliation_status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                            'bg-orange-100 text-orange-800'
-                          }`}>
-                        {item.reconciliation_status || '-'}
-                      </span>
-                    </td>
-                    {(activeTab === 'anomalias' || activeTab === 'resumen') && (
-                      <>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <div className="flex flex-col gap-1">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs border ${getSeverityColor(item.reason.severity)}`}
-                              title={item.reason.code}
-                            >
-                              {item.reason.label}
-                            </span>
-                            {item.isAnomaly && (
-                              <span className="text-xs text-gray-500">({item.reason.severity})</span>
-                            )}
-                          </div>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getIdentityStatusColor(item.identity_status)}`}>
+                            {getIdentityStatusLabel(item.identity_status)}
+                          </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {item.paid_match_rule || '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          {item.paid_match_confidence || '-'}
-                        </td>
-                      </>
-                    )}
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-xs">
-                          {item.driver_id || '-'}
+                          {item.paid_payment_key || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {formatDate(item.paid_date)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                          <span className={`px-2 py-1 rounded-full text-xs ${
+                            item.is_paid_effective ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {item.is_paid_effective ? 'Sí' : 'No'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {item.match_method || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {item.match_rule || '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {item.match_confidence ? (
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getMatchConfidenceColor(item.match_confidence)}`}>
+                              {item.match_confidence}
+                            </span>
+                          ) : '-'}
                         </td>
                       </tr>
                     )
@@ -569,7 +547,7 @@ export default function YangoWeekDrilldown({
         </div>
 
         {/* Paginación */}
-        {activeTab !== 'resumen' && totalPages > 1 && (
+        {totalPages > 1 && (
           <div className="px-6 py-4 border-t flex justify-between items-center">
             <div className="text-sm text-gray-600">
               Mostrando {page * limit + 1} - {Math.min((page + 1) * limit, filteredItems.length)} de {filteredItems.length}
@@ -592,15 +570,157 @@ export default function YangoWeekDrilldown({
             </div>
           </div>
         )}
-        {activeTab === 'resumen' && filteredItems.length > 200 && (
-          <div className="px-6 py-4 border-t">
-            <div className="text-sm text-gray-600">
-              Mostrando primeros 200 de {filteredItems.length} items. Usa los tabs específicos para ver todos.
+
+        {/* Modal: Detalle por Conductor */}
+        {showDriverDetail && selectedDriverId && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="px-6 py-4 border-b flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold">Detalle por Conductor</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Driver ID: <span className="font-mono">{selectedDriverId}</span>
+                    {driverDetail?.person_key && (
+                      <> | Person Key: <span className="font-mono text-xs">{driverDetail.person_key}</span></>
+                    )}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowDriverDetail(false)
+                    setSelectedDriverId(null)
+                    setDriverDetail(null)
+                  }}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                >
+                  ✕ Cerrar
+                </button>
+              </div>
+
+              {/* Contenido */}
+              <div className="flex-1 overflow-auto p-6">
+                {driverDetailLoading ? (
+                  <div className="text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <p className="mt-2 text-gray-600">Cargando datos...</p>
+                  </div>
+                ) : driverDetail ? (
+                  <div className="space-y-6">
+                    {/* Resumen */}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h3 className="text-lg font-semibold mb-3">Resumen</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div>
+                          <div className="text-sm text-gray-600">Total Expected</div>
+                          <div className="text-xl font-bold text-blue-600">
+                            {new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(driverDetail.summary.total_expected)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Total Paid</div>
+                          <div className="text-xl font-bold text-green-600">
+                            {new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(driverDetail.summary.total_paid)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Pagados</div>
+                          <div className="text-xl font-bold">{driverDetail.summary.count_paid}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Pendientes Activos</div>
+                          <div className="text-xl font-bold text-yellow-600">{driverDetail.summary.count_pending_active}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-600">Pendientes Vencidos</div>
+                          <div className="text-xl font-bold text-red-600">{driverDetail.summary.count_pending_expired}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tabla de Claims */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-3">Claims</h3>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Milestone</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expected Amount</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead Date</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid Status</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Match Method</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paid Date</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {driverDetail.claims.map((claim, idx) => (
+                              <tr key={idx} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">{claim.milestone_value || '-'}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  {claim.expected_amount ? new Intl.NumberFormat('es-PE', { style: 'currency', currency: claim.currency || 'PEN' }).format(claim.expected_amount) : '-'}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  {claim.lead_date ? new Date(claim.lead_date).toLocaleDateString('es-ES') : '-'}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  {claim.due_date ? new Date(claim.due_date).toLocaleDateString('es-ES') : '-'}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  <span className={`px-2 py-1 rounded-full text-xs ${
+                                    claim.paid_status === 'paid' ? 'bg-green-100 text-green-800' :
+                                    claim.paid_status === 'pending_active' ? 'bg-yellow-100 text-yellow-800' :
+                                    claim.paid_status === 'pending_expired' ? 'bg-red-100 text-red-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {claim.paid_status || '-'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  <span className={`px-2 py-1 rounded-full text-xs ${
+                                    claim.match_method === 'driver_id' ? 'bg-blue-100 text-blue-800' :
+                                    claim.match_method === 'person_key' ? 'bg-purple-100 text-purple-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {claim.match_method || 'none'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm">
+                                  {claim.paid_date ? new Date(claim.paid_date).toLocaleDateString('es-ES') : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-6 py-12 text-center text-gray-500">
+                    No se pudo cargar el detalle del conductor
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
+
+        {/* Debug Panel */}
+        <DebugPanel
+          filtersSent={filtersSent}
+          itemCounts={{
+            total: allItems.length,
+            loaded: allItems.length,
+            filtered: filteredItems.length
+          }}
+          paidStatusDistribution={{
+            paid: summary.paid,
+            pending_active: summary.pending_active,
+            pending_expired: summary.pending_expired
+          }}
+        />
       </div>
     </div>
   )
 }
-

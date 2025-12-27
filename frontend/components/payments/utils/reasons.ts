@@ -10,7 +10,8 @@ export interface AnomalyReason {
 }
 
 export interface ReconciliationItem {
-  reconciliation_status?: string | null
+  reconciliation_status?: string | null  // Compatibilidad: mapeado desde paid_status
+  paid_status?: 'paid' | 'pending_active' | 'pending_expired' | null  // Estado real del pago
   expected_amount?: number | null
   lead_date?: string | null
   paid_is_paid?: boolean | null
@@ -33,6 +34,35 @@ export interface ReconciliationItem {
  * NO debe contener logging, fetch, console.log, ni ninguna llamada a APIs.
  */
 export function computeAnomalyReason(row: ReconciliationItem): AnomalyReason {
+  // Si tiene paid_status, usarlo directamente (prioridad)
+  if (row.paid_status) {
+    if (row.paid_status === 'pending_expired') {
+      return {
+        code: 'EXPECTED_NOT_PAID',
+        label: 'Expected vencido (no pagado)',
+        severity: 'high',
+        details: 'Expected existe pero no fue pagado y la ventana de pago expiró'
+      }
+    }
+    if (row.paid_status === 'paid') {
+      return {
+        code: 'OK',
+        label: 'OK',
+        severity: 'low',
+        details: 'Item pagado correctamente'
+      }
+    }
+    if (row.paid_status === 'pending_active') {
+      return {
+        code: 'PENDING_ACTIVE',
+        label: 'Pendiente (ventana activa)',
+        severity: 'low',
+        details: 'Expected existe pero aún está en ventana de pago activa'
+      }
+    }
+  }
+
+  // Fallback a lógica antigua si no hay paid_status
   const hasExpected = row.expected_amount != null
   const isPaid = row.paid_is_paid === true
   const hasPaidKey = row.paid_payment_key != null
