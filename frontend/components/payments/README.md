@@ -68,3 +68,9 @@ Función `exportToCSV()` para exportar datos a CSV localmente.
 - El drilldown carga todos los items de la semana para permitir filtros locales
 
 
+
+
+
+
+
+

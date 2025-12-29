@@ -77,3 +77,9 @@ COMMENT ON COLUMN ops.v_driver_name_index.full_name_normalized IS
 'Nombre normalizado: UPPER, sin acentos (À→A, È→E, etc.), solo letras y espacios, espacios normalizados. Coincide con la normalización usada en el sistema de matching.';
 
 
+
+
+
+
+
+

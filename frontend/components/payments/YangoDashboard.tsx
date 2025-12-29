@@ -11,6 +11,19 @@ interface YangoDashboardProps {
   onReasonClick?: (reasonCode: string) => void
 }
 
+type WeeklyDataItem = {
+  week_start: string
+  amount_expected_sum: number
+  amount_paid_sum: number
+  amount_diff: number
+  count_expected: number
+  count_paid: number
+  count_pending_active: number
+  count_pending_expired: number
+  rows_count: number
+  anomalies_total: number
+}
+
 export default function YangoDashboard({
   onWeekClick,
   weekFilter,
@@ -102,6 +115,38 @@ export default function YangoDashboard({
     }
   }
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(amount)
+  }
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
+
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <p className="mt-2 text-gray-600">Cargando datos...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-red-800">{error}</p>
+        <button
+          onClick={loadSummary}
+          className="mt-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+        >
+          Reintentar
+        </button>
+      </div>
+    )
+  }
+
   // Agregar por semana (pay_week_start_monday)
   // El summary ya viene agregado por semana y milestone
   // Necesitamos reagrupar solo por semana
@@ -142,23 +187,12 @@ export default function YangoDashboard({
     acc[week].anomalies_total += row.anomalies_total ?? row.count_pending_expired ?? 0
     
     return acc
-  }, {} as Record<string, {
-    week_start: string
-    amount_expected_sum: number
-    amount_paid_sum: number
-    amount_diff: number
-    count_expected: number
-    count_paid: number
-    count_pending_active: number
-    count_pending_expired: number
-    rows_count: number
-    anomalies_total: number
-  }>)
+  }, {} as any);
 
   // Calcular diff para cada semana
-  Object.keys(weeklyData).forEach(week => {
+  for (const week of Object.keys(weeklyData)) {
     weeklyData[week].amount_diff = weeklyData[week].amount_expected_sum - weeklyData[week].amount_paid_sum
-  })
+  }
 
   const weeklyRows = Object.values(weeklyData).sort((a, b) => 
     b.week_start.localeCompare(a.week_start)
@@ -184,38 +218,6 @@ export default function YangoDashboard({
     totals.total_paid_visible = totals.total_paid_confirmed + totals.total_paid_enriched
     return totals
   }, [weeklyRows])
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(amount)
-  }
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  }
-
-  if (loading) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <p className="mt-2 text-gray-600">Cargando datos...</p>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">{error}</p>
-        <button
-          onClick={loadSummary}
-          className="mt-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-        >
-          Reintentar
-        </button>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-6">

@@ -16,3 +16,9 @@ FROM public.module_ct_scouts_list
 WHERE id IS NOT NULL;
 
 
+
+
+
+
+
+

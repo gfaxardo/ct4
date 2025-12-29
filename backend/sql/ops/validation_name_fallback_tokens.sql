@@ -32,7 +32,7 @@ SELECT
     COUNT(*) AS count_rows,
     COUNT(*) FILTER (WHERE driver_id IS NOT NULL) AS count_with_driver_id,
     COUNT(*) FILTER (WHERE person_key IS NOT NULL) AS count_with_person_key
-FROM ops.v_yango_payments_raw_current
+FROM ops.v_yango_payments_raw_current_aliases
 GROUP BY match_rule, match_confidence
 ORDER BY match_rule, match_confidence;
 
@@ -47,7 +47,7 @@ SELECT
     d.full_name_normalized_tokens_sorted AS driver_normalized_tokens,
     ops.normalize_name_basic(r.raw_driver_name) AS payment_norm_basic,
     ops.normalize_name_tokens_sorted(r.raw_driver_name) AS payment_norm_tokens
-FROM ops.v_yango_payments_raw_current r
+FROM ops.v_yango_payments_raw_current_aliases r
 INNER JOIN ops.v_driver_name_index_extended d
     ON ops.normalize_name_tokens_sorted(r.raw_driver_name) = d.full_name_normalized_tokens_sorted
     AND ops.normalize_name_tokens_sorted(r.raw_driver_name) IS NOT NULL

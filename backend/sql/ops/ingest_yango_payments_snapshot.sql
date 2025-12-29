@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Script de Ingest Idempotente: Pagos Yango al Ledger
 -- ============================================================================
--- Inserta snapshots de pagos Yango desde ops.v_yango_payments_raw_current
+-- Inserta snapshots de pagos Yango desde ops.v_yango_payments_raw_current_aliases
 -- a ops.yango_payment_status_ledger de forma idempotente.
 --
 -- Usa ON CONFLICT (payment_key, state_hash) DO NOTHING para garantizar
@@ -60,7 +60,7 @@ BEGIN
         match_confidence,
         payment_key,
         state_hash
-    FROM ops.v_yango_payments_raw_current
+    FROM ops.v_yango_payments_raw_current_aliases
     ON CONFLICT (payment_key, state_hash) DO NOTHING;
     
     GET DIAGNOSTICS rows_inserted = ROW_COUNT;
@@ -70,7 +70,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION ops.ingest_yango_payments_snapshot() IS 
-'Función que ejecuta ingest idempotente de pagos Yango al ledger. Inserta desde ops.v_yango_payments_raw_current a ops.yango_payment_status_ledger. Retorna el número de filas insertadas. Solo inserta nuevos registros cuando cambia el estado (por unique constraint en payment_key, state_hash).';
+'Función que ejecuta ingest idempotente de pagos Yango al ledger. Inserta desde ops.v_yango_payments_raw_current_aliases a ops.yango_payment_status_ledger. Retorna el número de filas insertadas. Solo inserta nuevos registros cuando cambia el estado (por unique constraint en payment_key, state_hash).';
 
 -- Script directo (alternativa sin función, para ejecución manual)
 -- Ejecutar directamente si prefieres no usar función:
@@ -112,8 +112,12 @@ SELECT
     match_confidence,
     payment_key,
     state_hash
-FROM ops.v_yango_payments_raw_current
+FROM ops.v_yango_payments_raw_current_aliases
 ON CONFLICT (payment_key, state_hash) DO NOTHING;
 */
+
+
+
+
 
 

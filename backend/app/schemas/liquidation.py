@@ -25,3 +25,9 @@ class ScoutMarkPaidResponse(BaseModel):
     message: str
 
 
+
+
+
+
+
+

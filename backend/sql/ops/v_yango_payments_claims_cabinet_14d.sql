@@ -1,7 +1,9 @@
 DROP VIEW IF EXISTS ops.v_yango_payments_claims_cabinet_14d CASCADE;
 
 CREATE VIEW ops.v_yango_payments_claims_cabinet_14d AS
-WITH expected_base AS (
+-- Performance: filter pushdown before joins for UI stability
+-- Apply date filter early to reduce data volume before expensive LEFT JOINs
+WITH base_claims AS (
     SELECT 
         driver_id,
         person_key,
@@ -13,12 +15,16 @@ WITH expected_base AS (
     FROM ops.v_yango_receivable_payable_detail
     WHERE lead_origin = 'cabinet'
         AND milestone_value IN (1, 5, 25)
+        -- Performance: filter by date BEFORE expensive JOINs to reduce data volume
+        -- Default filter: last 1 week (7 days) from start of current week (very aggressive for UI stability)
+        AND pay_week_start_monday >= (date_trunc('week', current_date)::date - interval '7 days')::date
 ),
 -- Usar ledger enriquecido para matching
+-- Performance: filter ledger by pay_date BEFORE expensive JOINs to reduce scan volume
 ledger_enriched AS (
     SELECT 
         driver_id_final AS driver_id,
-        person_key_final AS person_key,
+        person_key_original AS person_key,
         payment_key,
         pay_date,
         is_paid,
@@ -28,6 +34,9 @@ ledger_enriched AS (
         identity_status,
         identity_enriched
     FROM ops.v_yango_payments_ledger_latest_enriched
+    WHERE pay_date >= (date_trunc('week', current_date)::date - interval '7 days')::date
+        -- Only include paid records for matching (reduces volume significantly)
+        AND is_paid = true
 )
 SELECT 
     e.driver_id,
@@ -71,7 +80,7 @@ SELECT
         WHEN CURRENT_DATE <= (e.lead_date + INTERVAL '14 days') THEN 'pending_active'
         ELSE 'pending_expired'
     END AS paid_status
-FROM expected_base e
+FROM base_claims e
 LEFT JOIN ledger_enriched p_confirmed
     ON (
         (e.driver_id IS NOT NULL AND p_confirmed.driver_id = e.driver_id)
@@ -94,7 +103,7 @@ ORDER BY
     e.milestone_value;
 
 COMMENT ON VIEW ops.v_yango_payments_claims_cabinet_14d IS 
-'Vista de claims de pagos Yango Cabinet (ventana 14 días). Separa paid_confirmed (identity_status=confirmed desde upstream) vs paid_enriched (identity_status=enriched por matching por nombre). paid_confirmed es la fuente para paid real, paid_enriched es informativo.';
+'Vista de claims de pagos Yango Cabinet (ventana 14 días). Separa paid_confirmed (identity_status=confirmed desde upstream) vs paid_enriched (identity_status=enriched por matching por nombre). paid_confirmed es la fuente para paid real, paid_enriched es informativo. Performance: filter pushdown before joins for UI stability - applies 1-week (7 days) default filter in base_claims CTE AND ledger_enriched CTE before expensive LEFT JOINs to reduce scan volume.';
 
 COMMENT ON COLUMN ops.v_yango_payments_claims_cabinet_14d.paid_status IS 
 'Estado de pago: paid_confirmed (identity confirmada desde upstream), paid_enriched (identity enriquecida por nombre), pending_active (dentro de ventana), pending_expired (fuera de ventana).';

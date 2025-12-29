@@ -43,3 +43,9 @@ POST /api/v1/yango/payments/ingest_snapshot
 Ver queries de validación comentadas al final de `yango_reconciliation_fixes_v4.sql`.
 
 
+
+
+
+
+
+

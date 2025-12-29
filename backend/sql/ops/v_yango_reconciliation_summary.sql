@@ -55,3 +55,9 @@ COMMENT ON COLUMN ops.v_yango_reconciliation_summary.count_anomalies IS
 'Número de items con status = anomaly_paid_without_expected en esta agrupación.';
 
 
+
+
+
+
+
+

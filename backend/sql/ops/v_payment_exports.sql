@@ -108,3 +108,9 @@ COMMENT ON VIEW ops.v_yango_receivable_payable IS
 'Vista agregada de receivables Yango por semana de pago y moneda. Suma montos, cuenta pagos y conductores únicos.';
 
 
+
+
+
+
+
+

@@ -79,3 +79,9 @@ COMMENT ON COLUMN ops.yango_payment_status_ledger.match_confidence IS
 'Nivel de confianza del match: high (driver_id directo), medium (nombre único), unknown (sin match o múltiples matches).';
 
 
+
+
+
+
+
+

@@ -38,3 +38,9 @@ COMMENT ON COLUMN ops.v_yango_payments_ledger_latest.latest_snapshot_at IS
 'Timestamp del snapshot más reciente para este payment_key. Indica cuándo se registró por última vez este estado.';
 
 
+
+
+
+
+
+
