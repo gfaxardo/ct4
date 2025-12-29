@@ -194,3 +194,5 @@ COMMENT ON COLUMN ops.scout_payment_rules.is_active IS
 -- 3. Contar reglas de scouts:
 --    SELECT COUNT(*) FROM ops.scout_payment_rules;
 
+
+

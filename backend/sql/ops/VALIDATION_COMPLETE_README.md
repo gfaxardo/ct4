@@ -219,3 +219,5 @@ Después de implementar el matching fallback:
 
 El sistema ahora puede reconciliar pagos reales aunque el ledger venga sin driver_id, siempre que tengan person_key en común.
 
+
+

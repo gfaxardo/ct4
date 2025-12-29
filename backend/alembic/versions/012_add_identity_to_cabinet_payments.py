@@ -73,3 +73,5 @@ def downgrade() -> None:
     op.drop_column('module_ct_cabinet_payments', 'person_key', schema='public')
     op.drop_column('module_ct_cabinet_payments', 'driver_id', schema='public')
 
+
+

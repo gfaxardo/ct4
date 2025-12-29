@@ -14,6 +14,8 @@ interface YangoDashboardProps {
 type WeeklyDataItem = {
   week_start: string
   amount_expected_sum: number
+  amount_paid_confirmed_sum: number
+  amount_paid_enriched_sum: number
   amount_paid_sum: number
   amount_diff: number
   count_expected: number
@@ -22,6 +24,106 @@ type WeeklyDataItem = {
   count_pending_expired: number
   rows_count: number
   anomalies_total: number
+}
+
+// Función auxiliar para calcular datos semanales
+function calculateWeeklyData(summary: YangoReconciliationSummaryRow[]): {
+  weeklyRows: WeeklyDataItem[]
+  totalsFromSummary: {
+    total_expected: number
+    total_paid_confirmed: number
+    total_paid_enriched: number
+    total_paid: number
+    total_anomalies: number
+    total_diff: number
+    total_paid_visible: number
+  }
+} {
+  if (!summary || summary.length === 0) {
+    return {
+      weeklyRows: [],
+      totalsFromSummary: {
+        total_expected: 0,
+        total_paid_confirmed: 0,
+        total_paid_enriched: 0,
+        total_paid: 0,
+        total_anomalies: 0,
+        total_diff: 0,
+        total_paid_visible: 0
+      }
+    };
+  }
+  
+  // El summary ya viene agregado por semana y milestone
+  // Necesitamos reagrupar solo por semana
+  const weeklyData: Record<string, WeeklyDataItem> = summary.reduce((acc, row) => {
+    const week: string = row.pay_week_start_monday ? String(row.pay_week_start_monday) : 'unknown'
+    if (!acc[week]) {
+      acc[week] = {
+        week_start: week,
+        amount_expected_sum: 0,
+        amount_paid_confirmed_sum: 0,
+        amount_paid_enriched_sum: 0,
+        amount_paid_sum: 0,
+        amount_diff: 0,
+        count_expected: 0,
+        count_paid: 0,
+        count_pending_active: 0,
+        count_pending_expired: 0,
+        rows_count: 0,
+        anomalies_total: 0
+      }
+    }
+    
+    const expectedSum = row.amount_expected_sum ?? row.sum_amount_expected ?? 0
+    const paidConfirmedSum = row.amount_paid_confirmed_sum ?? 0
+    const paidEnrichedSum = row.amount_paid_enriched_sum ?? 0
+    const paidTotalVisible = row.amount_paid_total_visible ?? row.amount_paid_sum ?? (paidConfirmedSum + paidEnrichedSum)
+    
+    acc[week].amount_expected_sum += expectedSum
+    acc[week].amount_paid_confirmed_sum = (acc[week].amount_paid_confirmed_sum || 0) + paidConfirmedSum
+    acc[week].amount_paid_enriched_sum = (acc[week].amount_paid_enriched_sum || 0) + paidEnrichedSum
+    acc[week].amount_paid_sum = (acc[week].amount_paid_sum || 0) + paidTotalVisible
+    
+    acc[week].count_expected += row.count_expected ?? row.count_items ?? 0
+    acc[week].count_paid += row.count_paid ?? 0
+    acc[week].count_pending_active += row.count_pending_active ?? 0
+    acc[week].count_pending_expired += row.count_pending_expired ?? 0
+    acc[week].rows_count += row.rows_count ?? row.count_items ?? 0
+    acc[week].anomalies_total += row.anomalies_total ?? row.count_pending_expired ?? 0
+    
+    return acc
+  }, {} as Record<string, WeeklyDataItem>);
+
+  // Calcular diff para cada semana y convertir a array
+  const weeklyRows: WeeklyDataItem[] = Object.values(weeklyData)
+    .map((item) => ({
+      ...item,
+      amount_diff: item.amount_expected_sum - item.amount_paid_sum
+    }))
+    .sort((a: WeeklyDataItem, b: WeeklyDataItem) => 
+      b.week_start.localeCompare(a.week_start)
+    );
+
+  // Calcular KPIs totales desde summary
+  const totals = weeklyRows.reduce((acc, row) => {
+    acc.total_expected += row.amount_expected_sum
+    acc.total_paid_confirmed += row.amount_paid_confirmed_sum
+    acc.total_paid_enriched += row.amount_paid_enriched_sum
+    acc.total_paid += row.amount_paid_sum
+    acc.total_anomalies += row.anomalies_total
+    return acc
+  }, {
+    total_expected: 0,
+    total_paid_confirmed: 0,
+    total_paid_enriched: 0,
+    total_paid: 0,
+    total_anomalies: 0
+  })
+  totals.total_diff = totals.total_expected - totals.total_paid
+  totals.total_paid_visible = totals.total_paid_confirmed + totals.total_paid_enriched
+
+  return { weeklyRows, totalsFromSummary: totals };
 }
 
 export default function YangoDashboard({
@@ -124,6 +226,9 @@ export default function YangoDashboard({
     return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
   }
 
+  // Agregar por semana (pay_week_start_monday) y calcular KPIs
+  const weeklyDataResult = useMemo(() => calculateWeeklyData(summary), [summary]);
+
   if (loading) {
     return (
       <div className="text-center py-12">
@@ -147,80 +252,9 @@ export default function YangoDashboard({
     )
   }
 
-  // Agregar por semana (pay_week_start_monday)
-  // El summary ya viene agregado por semana y milestone
-  // Necesitamos reagrupar solo por semana
-  const weeklyData = summary.reduce((acc, row) => {
-    const week = row.pay_week_start_monday || 'unknown'
-    if (!acc[week]) {
-      acc[week] = {
-        week_start: week,
-        amount_expected_sum: 0,
-        amount_paid_confirmed_sum: 0,
-        amount_paid_enriched_sum: 0,
-        amount_paid_sum: 0,
-        amount_diff: 0,
-        count_expected: 0,
-        count_paid: 0,
-        count_pending_active: 0,
-        count_pending_expired: 0,
-        rows_count: 0,
-        anomalies_total: 0
-      }
-    }
-    
-    const expectedSum = row.amount_expected_sum ?? row.sum_amount_expected ?? 0
-    const paidConfirmedSum = row.amount_paid_confirmed_sum ?? 0
-    const paidEnrichedSum = row.amount_paid_enriched_sum ?? 0
-    const paidTotalVisible = row.amount_paid_total_visible ?? row.amount_paid_sum ?? (paidConfirmedSum + paidEnrichedSum)
-    
-    acc[week].amount_expected_sum += expectedSum
-    acc[week].amount_paid_confirmed_sum = (acc[week].amount_paid_confirmed_sum || 0) + paidConfirmedSum
-    acc[week].amount_paid_enriched_sum = (acc[week].amount_paid_enriched_sum || 0) + paidEnrichedSum
-    acc[week].amount_paid_sum = (acc[week].amount_paid_sum || 0) + paidTotalVisible
-    
-    acc[week].count_expected += row.count_expected ?? row.count_items ?? 0
-    acc[week].count_paid += row.count_paid ?? 0
-    acc[week].count_pending_active += row.count_pending_active ?? 0
-    acc[week].count_pending_expired += row.count_pending_expired ?? 0
-    acc[week].rows_count += row.rows_count ?? row.count_items ?? 0
-    acc[week].anomalies_total += row.anomalies_total ?? row.count_pending_expired ?? 0
-    
-    return acc
-  }, {} as any);
-
-  // Calcular diff para cada semana
-  for (const week of Object.keys(weeklyData)) {
-    weeklyData[week].amount_diff = weeklyData[week].amount_expected_sum - weeklyData[week].amount_paid_sum
-  }
-
-  const weeklyRows = Object.values(weeklyData).sort((a, b) => 
-    b.week_start.localeCompare(a.week_start)
-  )
-
-  // Calcular KPIs totales desde summary
-  const totalsFromSummary = useMemo(() => {
-    const totals = weeklyRows.reduce((acc, row) => {
-      acc.total_expected += row.amount_expected_sum
-      acc.total_paid_confirmed += row.amount_paid_confirmed_sum
-      acc.total_paid_enriched += row.amount_paid_enriched_sum
-      acc.total_paid += row.amount_paid_sum
-      acc.total_anomalies += row.anomalies_total
-      return acc
-    }, {
-      total_expected: 0,
-      total_paid_confirmed: 0,
-      total_paid_enriched: 0,
-      total_paid: 0,
-      total_anomalies: 0
-    })
-    totals.total_diff = totals.total_expected - totals.total_paid
-    totals.total_paid_visible = totals.total_paid_confirmed + totals.total_paid_enriched
-    return totals
-  }, [weeklyRows])
-
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-6">
       {/* Toggle Modo */}
       <div className="bg-white rounded-lg shadow p-4">
         <div className="flex items-center justify-between">
@@ -304,7 +338,7 @@ export default function YangoDashboard({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-sm font-medium text-gray-600 mb-2">Total Expected</h3>
-          <div className="text-2xl font-bold text-blue-600">{formatCurrency(totalsFromSummary.total_expected)}</div>
+          <div className="text-2xl font-bold text-blue-600">{formatCurrency(weeklyDataResult.totalsFromSummary.total_expected)}</div>
         </div>
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center gap-2 mb-2">
@@ -321,7 +355,7 @@ export default function YangoDashboard({
               </div>
             </div>
           </div>
-          <div className="text-2xl font-bold text-green-600">{formatCurrency(totalsFromSummary.total_paid_confirmed)}</div>
+          <div className="text-2xl font-bold text-green-600">{formatCurrency(weeklyDataResult.totalsFromSummary.total_paid_confirmed)}</div>
         </div>
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center gap-2 mb-2">
@@ -341,7 +375,7 @@ export default function YangoDashboard({
               </div>
             </div>
           </div>
-          <div className="text-2xl font-bold text-yellow-600">{formatCurrency(totalsFromSummary.total_paid_enriched)}</div>
+          <div className="text-2xl font-bold text-yellow-600">{formatCurrency(weeklyDataResult.totalsFromSummary.total_paid_enriched)}</div>
         </div>
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center gap-2 mb-2">
@@ -392,13 +426,13 @@ export default function YangoDashboard({
               </>
             )}
           </div>
-          <div className={`text-2xl font-bold ${totalsFromSummary.total_diff >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {formatCurrency(Math.abs(totalsFromSummary.total_diff))}
+          <div className={`text-2xl font-bold ${weeklyDataResult.totalsFromSummary.total_diff >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {formatCurrency(Math.abs(weeklyDataResult.totalsFromSummary.total_diff))}
           </div>
         </div>
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-sm font-medium text-gray-600 mb-2">Total Anomalías</h3>
-          <div className="text-2xl font-bold text-orange-600">{totalsFromSummary.total_anomalies}</div>
+          <div className="text-2xl font-bold text-orange-600">{weeklyDataResult.totalsFromSummary.total_anomalies}</div>
         </div>
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-sm font-medium text-gray-600 mb-2">Identidad del Ledger</h3>
@@ -462,7 +496,7 @@ export default function YangoDashboard({
       </div>
 
       {/* Banner Warning cuando Paid=0 pero hay ledger_paid */}
-      {totalsFromSummary.total_paid === 0 && 
+      {weeklyDataResult.totalsFromSummary.total_paid === 0 && 
        response?.filters?._validation?.ledger_rows_is_paid_true > 0 && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-md">
           <div className="flex items-start">
@@ -520,7 +554,7 @@ export default function YangoDashboard({
         <div className="px-6 py-4 border-b">
           <h3 className="text-lg font-semibold">Dashboard Semanal</h3>
         </div>
-        {weeklyRows.length > 0 ? (
+        {weeklyDataResult.weeklyRows.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -539,7 +573,7 @@ export default function YangoDashboard({
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {weeklyRows.map((row) => (
+                {weeklyDataResult.weeklyRows.map((row) => (
                   <tr
                     key={row.week_start}
                     className="hover:bg-gray-50 cursor-pointer"
@@ -854,14 +888,14 @@ export default function YangoDashboard({
         }}
         filtersReceived={response?.filters}
         mode={mode}
-        summaryData={weeklyRows[0]}
+        summaryData={weeklyDataResult.weeklyRows[0]}
         paidStatusDistribution={{
           paid: summary.reduce((acc, row) => acc + (row.count_paid ?? 0), 0),
           pending_active: summary.reduce((acc, row) => acc + (row.count_pending_active ?? 0), 0),
-          pending_expired: totalsFromSummary.total_anomalies
+          pending_expired: weeklyDataResult.totalsFromSummary.total_anomalies
         }}
         ledgerCount={response?.filters?._validation?.ledger_total_rows}
       />
-    </div>
+    </>
   )
 }

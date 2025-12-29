@@ -335,3 +335,5 @@ No necesitas volver a ejecutar `pip install` ni `npm install` a menos que actual
 ¡Listo! Con estas rutas y comandos puedes armar el sistema manualmente.
 
 
+
+

@@ -91,3 +91,5 @@ Ejecutar todas las queries del archivo: `backend/sql/ops/validation_paid_status.
 
 4. Siempre documentar los resultados en el panel Debug del frontend para transparencia.
 
+
+

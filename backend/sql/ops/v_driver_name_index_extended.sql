@@ -29,3 +29,5 @@ COMMENT ON COLUMN ops.v_driver_name_index_extended.full_name_normalized_basic IS
 COMMENT ON COLUMN ops.v_driver_name_index_extended.full_name_normalized_tokens_sorted IS 
 'Normalización con tokens ordenados alfabéticamente: permite matching cuando el orden varía. Determinístico.';
 
+
+

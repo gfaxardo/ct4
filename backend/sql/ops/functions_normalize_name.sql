@@ -126,3 +126,5 @@ SELECT
 -- Debe mostrar que sorted_1 = sorted_2 pero basic_1 != basic_2
 */
 
+
+

@@ -105,3 +105,5 @@ SELECT
     COUNT(DISTINCT milestone_trips) as distinct_milestones
 FROM ops.scout_payment_rules;
 
+
+

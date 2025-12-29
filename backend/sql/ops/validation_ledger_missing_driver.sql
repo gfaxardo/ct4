@@ -134,3 +134,5 @@ SELECT
     (SELECT COUNT(*) FROM ops.v_yango_payments_claims_cabinet_14d WHERE match_method = 'none' AND paid_status = 'paid') AS claims_paid_without_match,
     (SELECT COUNT(*) FROM ops.v_yango_payments_claims_cabinet_14d WHERE driver_id IS NULL AND person_key IS NOT NULL) AS claims_without_driver_id_but_with_person_key;
 
+
+

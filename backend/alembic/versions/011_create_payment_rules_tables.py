@@ -269,3 +269,5 @@ def downgrade() -> None:
     # Eliminar función (solo si no se usa en otro lado)
     # Nota: No la eliminamos porque puede ser usada por otras tablas
 
+
+

@@ -235,3 +235,5 @@ SELECT
 ✅ Drilldown por conductor funciona  
 ✅ Sistema es auditable (identity_source, match_confidence visibles)
 
+
+

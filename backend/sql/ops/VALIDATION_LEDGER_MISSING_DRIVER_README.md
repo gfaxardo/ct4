@@ -171,3 +171,5 @@ La vista ahora implementa matching con fallback:
    - Si `match_method = 'none'` tiene muchos registros con `paid_status = 'paid'`, hay un problema
    - Debe haber muy pocos o cero registros con `paid_status = 'paid'` y `match_method = 'none'`
 
+
+

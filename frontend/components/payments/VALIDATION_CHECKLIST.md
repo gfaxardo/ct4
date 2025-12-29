@@ -349,3 +349,5 @@ Si encuentras un problema durante la validación:
 4. Verificar los valores en la base de datos con las queries SQL proporcionadas
 5. Verificar el panel de debug para ver qué se está enviando/recibiendo
 
+
+
