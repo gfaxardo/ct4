@@ -68,7 +68,7 @@ export default function Dashboard() {
   async function loadAlerts() {
     setLoadingAlerts(true)
     try {
-      const alertsData = await listAlerts(50)
+      const alertsData = await listAlerts({ limit: 50 })
       setAlerts(alertsData)
     } catch (error) {
       console.error('Error cargando alertas:', error)

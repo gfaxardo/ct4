@@ -2,6 +2,10 @@ export function formatDate(date: string): string {
   return new Date(date).toLocaleString('es-ES')
 }
 
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(amount)
+}
+
 export function formatConfidenceLevel(level: string): string {
   const levels: Record<string, string> = {
     HIGH: 'Alto',
@@ -19,6 +23,10 @@ export function getConfidenceColor(level: string): string {
   }
   return colors[level] || 'bg-gray-100 text-gray-800'
 }
+
+
+
+
 
 
 

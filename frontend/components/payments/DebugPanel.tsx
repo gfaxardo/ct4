@@ -25,7 +25,9 @@ export default function DebugPanel({
   filtersReceived,
   mode,
   itemCounts,
-  summaryData
+  summaryData,
+  paidStatusDistribution,
+  ledgerCount
 }: DebugPanelProps) {
   // Solo mostrar en desarrollo
   if (process.env.NODE_ENV !== 'development') {
@@ -73,72 +75,119 @@ export default function DebugPanel({
         )}
 
         {/* Filters Sent */}
-        {filtersSent && Object.keys(filtersSent).length > 0 && (
-          <div>
-            <div className="text-gray-400 mb-1">Filtros Enviados:</div>
-            <pre className="bg-gray-800 px-2 py-1 rounded overflow-x-auto">
-              {JSON.stringify(filtersSent, null, 2)}
-            </pre>
-          </div>
-        )}
+        {(() => {
+          const filtersSentSafe =
+            (filtersSent && typeof filtersSent === "object" && Object.keys(filtersSent).length > 0)
+              ? filtersSent
+              : null;
+          
+          return filtersSentSafe ? (
+            <div>
+              <div className="text-gray-400 mb-1">Filtros Enviados:</div>
+              <pre className="bg-gray-800 px-2 py-1 rounded overflow-x-auto">
+                {JSON.stringify(filtersSentSafe, null, 2)}
+              </pre>
+            </div>
+          ) : null;
+        })()}
 
         {/* Filters Received */}
-        {filtersReceived && Object.keys(filtersReceived).length > 0 && (
-          <div>
-            <div className="text-gray-400 mb-1">Filtros Recibidos (Backend):</div>
-            <pre className="bg-gray-800 px-2 py-1 rounded overflow-x-auto">
-              {JSON.stringify(filtersReceived, null, 2)}
-            </pre>
-          </div>
-        )}
+        {(() => {
+          const filtersReceivedSafe =
+            (filtersReceived && typeof filtersReceived === "object" && Object.keys(filtersReceived).length > 0)
+              ? filtersReceived
+              : null;
+          
+          return filtersReceivedSafe ? (
+            <div>
+              <div className="text-gray-400 mb-1">Filtros Recibidos (Backend):</div>
+              <pre className="bg-gray-800 px-2 py-1 rounded overflow-x-auto">
+                {JSON.stringify(filtersReceivedSafe, null, 2)}
+              </pre>
+            </div>
+          ) : null;
+        })()}
 
         {/* Item Counts */}
-        {itemCounts && (
-          <div>
-            <div className="text-gray-400 mb-1">Counts:</div>
-            <div className="bg-gray-800 px-2 py-1 rounded">
-              <div>Total: {itemCounts.total ?? 'N/A'}</div>
-              {itemCounts.loaded !== undefined && <div>Loaded: {itemCounts.loaded}</div>}
-              {itemCounts.filtered !== undefined && <div>Filtered: {itemCounts.filtered}</div>}
+        {(() => {
+          const itemCountsSafe =
+            (itemCounts && typeof itemCounts === "object")
+              ? itemCounts
+              : null;
+          
+          return itemCountsSafe ? (
+            <div>
+              <div className="text-gray-400 mb-1">Counts:</div>
+              <div className="bg-gray-800 px-2 py-1 rounded">
+                <div>Total: {itemCountsSafe.total ?? 'N/A'}</div>
+                {itemCountsSafe.loaded !== undefined && <div>Loaded: {itemCountsSafe.loaded}</div>}
+                {itemCountsSafe.filtered !== undefined && <div>Filtered: {itemCountsSafe.filtered}</div>}
+              </div>
             </div>
-          </div>
-        )}
+          ) : null;
+        })()}
 
         {/* Summary Data (sample) */}
-        {summaryData && (
-          <div>
-            <div className="text-gray-400 mb-1">Summary Data (Sample):</div>
-            <pre className="bg-gray-800 px-2 py-1 rounded overflow-x-auto text-xs">
-              {JSON.stringify(
-                {
-                  expected_sum: summaryData.amount_expected_sum,
-                  paid_sum: summaryData.amount_paid_sum,
-                  paid_assumed: summaryData.amount_paid_assumed,
-                  diff: summaryData.amount_diff,
-                  diff_assumed: summaryData.amount_diff_assumed,
-                  anomalies_total: summaryData.anomalies_total,
-                  count_paid: summaryData.count_paid,
-                  count_pending_active: summaryData.count_pending_active,
-                  count_pending_expired: summaryData.count_pending_expired
-                },
-                null,
-                2
-              )}
-            </pre>
-          </div>
-        )}
+        {(() => {
+          const summaryDataSafe =
+            (summaryData && typeof summaryData === "object")
+              ? summaryData
+              : null;
+          
+          return summaryDataSafe ? (
+            <div>
+              <div className="text-gray-400 mb-1">Summary Data (Sample):</div>
+              <pre className="bg-gray-800 px-2 py-1 rounded overflow-x-auto text-xs">
+                {JSON.stringify(
+                  {
+                    expected_sum: summaryDataSafe.amount_expected_sum,
+                    paid_sum: summaryDataSafe.amount_paid_sum,
+                    paid_assumed: summaryDataSafe.amount_paid_assumed,
+                    diff: summaryDataSafe.amount_diff,
+                    diff_assumed: summaryDataSafe.amount_diff_assumed,
+                    anomalies_total: summaryDataSafe.anomalies_total,
+                    count_paid: summaryDataSafe.count_paid,
+                    count_pending_active: summaryDataSafe.count_pending_active,
+                    count_pending_expired: summaryDataSafe.count_pending_expired
+                  },
+                  null,
+                  2
+                )}
+              </pre>
+            </div>
+          ) : (
+            <div>
+              <div className="text-gray-400 mb-1">Summary Data:</div>
+              <div className="text-gray-400 text-xs">N/A</div>
+            </div>
+          );
+        })()}
 
         {/* Paid Status Distribution */}
-        {paidStatusDistribution && (
-          <div>
-            <div className="text-gray-400 mb-1">Paid Status Distribution (from summary):</div>
-            <div className="bg-gray-800 px-2 py-1 rounded text-xs">
-              <div>paid: {paidStatusDistribution.paid ?? 0}</div>
-              <div>pending_active: {paidStatusDistribution.pending_active ?? 0}</div>
-              <div>pending_expired: {paidStatusDistribution.pending_expired ?? 0}</div>
+        {(() => {
+          const paidStatusDistributionSafe =
+            (paidStatusDistribution && typeof paidStatusDistribution === "object")
+              ? paidStatusDistribution
+              : null;
+          
+          return paidStatusDistributionSafe ? (
+            <div>
+              <div className="text-gray-400 mb-1">Paid Status Distribution (from summary):</div>
+              <div className="bg-gray-800 px-2 py-1 rounded text-xs">
+                {Object.entries(paidStatusDistributionSafe).map(([key, value]) => (
+                  <div key={key}>
+                    {key}: {value ?? 0}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div>
+              <div className="text-gray-400 mb-1">Paid Status Distribution:</div>
+              <div className="text-gray-400 text-xs">N/A</div>
+            </div>
+          );
+        })()}
 
         {/* Ledger Count */}
         {ledgerCount !== undefined && (
@@ -159,19 +208,36 @@ export default function DebugPanel({
         )}
 
         {/* Validation Info (from backend) */}
-        {filtersReceived && filtersReceived._validation && (
-          <div>
-            <div className="text-gray-400 mb-1">Validation (Backend):</div>
-            <div className="bg-gray-800 px-2 py-1 rounded text-xs">
-              <div>Paid Total: {filtersReceived._validation.paid_total ?? 0}</div>
-              <div>Count Paid: {filtersReceived._validation.count_paid ?? 0}</div>
-              <div>Ledger Count: {filtersReceived._validation.ledger_count ?? 'N/A'}</div>
-              {filtersReceived._validation.ledger_count !== undefined && filtersReceived._validation.ledger_count > 0 && filtersReceived._validation.count_paid === 0 && (
-                <div className="text-yellow-400 mt-1">⚠️ Ledger tiene datos pero count_paid=0 (posible problema de matching)</div>
-              )}
+        {(() => {
+          const validationSafe =
+            (filtersReceived && 
+             typeof filtersReceived === "object" &&
+             filtersReceived._validation &&
+             typeof filtersReceived._validation === "object")
+              ? filtersReceived._validation
+              : null;
+          
+          return validationSafe ? (
+            <div>
+              <div className="text-gray-400 mb-1">Validation (Backend):</div>
+              <div className="bg-gray-800 px-2 py-1 rounded text-xs">
+                <div>Paid Total: {validationSafe.paid_total ?? 'N/A'}</div>
+                <div>Count Paid: {validationSafe.count_paid ?? 'N/A'}</div>
+                <div>Ledger Count: {validationSafe.ledger_count ?? 'N/A'}</div>
+                {validationSafe.ledger_count !== undefined && 
+                 validationSafe.ledger_count > 0 && 
+                 validationSafe.count_paid === 0 && (
+                  <div className="text-yellow-400 mt-1">⚠️ Ledger tiene datos pero count_paid=0 (posible problema de matching)</div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          ) : (
+            <div>
+              <div className="text-gray-400 mb-1">Validation (Backend):</div>
+              <div className="text-gray-400 text-xs">N/A</div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   )

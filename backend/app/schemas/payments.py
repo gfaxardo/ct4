@@ -1,63 +1,67 @@
-"""Pydantic schemas for Yango Payments Reconciliation"""
+"""
+Schemas para endpoints de reconciliación de pagos Yango
+"""
 from pydantic import BaseModel
-from typing import Optional, Literal
-from datetime import date, datetime
+from typing import Optional, List, Dict, Any
+from datetime import date
 from uuid import UUID
 from enum import Enum
 
 
-class YangoPaymentIngestResponse(BaseModel):
-    """Response for Yango payment ingest snapshot"""
-    status: str
-    rows_inserted: int
-    snapshot_at: datetime
-
+# ============================================================================
+# Summary Response Schemas
+# ============================================================================
 
 class YangoReconciliationSummaryRow(BaseModel):
-    """Summary row for Yango reconciliation (aggregated by week and milestone)"""
+    """Fila de resumen agregado por semana y milestone"""
     pay_week_start_monday: date
     milestone_value: int
     amount_expected_sum: float
     amount_paid_confirmed_sum: float
     amount_paid_enriched_sum: float
     amount_paid_total_visible: float
-    amount_paid_sum: Optional[float] = None  # For backward compatibility, alias of amount_paid_total_visible
-    amount_paid_assumed: Optional[float] = None
-    amount_pending_active_sum: Optional[float] = None
-    amount_pending_expired_sum: Optional[float] = None
+    amount_pending_active_sum: float
+    amount_pending_expired_sum: float
     amount_diff: float
-    amount_diff_assumed: Optional[float] = None
+    amount_diff_assumed: float
     anomalies_total: int
     count_expected: int
     count_paid_confirmed: int
     count_paid_enriched: int
-    count_paid: int  # Total: confirmed + enriched
-    count_pending_active: Optional[int] = None
-    count_pending_expired: Optional[int] = None
-    count_drivers: Optional[int] = None
-    
+    count_paid: int
+    count_pending_active: int
+    count_pending_expired: int
+    count_drivers: int
+    # Aliases para compatibilidad
+    amount_paid_sum: Optional[float] = None
+    amount_paid_assumed: Optional[float] = None
+
     class Config:
         from_attributes = True
 
 
 class YangoReconciliationSummaryResponse(BaseModel):
-    """Response for Yango reconciliation summary endpoint"""
+    """Respuesta del endpoint de resumen de reconciliación"""
     status: str
     count: int
-    filters: dict
-    rows: list[YangoReconciliationSummaryRow]
+    filters: Dict[str, Any]
+    rows: List[YangoReconciliationSummaryRow]
 
+
+# ============================================================================
+# Items Response Schemas
+# ============================================================================
 
 class YangoReconciliationItemRow(BaseModel):
-    """Item row for Yango reconciliation (detailed claims)"""
+    """Fila de item detallado de reconciliación"""
     driver_id: Optional[str] = None
     person_key: Optional[UUID] = None
-    lead_date: Optional[date] = None
-    pay_week_start_monday: Optional[date] = None
-    milestone_value: Optional[int] = None
-    expected_amount: Optional[float] = None
-    currency: Optional[str] = None
-    due_date: Optional[date] = None
+    lead_date: date
+    pay_week_start_monday: date
+    milestone_value: int
+    expected_amount: float
+    currency: str
+    due_date: date
     window_status: Optional[str] = None
     paid_payment_key: Optional[str] = None
     paid_payment_key_confirmed: Optional[str] = None
@@ -65,97 +69,103 @@ class YangoReconciliationItemRow(BaseModel):
     paid_date: Optional[date] = None
     paid_date_confirmed: Optional[date] = None
     paid_date_enriched: Optional[date] = None
-    paid_is_paid: Optional[bool] = None
-    is_paid_confirmed: Optional[bool] = None
-    is_paid_enriched: Optional[bool] = None
-    is_paid_effective: Optional[bool] = None
-    match_method: Optional[str] = None
-    paid_status: Optional[str] = None  # 'paid_confirmed' | 'paid_enriched' | 'pending_active' | 'pending_expired'
-    # Identity enrichment fields
-    identity_status: Optional[str] = None  # 'confirmed' | 'enriched' | 'ambiguous' | 'no_match'
-    match_rule: Optional[str] = None  # 'source_upstream' | 'name_full_unique' | 'name_tokens_unique' | 'ambiguous' | 'no_match'
-    match_confidence: Optional[str] = None  # 'high' | 'medium' | 'low'
-    
+    is_paid_effective: bool
+    match_method: str
+    paid_status: str
+    identity_status: Optional[str] = None
+    match_rule: Optional[str] = None
+    match_confidence: Optional[str] = None
+
     class Config:
         from_attributes = True
 
 
 class YangoReconciliationItemsResponse(BaseModel):
-    """Response for Yango reconciliation items endpoint"""
+    """Respuesta del endpoint de items de reconciliación"""
     status: str
     count: int
-    total: Optional[int] = None
-    filters: dict
-    rows: list[YangoReconciliationItemRow]
+    total: int
+    filters: Dict[str, Any]
+    rows: List[YangoReconciliationItemRow]
 
+
+# ============================================================================
+# Ledger Unmatched Schemas
+# ============================================================================
 
 class YangoLedgerUnmatchedRow(BaseModel):
     """Fila de ledger sin match contra claims"""
-    payment_key: Optional[str] = None
-    pay_date: Optional[date] = None
-    is_paid: Optional[bool] = None
-    milestone_value: Optional[int] = None
-    driver_id: Optional[str] = None  # Alias de driver_id_final para compatibilidad
-    person_key: Optional[UUID] = None  # Alias de person_key_final para compatibilidad
+    payment_key: str
+    pay_date: date
+    is_paid: bool
+    milestone_value: int
+    driver_id: Optional[str] = None
+    person_key: Optional[UUID] = None
     raw_driver_name: Optional[str] = None
     driver_name_normalized: Optional[str] = None
     match_rule: Optional[str] = None
     match_confidence: Optional[str] = None
-    latest_snapshot_at: Optional[datetime] = None
+    latest_snapshot_at: Optional[Any] = None  # datetime
     source_pk: Optional[str] = None
-    identity_source: Optional[str] = None  # 'original' | 'enriched_by_name' | 'none'
-    identity_enriched: Optional[bool] = None  # Flag que indica si la identidad fue enriquecida
-    driver_id_final: Optional[str] = None  # Campo final (original o enriched)
-    person_key_final: Optional[UUID] = None  # Campo final (original o enriched)
-    # New fields from enriched view
-    identity_status: Optional[str] = None  # 'confirmed' | 'enriched' | 'ambiguous' | 'no_match'
-    
+    identity_source: Optional[str] = None
+    identity_enriched: Optional[bool] = None
+    driver_id_final: Optional[str] = None
+    person_key_final: Optional[UUID] = None
+    identity_status: Optional[str] = None
+
     class Config:
         from_attributes = True
 
 
 class YangoLedgerUnmatchedResponse(BaseModel):
     """Respuesta del endpoint de ledger sin match"""
-    status: str = "ok"
+    status: str
     count: int
     total: int
-    filters: dict
-    rows: list[YangoLedgerUnmatchedRow]
+    filters: Dict[str, Any]
+    rows: List[YangoLedgerUnmatchedRow]
 
+
+# ============================================================================
+# Driver Detail Schemas
+# ============================================================================
 
 class ClaimDetailRow(BaseModel):
-    """Detalle de un claim para un conductor"""
-    milestone_value: Optional[int] = None
-    expected_amount: Optional[float] = None
-    currency: Optional[str] = None
-    lead_date: Optional[date] = None
-    due_date: Optional[date] = None
-    pay_week_start_monday: Optional[date] = None
-    paid_status: Optional[str] = None
+    """Fila de detalle de claim para un conductor"""
+    milestone_value: int
+    expected_amount: float
+    currency: str
+    lead_date: date
+    due_date: date
+    pay_week_start_monday: date
+    paid_status: str
     paid_payment_key: Optional[str] = None
     paid_date: Optional[date] = None
-    is_paid_effective: Optional[bool] = None
-    match_method: Optional[str] = None
+    is_paid_effective: bool
+    match_method: str
     identity_status: Optional[str] = None
     match_rule: Optional[str] = None
     match_confidence: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class YangoDriverDetailResponse(BaseModel):
-    """Respuesta del endpoint de detalle por conductor"""
-    status: str = "ok"
+    """Respuesta del endpoint de detalle de conductor"""
+    status: str
     driver_id: str
     person_key: Optional[UUID] = None
-    claims: list[ClaimDetailRow]
-    summary: dict  # total_expected, total_paid, count_paid, count_pending_active, count_pending_expired
+    claims: List[ClaimDetailRow]
+    summary: Dict[str, Any]
 
 
-# Schemas for Payment Eligibility endpoint
+# ============================================================================
+# Payment Eligibility Schemas
+# ============================================================================
+
 class OrderByField(str, Enum):
-    """Campos válidos para ordenamiento en payment eligibility"""
+    """Campos permitidos para ordenar en payment eligibility"""
     payable_date = "payable_date"
     lead_date = "lead_date"
     amount = "amount"
@@ -163,32 +173,157 @@ class OrderByField(str, Enum):
 
 class OrderDirection(str, Enum):
     """Dirección de ordenamiento"""
-    asc = "ASC"
-    desc = "DESC"
+    asc = "asc"
+    desc = "desc"
 
 
 class PaymentEligibilityRow(BaseModel):
-    """Fila de resultado de payment eligibility query"""
+    """Fila de elegibilidad de pago desde ops.v_payment_calculation"""
+    # Campos comunes de la vista (flexible para SELECT *)
     origin_tag: Optional[str] = None
     rule_scope: Optional[str] = None
     is_payable: Optional[bool] = None
     scout_id: Optional[int] = None
     driver_id: Optional[str] = None
-    person_key: Optional[UUID] = None
     payable_date: Optional[date] = None
-    expected_amount: Optional[float] = None
-    currency: Optional[str] = None
+    lead_date: Optional[date] = None
+    amount: Optional[float] = None
+    # Campos adicionales que pueden existir en la vista
     milestone_value: Optional[int] = None
-    window_days: Optional[int] = None
-    # Agregar más campos según la vista ops.v_payment_calculation
-    
+    currency: Optional[str] = None
+    person_key: Optional[UUID] = None
+    # Permitir campos adicionales dinámicos
+    class Config:
+        from_attributes = True
+        extra = "allow"  # Permite campos adicionales de la vista
+
+
+class PaymentEligibilityResponse(BaseModel):
+    """Respuesta del endpoint de elegibilidad de pago"""
+    status: str
+    count: int
+    filters: Dict[str, Any]
+    rows: List[PaymentEligibilityRow]
+
+
+# ============================================================================
+# Claims 14d Schemas
+# ============================================================================
+
+class Claims14dRow(BaseModel):
+    """Fila de claim desde ops.v_yango_payments_claims_cabinet_14d"""
+    driver_id: Optional[str] = None
+    person_key: Optional[UUID] = None
+    lead_date: date
+    pay_week_start_monday: date
+    milestone_value: int
+    expected_amount: float
+    currency: str
+    due_date: date
+    window_status: str
+    paid_status: str
+    is_paid_confirmed: bool
+    is_paid_enriched: bool
+    paid_date: Optional[date] = None
+    identity_status: Optional[str] = None
+    match_rule: Optional[str] = None
+    match_confidence: Optional[str] = None
+    paid_payment_key: Optional[str] = None
+    paid_payment_key_confirmed: Optional[str] = None
+    paid_payment_key_enriched: Optional[str] = None
+
     class Config:
         from_attributes = True
 
 
-class PaymentEligibilityResponse(BaseModel):
-    """Respuesta del endpoint de payment eligibility"""
+class Claims14dResponse(BaseModel):
+    """Respuesta del endpoint de claims 14d"""
     status: str
     count: int
-    filters: dict
-    rows: list[PaymentEligibilityRow]
+    total: int
+    filters: Dict[str, Any]
+    rows: List[Claims14dRow]
+
+
+class Claims14dSummaryRow(BaseModel):
+    """Fila de resumen agregado por semana y milestone"""
+    pay_week_start_monday: date
+    milestone_value: int
+    expected_amount_sum: float
+    paid_confirmed_amount_sum: float
+    paid_enriched_amount_sum: float
+    pending_active_amount_sum: float
+    pending_expired_amount_sum: float
+    expected_count: int
+    paid_confirmed_count: int
+    paid_enriched_count: int
+    pending_active_count: int
+    pending_expired_count: int
+
+    class Config:
+        from_attributes = True
+
+
+class Claims14dSummaryResponse(BaseModel):
+    """Respuesta del endpoint de resumen de claims 14d"""
+    status: str
+    count: int
+    filters: Dict[str, Any]
+    rows: List[Claims14dSummaryRow]
+
+
+# ============================================================================
+# Claims Cabinet Schemas (Nueva vista v_claims_payment_status_cabinet)
+# ============================================================================
+
+class ClaimsCabinetRow(BaseModel):
+    """Fila de claim desde ops.v_claims_payment_status_cabinet"""
+    driver_id: Optional[str] = None
+    person_key: Optional[UUID] = None
+    milestone_value: int
+    lead_date: date
+    due_date: date
+    expected_amount: float
+    paid_flag: bool
+    paid_date: Optional[date] = None
+    payment_key: Optional[str] = None
+    payment_identity_status: Optional[str] = None
+    payment_match_rule: Optional[str] = None
+    payment_match_confidence: Optional[str] = None
+    payment_status: str  # 'paid' | 'not_paid'
+    payment_reason: str  # 'payment_found' | 'no_payment_found'
+
+    class Config:
+        from_attributes = True
+
+
+class ClaimsCabinetResponse(BaseModel):
+    """Respuesta del endpoint de claims cabinet"""
+    status: str
+    count: int
+    total: int
+    filters: Dict[str, Any]
+    rows: List[ClaimsCabinetRow]
+
+
+class ClaimsCabinetSummaryRow(BaseModel):
+    """Fila de resumen agregado por semana y milestone desde ops.v_claims_payment_status_cabinet"""
+    pay_week_start_monday: date
+    milestone_value: int
+    expected_amount_sum: float
+    paid_amount_sum: float
+    not_paid_amount_sum: float
+    expected_count: int
+    paid_count: int
+    not_paid_count: int
+
+    class Config:
+        from_attributes = True
+
+
+class ClaimsCabinetSummaryResponse(BaseModel):
+    """Respuesta del endpoint de resumen de claims cabinet"""
+    status: str
+    count: int
+    filters: Dict[str, Any]
+    rows: List[ClaimsCabinetSummaryRow]

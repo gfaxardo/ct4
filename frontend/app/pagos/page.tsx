@@ -262,6 +262,24 @@ export default function PagosPage() {
       {/* Yango Tab */}
       {activeTab === 'yango' && (
         <div>
+          {/* Link a Claims 14d */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-blue-900">Vista Detallada de Claims</h3>
+                <p className="text-sm text-blue-700 mt-1">
+                  Accede a la vista canónica y auditable basada 100% en ops.v_yango_payments_claims_cabinet_14d
+                </p>
+              </div>
+              <a
+                href="/pagos/claims"
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+              >
+                Ver Claims (14d) →
+              </a>
+            </div>
+          </div>
+
           {/* Filtros */}
           <div className="bg-white rounded-lg shadow mb-6 p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -187,3 +187,8 @@ export default function WeeklyMetricsView({ weekly, weekly_trend, loading }: Wee
 
 
 
+
+
+
+
+

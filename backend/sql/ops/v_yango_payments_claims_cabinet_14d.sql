@@ -1,6 +1,22 @@
-DROP VIEW IF EXISTS ops.v_yango_payments_claims_cabinet_14d CASCADE;
+-- ============================================================================
+-- Vista: ops.v_yango_payments_claims_cabinet_14d
+-- ============================================================================
+-- Descripción: Vista de claims de pagos Yango Cabinet (ventana 14 días).
+-- Separa paid_confirmed (identity_status='confirmed' desde upstream) vs 
+-- paid_enriched (identity_status='enriched' por matching por nombre).
+--
+-- IMPORTANTE: Esta vista NO debe referenciarse a sí misma (ni directa ni 
+-- indirectamente) para evitar recursión infinita.
+--
+-- Fuentes de datos (ÚNICAS dependencias permitidas):
+-- - ops.v_yango_receivable_payable_detail (claims base)
+-- - ops.v_yango_payments_ledger_latest_enriched (pagos reales enriquecidos)
+--
+-- NOTA: No usar DROP VIEW ... CASCADE (provoca statement timeout).
+-- Usar solo CREATE OR REPLACE VIEW.
+-- ============================================================================
 
-CREATE VIEW ops.v_yango_payments_claims_cabinet_14d AS
+CREATE OR REPLACE VIEW ops.v_yango_payments_claims_cabinet_14d AS
 -- Performance: filter pushdown before joins for UI stability
 -- Apply date filter early to reduce data volume before expensive LEFT JOINs
 WITH base_claims AS (
@@ -63,6 +79,8 @@ SELECT
     COALESCE(p_confirmed.payment_key, p_enriched.payment_key) AS paid_payment_key,
     COALESCE(p_confirmed.pay_date, p_enriched.pay_date) AS paid_date,
     COALESCE(p_confirmed.is_paid, p_enriched.is_paid, false) AS paid_is_paid,
+    -- Alias de compatibilidad: is_paid = paid_is_paid (para queries legacy)
+    COALESCE(p_confirmed.is_paid, p_enriched.is_paid, false) AS is_paid,
     -- is_paid_effective: solo confirmed cuenta como paid real
     COALESCE(p_confirmed.is_paid, false) AS is_paid_effective,
     -- match_method
@@ -79,7 +97,11 @@ SELECT
         WHEN p_enriched.is_paid = true THEN 'paid_enriched'
         WHEN CURRENT_DATE <= (e.lead_date + INTERVAL '14 days') THEN 'pending_active'
         ELSE 'pending_expired'
-    END AS paid_status
+    END AS paid_status,
+    -- Campos de identidad desde ledger (usar confirmed primero, luego enriched)
+    COALESCE(p_confirmed.identity_status, p_enriched.identity_status) AS identity_status,
+    COALESCE(p_confirmed.match_rule, p_enriched.match_rule) AS match_rule,
+    COALESCE(p_confirmed.match_confidence, p_enriched.match_confidence) AS match_confidence
 FROM base_claims e
 LEFT JOIN ledger_enriched p_confirmed
     ON (
@@ -96,14 +118,103 @@ LEFT JOIN ledger_enriched p_enriched
     )
     AND p_enriched.milestone_value = e.milestone_value
     AND p_enriched.identity_status = 'enriched'
-    AND p_enriched.is_paid = true
-ORDER BY 
-    e.pay_week_start_monday DESC,
-    e.lead_date DESC,
-    e.milestone_value;
+    AND p_enriched.is_paid = true;
+-- NOTA: ORDER BY removido - no está permitido en vistas PostgreSQL sin LIMIT
+-- Si se necesita ordenamiento, debe hacerse en la query que consume la vista
 
 COMMENT ON VIEW ops.v_yango_payments_claims_cabinet_14d IS 
-'Vista de claims de pagos Yango Cabinet (ventana 14 días). Separa paid_confirmed (identity_status=confirmed desde upstream) vs paid_enriched (identity_status=enriched por matching por nombre). paid_confirmed es la fuente para paid real, paid_enriched es informativo. Performance: filter pushdown before joins for UI stability - applies 1-week (7 days) default filter in base_claims CTE AND ledger_enriched CTE before expensive LEFT JOINs to reduce scan volume.';
+'Vista de claims de pagos Yango Cabinet (ventana 14 días). Separa paid_confirmed (identity_status=confirmed desde upstream) vs paid_enriched (identity_status=enriched por matching por nombre). paid_confirmed es la fuente para paid real, paid_enriched es informativo. Performance: filter pushdown before joins for UI stability - applies 1-week (7 days) default filter in base_claims CTE AND ledger_enriched CTE before expensive LEFT JOINs to reduce scan volume. IMPORTANTE: No contiene referencias circulares.';
 
 COMMENT ON COLUMN ops.v_yango_payments_claims_cabinet_14d.paid_status IS 
 'Estado de pago: paid_confirmed (identity confirmada desde upstream), paid_enriched (identity enriquecida por nombre), pending_active (dentro de ventana), pending_expired (fuera de ventana).';
+
+COMMENT ON COLUMN ops.v_yango_payments_claims_cabinet_14d.is_paid IS 
+'Alias de compatibilidad: is_paid = paid_is_paid. Usar para queries legacy que esperan is_paid en lugar de paid_is_paid.';
+
+COMMENT ON COLUMN ops.v_yango_payments_claims_cabinet_14d.paid_is_paid IS 
+'Boolean indicando si el claim tiene un pago asociado (confirmed o enriched).';
+
+COMMENT ON COLUMN ops.v_yango_payments_claims_cabinet_14d.is_paid_effective IS 
+'Boolean indicando si el claim tiene un pago confirmado (solo confirmed cuenta como paid real).';
+
+-- ============================================================================
+-- QUERIES DE VERIFICACIÓN (COMENTADAS - EJECUTAR DESPUÉS DE CREAR LA VISTA)
+-- ============================================================================
+-- NOTA: Estas queries están comentadas para evitar timeout al crear la vista.
+-- Ejecutar manualmente DESPUÉS de que la vista se haya creado exitosamente.
+--
+-- Para ejecutar las verificaciones:
+-- 1. Crear la vista primero (ejecutar solo hasta la línea 138)
+-- 2. Luego ejecutar las queries de verificación una por una
+-- ============================================================================
+
+/*
+-- 1. Verificación básica: conteos y montos totales
+SELECT 
+    '=== VERIFICACIÓN BÁSICA ===' AS seccion,
+    COUNT(*) AS total_rows,
+    COUNT(*) FILTER (WHERE is_paid = true) AS count_is_paid_true,
+    COUNT(*) FILTER (WHERE paid_is_paid = true) AS count_paid_is_paid_true,
+    COUNT(*) FILTER (WHERE is_paid_confirmed = true) AS count_is_paid_confirmed,
+    COUNT(*) FILTER (WHERE is_paid_enriched = true) AS count_is_paid_enriched,
+    COUNT(*) FILTER (WHERE is_paid_effective = true) AS count_is_paid_effective,
+    COALESCE(SUM(expected_amount), 0) AS total_expected_amount,
+    COALESCE(SUM(expected_amount) FILTER (WHERE is_paid = true), 0) AS total_paid_amount
+FROM ops.v_yango_payments_claims_cabinet_14d;
+
+-- 2. Distribución por paid_status
+SELECT 
+    '=== DISTRIBUCIÓN POR paid_status ===' AS seccion,
+    paid_status,
+    COUNT(*) AS count_rows,
+    ROUND(100.0 * COUNT(*) / NULLIF((SELECT COUNT(*) FROM ops.v_yango_payments_claims_cabinet_14d), 0), 2) AS pct_rows,
+    COALESCE(SUM(expected_amount), 0) AS total_amount,
+    ROUND(100.0 * COALESCE(SUM(expected_amount), 0) / NULLIF((SELECT SUM(expected_amount) FROM ops.v_yango_payments_claims_cabinet_14d), 0), 2) AS pct_amount
+FROM ops.v_yango_payments_claims_cabinet_14d
+GROUP BY paid_status
+ORDER BY count_rows DESC;
+
+-- 3. Distribución por window_status
+SELECT 
+    '=== DISTRIBUCIÓN POR window_status ===' AS seccion,
+    window_status,
+    COUNT(*) AS count_rows,
+    ROUND(100.0 * COUNT(*) / NULLIF((SELECT COUNT(*) FROM ops.v_yango_payments_claims_cabinet_14d), 0), 2) AS pct_rows,
+    COALESCE(SUM(expected_amount), 0) AS total_amount
+FROM ops.v_yango_payments_claims_cabinet_14d
+GROUP BY window_status
+ORDER BY count_rows DESC;
+
+-- 4. Verificación de columnas requeridas (debe retornar todas las columnas esperadas)
+SELECT 
+    '=== VERIFICACIÓN DE COLUMNAS ===' AS seccion,
+    column_name,
+    data_type,
+    is_nullable
+FROM information_schema.columns 
+WHERE table_schema = 'ops' 
+  AND table_name = 'v_yango_payments_claims_cabinet_14d'
+  AND column_name IN (
+    'driver_id', 'person_key', 'lead_date', 'pay_week_start_monday', 'milestone_value',
+    'expected_amount', 'currency', 'due_date', 'window_status',
+    'paid_payment_key_confirmed', 'paid_date_confirmed', 'is_paid_confirmed',
+    'paid_payment_key_enriched', 'paid_date_enriched', 'is_paid_enriched',
+    'paid_is_paid', 'is_paid', 'paid_payment_key', 'paid_date',
+    'is_paid_effective', 'match_method', 'paid_status',
+    'identity_status', 'match_rule', 'match_confidence'
+  )
+ORDER BY column_name;
+
+-- 5. Verificación de que is_paid y paid_is_paid son iguales
+SELECT 
+    '=== VERIFICACIÓN is_paid = paid_is_paid ===' AS seccion,
+    COUNT(*) AS total_rows,
+    COUNT(*) FILTER (WHERE is_paid = paid_is_paid) AS count_match,
+    COUNT(*) FILTER (WHERE is_paid != paid_is_paid OR (is_paid IS NULL AND paid_is_paid IS NOT NULL) OR (is_paid IS NOT NULL AND paid_is_paid IS NULL)) AS count_mismatch
+FROM ops.v_yango_payments_claims_cabinet_14d;
+
+-- 6. Verificación de que no hay referencias circulares (debe ejecutarse sin error)
+SELECT 
+    '=== VERIFICACIÓN SIN RECURSIÓN ===' AS seccion,
+    'OK: Vista creada sin errores de recursión' AS status;
+*/

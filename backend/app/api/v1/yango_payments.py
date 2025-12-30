@@ -24,7 +24,15 @@ from app.schemas.payments import (
     YangoLedgerUnmatchedRow,
     YangoLedgerUnmatchedResponse,
     YangoDriverDetailResponse,
-    ClaimDetailRow
+    ClaimDetailRow,
+    Claims14dRow,
+    Claims14dResponse,
+    Claims14dSummaryRow,
+    Claims14dSummaryResponse,
+    ClaimsCabinetRow,
+    ClaimsCabinetResponse,
+    ClaimsCabinetSummaryRow,
+    ClaimsCabinetSummaryResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -106,7 +114,7 @@ def get_reconciliation_summary(
             SELECT 
                 COUNT(*) AS ledger_total_rows,
                 COUNT(*) FILTER (WHERE is_paid = true) AS ledger_rows_is_paid_true,
-                COUNT(*) FILTER (WHERE is_paid = true AND driver_id IS NULL) AS ledger_rows_is_paid_true_and_driver_id_null
+                COUNT(*) FILTER (WHERE is_paid = true AND driver_id_final IS NULL) AS ledger_rows_is_paid_true_and_driver_id_null
             FROM ops.v_yango_payments_ledger_latest_enriched
         """)
         validation_result = db.execute(validation_query).fetchone()
@@ -537,4 +545,410 @@ def get_driver_detail(
         raise HTTPException(
             status_code=500,
             detail=f"Error al consultar detalle del conductor: {str(e)}"
+        )
+
+
+@router.get("/payments/claims_14d", response_model=Claims14dResponse)
+def get_claims_14d(
+    db: Session = Depends(get_db),
+    week_start: Optional[date] = Query(None, description="Filtra por semana (pay_week_start_monday)"),
+    milestone_value: Optional[int] = Query(None, description="Filtra por milestone (1, 5, 25)"),
+    paid_status: Optional[str] = Query(None, description="Filtra por paid_status (paid_confirmed, paid_enriched, pending_active, pending_expired)"),
+    window_status: Optional[str] = Query(None, description="Filtra por window_status (active, expired)"),
+    limit: int = Query(1000, ge=1, le=10000, description="Límite de resultados"),
+    offset: int = Query(0, ge=0, description="Offset para paginación")
+):
+    """
+    Obtiene claims desde ops.v_yango_payments_claims_cabinet_14d.
+    Fuente única: vista SQL, sin inferencias en frontend.
+    """
+    where_conditions = []
+    params = {}
+    
+    if week_start:
+        where_conditions.append("pay_week_start_monday = :week_start")
+        params["week_start"] = week_start
+    
+    if milestone_value:
+        where_conditions.append("milestone_value = :milestone_value")
+        params["milestone_value"] = milestone_value
+    
+    if paid_status:
+        where_conditions.append("paid_status = :paid_status")
+        params["paid_status"] = paid_status
+    
+    if window_status:
+        where_conditions.append("window_status = :window_status")
+        params["window_status"] = window_status
+    
+    where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+    
+    # Query para contar total
+    count_sql = f"""
+        SELECT COUNT(*) AS total
+        FROM ops.v_yango_payments_claims_cabinet_14d
+        {where_clause}
+    """
+    
+    # Query para obtener datos
+    sql = f"""
+        SELECT 
+            driver_id,
+            person_key,
+            lead_date,
+            pay_week_start_monday,
+            milestone_value,
+            expected_amount,
+            currency,
+            due_date,
+            window_status,
+            paid_status,
+            is_paid_confirmed,
+            is_paid_enriched,
+            paid_date,
+            identity_status,
+            match_rule,
+            match_confidence,
+            paid_payment_key,
+            paid_payment_key_confirmed,
+            paid_payment_key_enriched
+        FROM ops.v_yango_payments_claims_cabinet_14d
+        {where_clause}
+        ORDER BY pay_week_start_monday DESC, milestone_value ASC, lead_date DESC
+        LIMIT :limit OFFSET :offset
+    """
+    
+    params["limit"] = limit
+    params["offset"] = offset
+    
+    try:
+        # Obtener total
+        count_result = db.execute(text(count_sql), params).fetchone()
+        total = count_result.total if count_result else 0
+        
+        # Obtener datos
+        result = db.execute(text(sql), params)
+        rows_data = result.mappings().all()
+        
+        # Convertir filas y manejar tipos (person_key puede venir como string desde SQL)
+        rows = []
+        for row_dict in rows_data:
+            row_data = dict(row_dict)
+            # Convertir person_key de string a UUID si existe
+            if row_data.get('person_key') and isinstance(row_data['person_key'], str):
+                try:
+                    from uuid import UUID
+                    row_data['person_key'] = UUID(row_data['person_key'])
+                except (ValueError, TypeError):
+                    row_data['person_key'] = None
+            rows.append(Claims14dRow(**row_data))
+        
+        filters = {
+            "week_start": str(week_start) if week_start else None,
+            "milestone_value": milestone_value,
+            "paid_status": paid_status,
+            "window_status": window_status,
+            "limit": limit,
+            "offset": offset
+        }
+        
+        return Claims14dResponse(
+            status="ok",
+            count=len(rows),
+            total=total,
+            filters={k: v for k, v in filters.items() if v is not None},
+            rows=rows
+        )
+    except Exception as e:
+        logger.error(f"Error en claims 14d: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar claims 14d: {str(e)}"
+        )
+
+
+@router.get("/payments/claims_14d/summary", response_model=Claims14dSummaryResponse)
+def get_claims_14d_summary(
+    db: Session = Depends(get_db),
+    week_start: Optional[date] = Query(None, description="Filtra por semana (pay_week_start_monday)"),
+    milestone_value: Optional[int] = Query(None, description="Filtra por milestone (1, 5, 25)"),
+    paid_status: Optional[str] = Query(None, description="Filtra por paid_status"),
+    window_status: Optional[str] = Query(None, description="Filtra por window_status"),
+    limit: int = Query(1000, ge=1, le=10000, description="Límite de resultados")
+):
+    """
+    Obtiene resumen agregado de claims 14d por semana y milestone.
+    """
+    where_conditions = []
+    params = {}
+    
+    if week_start:
+        where_conditions.append("pay_week_start_monday = :week_start")
+        params["week_start"] = week_start
+    
+    if milestone_value:
+        where_conditions.append("milestone_value = :milestone_value")
+        params["milestone_value"] = milestone_value
+    
+    if paid_status:
+        where_conditions.append("paid_status = :paid_status")
+        params["paid_status"] = paid_status
+    
+    if window_status:
+        where_conditions.append("window_status = :window_status")
+        params["window_status"] = window_status
+    
+    where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+    
+    sql = f"""
+        SELECT 
+            pay_week_start_monday,
+            milestone_value,
+            COALESCE(SUM(expected_amount), 0) AS expected_amount_sum,
+            COALESCE(SUM(expected_amount) FILTER (WHERE paid_status = 'paid_confirmed'), 0) AS paid_confirmed_amount_sum,
+            COALESCE(SUM(expected_amount) FILTER (WHERE paid_status = 'paid_enriched'), 0) AS paid_enriched_amount_sum,
+            COALESCE(SUM(expected_amount) FILTER (WHERE paid_status = 'pending_active'), 0) AS pending_active_amount_sum,
+            COALESCE(SUM(expected_amount) FILTER (WHERE paid_status = 'pending_expired'), 0) AS pending_expired_amount_sum,
+            COUNT(*) AS expected_count,
+            COUNT(*) FILTER (WHERE paid_status = 'paid_confirmed') AS paid_confirmed_count,
+            COUNT(*) FILTER (WHERE paid_status = 'paid_enriched') AS paid_enriched_count,
+            COUNT(*) FILTER (WHERE paid_status = 'pending_active') AS pending_active_count,
+            COUNT(*) FILTER (WHERE paid_status = 'pending_expired') AS pending_expired_count
+        FROM ops.v_yango_payments_claims_cabinet_14d
+        {where_clause}
+        GROUP BY pay_week_start_monday, milestone_value
+        ORDER BY pay_week_start_monday DESC, milestone_value ASC
+        LIMIT :limit
+    """
+    
+    params["limit"] = limit
+    
+    try:
+        result = db.execute(text(sql), params)
+        rows_data = result.mappings().all()
+        
+        # Convertir filas y manejar tipos
+        rows = []
+        for row_dict in rows_data:
+            row_data = dict(row_dict)
+            # Asegurar que los valores NULL de SUM sean 0
+            for key in ['expected_amount_sum', 'paid_confirmed_amount_sum', 'paid_enriched_amount_sum', 
+                       'pending_active_amount_sum', 'pending_expired_amount_sum']:
+                if row_data.get(key) is None:
+                    row_data[key] = 0.0
+            rows.append(Claims14dSummaryRow(**row_data))
+        
+        filters = {
+            "week_start": str(week_start) if week_start else None,
+            "milestone_value": milestone_value,
+            "paid_status": paid_status,
+            "window_status": window_status,
+            "limit": limit
+        }
+        
+        return Claims14dSummaryResponse(
+            status="ok",
+            count=len(rows),
+            filters={k: v for k, v in filters.items() if v is not None},
+            rows=rows
+        )
+    except Exception as e:
+        logger.error(f"Error en claims 14d summary: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar resumen de claims 14d: {str(e)}"
+        )
+
+
+@router.get("/payments/claims_cabinet", response_model=ClaimsCabinetResponse)
+def get_claims_cabinet(
+    db: Session = Depends(get_db),
+    week_start: Optional[date] = Query(None, description="Filtra por semana (pay_week_start_monday derivada de lead_date)"),
+    milestone_value: Optional[int] = Query(None, description="Filtra por milestone (1, 5, 25)"),
+    payment_status: Optional[str] = Query(None, description="Filtra por payment_status ('paid' o 'not_paid')"),
+    limit: int = Query(1000, ge=1, le=10000, description="Límite de resultados"),
+    offset: int = Query(0, ge=0, description="Offset para paginación")
+):
+    """
+    Obtiene claims desde ops.v_claims_payment_status_cabinet.
+    Fuente única: vista SQL, sin inferencias en frontend.
+    Responde: "Para cada conductor que entró por cabinet y alcanzó un milestone, ¿nos pagaron o no?"
+    """
+    where_conditions = []
+    params = {}
+    
+    if week_start:
+        # Calcular pay_week_start_monday desde lead_date
+        where_conditions.append("date_trunc('week', lead_date)::date = :week_start")
+        params["week_start"] = week_start
+    
+    if milestone_value:
+        where_conditions.append("milestone_value = :milestone_value")
+        params["milestone_value"] = milestone_value
+    
+    if payment_status:
+        where_conditions.append("payment_status = :payment_status")
+        params["payment_status"] = payment_status
+    
+    where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+    
+    # Query para contar total
+    count_sql = f"""
+        SELECT COUNT(*) AS total
+        FROM ops.v_claims_payment_status_cabinet
+        {where_clause}
+    """
+    
+    # Query para obtener datos
+    sql = f"""
+        SELECT 
+            driver_id,
+            person_key,
+            milestone_value,
+            lead_date,
+            due_date,
+            expected_amount,
+            paid_flag,
+            paid_date,
+            payment_key,
+            payment_identity_status,
+            payment_match_rule,
+            payment_match_confidence,
+            payment_status,
+            payment_reason
+        FROM ops.v_claims_payment_status_cabinet
+        {where_clause}
+        ORDER BY lead_date DESC, milestone_value ASC
+        LIMIT :limit OFFSET :offset
+    """
+    
+    params["limit"] = limit
+    params["offset"] = offset
+    
+    try:
+        # Obtener total
+        count_result = db.execute(text(count_sql), params).fetchone()
+        total = count_result.total if count_result else 0
+        
+        # Obtener datos
+        result = db.execute(text(sql), params)
+        rows_data = result.mappings().all()
+        
+        # Convertir filas y manejar tipos (person_key puede venir como string desde SQL)
+        rows = []
+        for row_dict in rows_data:
+            row_data = dict(row_dict)
+            # Convertir person_key de string a UUID si existe
+            if row_data.get('person_key') and isinstance(row_data['person_key'], str):
+                try:
+                    from uuid import UUID
+                    row_data['person_key'] = UUID(row_data['person_key'])
+                except (ValueError, TypeError):
+                    row_data['person_key'] = None
+            rows.append(ClaimsCabinetRow(**row_data))
+        
+        filters = {
+            "week_start": str(week_start) if week_start else None,
+            "milestone_value": milestone_value,
+            "payment_status": payment_status,
+            "limit": limit,
+            "offset": offset
+        }
+        
+        return ClaimsCabinetResponse(
+            status="ok",
+            count=len(rows),
+            total=total,
+            filters={k: v for k, v in filters.items() if v is not None},
+            rows=rows
+        )
+    except Exception as e:
+        logger.error(f"Error en claims cabinet: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar claims cabinet: {str(e)}"
+        )
+
+
+@router.get("/payments/claims_cabinet/summary", response_model=ClaimsCabinetSummaryResponse)
+def get_claims_cabinet_summary(
+    db: Session = Depends(get_db),
+    week_start: Optional[date] = Query(None, description="Filtra por semana (pay_week_start_monday derivada de lead_date)"),
+    milestone_value: Optional[int] = Query(None, description="Filtra por milestone (1, 5, 25)"),
+    payment_status: Optional[str] = Query(None, description="Filtra por payment_status ('paid' o 'not_paid')"),
+    limit: int = Query(1000, ge=1, le=10000, description="Límite de resultados")
+):
+    """
+    Obtiene resumen agregado de claims cabinet por semana y milestone.
+    Agregación basada en ops.v_claims_payment_status_cabinet.
+    """
+    where_conditions = []
+    params = {}
+    
+    if week_start:
+        # Calcular pay_week_start_monday desde lead_date
+        where_conditions.append("date_trunc('week', lead_date)::date = :week_start")
+        params["week_start"] = week_start
+    
+    if milestone_value:
+        where_conditions.append("milestone_value = :milestone_value")
+        params["milestone_value"] = milestone_value
+    
+    if payment_status:
+        where_conditions.append("payment_status = :payment_status")
+        params["payment_status"] = payment_status
+    
+    where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+    
+    sql = f"""
+        SELECT 
+            date_trunc('week', lead_date)::date AS pay_week_start_monday,
+            milestone_value,
+            COALESCE(SUM(expected_amount), 0) AS expected_amount_sum,
+            COALESCE(SUM(expected_amount) FILTER (WHERE paid_flag = true), 0) AS paid_amount_sum,
+            COALESCE(SUM(expected_amount) FILTER (WHERE paid_flag = false), 0) AS not_paid_amount_sum,
+            COUNT(*) AS expected_count,
+            COUNT(*) FILTER (WHERE paid_flag = true) AS paid_count,
+            COUNT(*) FILTER (WHERE paid_flag = false) AS not_paid_count
+        FROM ops.v_claims_payment_status_cabinet
+        {where_clause}
+        GROUP BY date_trunc('week', lead_date)::date, milestone_value
+        ORDER BY pay_week_start_monday DESC, milestone_value ASC
+        LIMIT :limit
+    """
+    
+    params["limit"] = limit
+    
+    try:
+        result = db.execute(text(sql), params)
+        rows_data = result.mappings().all()
+        
+        # Convertir filas y manejar tipos
+        rows = []
+        for row_dict in rows_data:
+            row_data = dict(row_dict)
+            # Asegurar que los valores NULL de SUM sean 0
+            for key in ['expected_amount_sum', 'paid_amount_sum', 'not_paid_amount_sum']:
+                if row_data.get(key) is None:
+                    row_data[key] = 0.0
+            rows.append(ClaimsCabinetSummaryRow(**row_data))
+        
+        filters = {
+            "week_start": str(week_start) if week_start else None,
+            "milestone_value": milestone_value,
+            "payment_status": payment_status,
+            "limit": limit
+        }
+        
+        return ClaimsCabinetSummaryResponse(
+            status="ok",
+            count=len(rows),
+            filters={k: v for k, v in filters.items() if v is not None},
+            rows=rows
+        )
+    except Exception as e:
+        logger.error(f"Error en claims cabinet summary: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar resumen de claims cabinet: {str(e)}"
         )
