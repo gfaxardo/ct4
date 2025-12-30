@@ -865,6 +865,237 @@ export async function getClaimsCabinetSummary(params?: {
   return res.json()
 }
 
+export interface CabinetPaymentEvidencePackRow {
+  claim_driver_id?: string | null
+  claim_person_key?: string | null
+  claim_milestone_value: number
+  lead_date: string
+  due_date: string
+  expected_amount: number
+  payment_status: 'paid' | 'not_paid'
+  reason_code: string
+  action_priority: string
+  paid_flag: boolean
+  payment_key?: string | null
+  pay_date?: string | null
+  ledger_driver_id_final?: string | null
+  ledger_person_key_original?: string | null
+  ledger_milestone_value?: number | null
+  match_rule?: string | null
+  match_confidence?: string | null
+  identity_status?: string | null
+  milestone_paid?: number | null
+  evidence_level: 'driver_id_exact' | 'person_key_only' | 'other_milestone' | 'none'
+}
+
+export interface CabinetPaymentEvidencePackResponse {
+  status: string
+  count: number
+  total: number
+  filters: Record<string, any>
+  aggregates?: {
+    by_evidence_level: Record<string, { count: number; amount_sum: number }>
+    by_reason_code: Record<string, { count: number; amount_sum: number }>
+    by_evidence_level_and_reason_code: Array<{
+      evidence_level: string
+      reason_code: string
+      count: number
+      amount_sum: number
+    }>
+  }
+  rows: CabinetPaymentEvidencePackRow[]
+}
+
+export async function getCabinetPaymentEvidencePack(params?: {
+  week_start?: string
+  milestone_value?: number
+  payment_status?: 'paid' | 'not_paid'
+  reason_code?: string
+  action_priority?: string
+  limit?: number
+  offset?: number
+}): Promise<CabinetPaymentEvidencePackResponse> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.week_start) searchParams.append('week_start', params.week_start)
+    if (params.milestone_value) searchParams.append('milestone_value', String(params.milestone_value))
+    if (params.payment_status) searchParams.append('payment_status', params.payment_status)
+    if (params.reason_code) searchParams.append('reason_code', params.reason_code)
+    if (params.action_priority) searchParams.append('action_priority', params.action_priority)
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    if (params.offset) searchParams.append('offset', String(params.offset))
+  }
+  const queryString = searchParams.toString()
+  const res = await fetch(`${API_URL}/api/v1/yango/payments/cabinet/evidence-pack${queryString ? `?${queryString}` : ''}`)
+  if (!res.ok) throw new Error('Error obteniendo evidence pack')
+  return res.json()
+}
+
+export interface CabinetDriverRow {
+  driver_id?: string | null
+  person_key?: string | null
+  driver_name_display: string
+  lead_date_min: string
+  lead_date_max: string
+  expected_total: number
+  paid_total: number
+  not_paid_total: number
+  milestones_reached: { m1: boolean; m5: boolean; m25: boolean }
+  milestones_paid: { paid_m1: boolean; paid_m5: boolean; paid_m25: boolean }
+  payment_status_driver: 'paid' | 'partial' | 'not_paid'
+  action_priority_driver: string
+  counts: { claims_total: number; claims_paid: number; claims_not_paid: number }
+}
+
+export interface CabinetDriversResponse {
+  status: string
+  count: number
+  total: number
+  filters: Record<string, any>
+  rows: CabinetDriverRow[]
+}
+
+export async function getCabinetDrivers(params?: {
+  week_start?: string
+  milestone_value?: number
+  payment_status_driver?: 'paid' | 'partial' | 'not_paid'
+  action_priority?: string
+  limit?: number
+  offset?: number
+}): Promise<CabinetDriversResponse> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.week_start) searchParams.append('week_start', params.week_start)
+    if (params.milestone_value) searchParams.append('milestone_value', String(params.milestone_value))
+    if (params.payment_status_driver) searchParams.append('payment_status_driver', params.payment_status_driver)
+    if (params.action_priority) searchParams.append('action_priority', params.action_priority)
+    if (params.limit) searchParams.append('limit', String(params.limit))
+    if (params.offset) searchParams.append('offset', String(params.offset))
+  }
+  const queryString = searchParams.toString()
+  const res = await fetch(`${API_URL}/api/v1/yango/payments/cabinet/drivers${queryString ? `?${queryString}` : ''}`)
+  if (!res.ok) throw new Error('Error obteniendo drivers cabinet')
+  return res.json()
+}
+
+export interface DriverTimelineRow {
+  lead_date: string
+  milestone_value: number
+  expected_amount: number
+  paid_flag: boolean
+  pay_date?: string | null
+  payment_key?: string | null
+  reason_code: string
+  bucket_overdue: string
+  evidence_level?: string | null
+  ledger_driver_id_final?: string | null
+  ledger_person_key_original?: string | null
+  match_rule?: string | null
+  match_confidence?: string | null
+  identity_status?: string | null
+}
+
+export interface DriverTimelineResponse {
+  status: string
+  count: number
+  driver_id?: string | null
+  driver_name_display: string
+  rows: DriverTimelineRow[]
+}
+
+export async function getDriverTimeline(
+  driverId: string,
+  includeEvidence?: boolean
+): Promise<DriverTimelineResponse> {
+  const searchParams = new URLSearchParams()
+  if (includeEvidence) searchParams.append('include_evidence', 'true')
+  const queryString = searchParams.toString()
+  const res = await fetch(`${API_URL}/api/v1/yango/payments/cabinet/driver/${driverId}/timeline${queryString ? `?${queryString}` : ''}`)
+  if (!res.ok) throw new Error('Error obteniendo timeline del driver')
+  return res.json()
+}
+
+// Yango Cabinet Claims For Collection APIs
+export interface YangoCabinetClaimsForCollectionRow {
+  driver_id?: string | null
+  person_key?: string | null
+  driver_name?: string | null
+  milestone_value: number
+  lead_date: string
+  expected_amount: number
+  yango_due_date: string
+  days_overdue_yango: number
+  overdue_bucket_yango: string
+  yango_payment_status: 'PAID' | 'PAID_MISAPPLIED' | 'UNPAID'
+  payment_key?: string | null
+  pay_date?: string | null
+  reason_code: string
+  match_rule?: string | null
+  match_confidence?: string | null
+}
+
+export interface YangoCabinetClaimsForCollectionResponse {
+  rows: YangoCabinetClaimsForCollectionRow[]
+  aggregates: {
+    total_rows: number
+    total_amount: number
+    unpaid_rows: number
+    unpaid_amount: number
+    misapplied_rows: number
+    misapplied_amount: number
+    paid_rows: number
+    paid_amount: number
+  }
+}
+
+export async function getYangoCabinetClaimsForCollection(params?: {
+  payment_status?: string
+  overdue_bucket?: string
+  milestone_value?: number
+  date_from?: string
+  date_to?: string
+  search?: string
+  limit?: number
+}): Promise<YangoCabinetClaimsForCollectionResponse> {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.payment_status) searchParams.append('payment_status', params.payment_status)
+    if (params.overdue_bucket) searchParams.append('overdue_bucket', params.overdue_bucket)
+    if (params.milestone_value) searchParams.append('milestone_value', String(params.milestone_value))
+    if (params.date_from) searchParams.append('date_from', params.date_from)
+    if (params.date_to) searchParams.append('date_to', params.date_to)
+    if (params.search) searchParams.append('search', params.search)
+    if (params.limit) searchParams.append('limit', String(params.limit))
+  }
+  const queryString = searchParams.toString()
+  const res = await fetch(`${API_URL}/api/v1/yango/payments/yango/cabinet/claims${queryString ? `?${queryString}` : ''}`)
+  if (!res.ok) throw new Error('Error obteniendo claims for collection')
+  return res.json()
+}
+
+export function getYangoCabinetClaimsForCollectionCSVUrl(params?: {
+  payment_status?: string
+  overdue_bucket?: string
+  milestone_value?: number
+  date_from?: string
+  date_to?: string
+  search?: string
+  limit?: number
+}): string {
+  const searchParams = new URLSearchParams()
+  if (params) {
+    if (params.payment_status) searchParams.append('payment_status', params.payment_status)
+    if (params.overdue_bucket) searchParams.append('overdue_bucket', params.overdue_bucket)
+    if (params.milestone_value) searchParams.append('milestone_value', String(params.milestone_value))
+    if (params.date_from) searchParams.append('date_from', params.date_from)
+    if (params.date_to) searchParams.append('date_to', params.date_to)
+    if (params.search) searchParams.append('search', params.search)
+    if (params.limit) searchParams.append('limit', String(params.limit))
+  }
+  const queryString = searchParams.toString()
+  return `${API_URL}/api/v1/yango/payments/yango/cabinet/claims.csv${queryString ? `?${queryString}` : ''}`
+}
+
 // Liquidation APIs
 export interface ScoutPreview {
   preview_items: number

@@ -327,3 +327,139 @@ class ClaimsCabinetSummaryResponse(BaseModel):
     count: int
     filters: Dict[str, Any]
     rows: List[ClaimsCabinetSummaryRow]
+
+
+# ============================================================================
+# Evidence Pack Schemas
+# ============================================================================
+
+class CabinetPaymentEvidencePackRow(BaseModel):
+    """Fila de evidence pack para responder a Yango con evidencia clara"""
+    claim_driver_id: Optional[str] = None
+    claim_person_key: Optional[UUID] = None
+    claim_milestone_value: int
+    lead_date: date
+    due_date: date
+    expected_amount: float
+    payment_status: str  # 'paid' | 'not_paid'
+    reason_code: str
+    action_priority: str
+    paid_flag: bool
+    payment_key: Optional[str] = None
+    pay_date: Optional[date] = None
+    ledger_driver_id_final: Optional[str] = None
+    ledger_person_key_original: Optional[UUID] = None
+    ledger_milestone_value: Optional[int] = None
+    match_rule: Optional[str] = None
+    match_confidence: Optional[str] = None
+    identity_status: Optional[str] = None
+    milestone_paid: Optional[int] = None  # Cuando reason_code='payment_found_other_milestone'
+    evidence_level: str  # 'driver_id_exact' | 'person_key_only' | 'other_milestone' | 'none'
+
+    class Config:
+        from_attributes = True
+
+
+class CabinetPaymentEvidencePackResponse(BaseModel):
+    """Respuesta del endpoint de evidence pack"""
+    status: str
+    count: int
+    total: int
+    filters: Dict[str, Any]
+    aggregates: Optional[Dict[str, Any]] = None  # Agregados por evidence_level y reason_code
+    rows: List[CabinetPaymentEvidencePackRow]
+
+
+# ============================================================================
+# Drivers Cabinet Schemas
+# ============================================================================
+
+class CabinetDriverRow(BaseModel):
+    """Fila de driver agrupado desde claims cabinet"""
+    driver_id: Optional[str] = None
+    person_key: Optional[UUID] = None
+    driver_name_display: str
+    lead_date_min: date
+    lead_date_max: date
+    expected_total: float
+    paid_total: float
+    not_paid_total: float
+    milestones_reached: Dict[str, bool]  # m1, m5, m25
+    milestones_paid: Dict[str, bool]  # paid_m1, paid_m5, paid_m25
+    payment_status_driver: str  # 'paid' | 'partial' | 'not_paid'
+    action_priority_driver: str  # 'P0' | 'P1' | 'P2'
+    counts: Dict[str, int]  # claims_total, claims_paid, claims_not_paid
+
+    class Config:
+        from_attributes = True
+
+
+class CabinetDriversResponse(BaseModel):
+    """Respuesta del endpoint de drivers cabinet"""
+    status: str
+    count: int
+    total: int
+    filters: Dict[str, Any]
+    rows: List[CabinetDriverRow]
+
+
+class DriverTimelineRow(BaseModel):
+    """Fila de timeline de claims para un driver"""
+    lead_date: date
+    milestone_value: int
+    expected_amount: float
+    paid_flag: bool
+    pay_date: Optional[date] = None
+    payment_key: Optional[str] = None
+    reason_code: str
+    bucket_overdue: str
+    evidence_level: Optional[str] = None
+    ledger_driver_id_final: Optional[str] = None
+    ledger_person_key_original: Optional[UUID] = None
+    match_rule: Optional[str] = None
+    match_confidence: Optional[str] = None
+    identity_status: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DriverTimelineResponse(BaseModel):
+    """Respuesta del endpoint de timeline de driver"""
+    status: str
+    count: int
+    driver_id: Optional[str] = None
+    driver_name_display: str
+    rows: List[DriverTimelineRow]
+
+
+# ============================================================================
+# Yango Cabinet Claims For Collection Schemas
+# ============================================================================
+
+class YangoCabinetClaimsForCollectionRow(BaseModel):
+    """Fila de claim desde ops.v_yango_cabinet_claims_for_collection"""
+    driver_id: Optional[str] = None
+    person_key: Optional[UUID] = None
+    driver_name: Optional[str] = None
+    milestone_value: int
+    lead_date: date
+    expected_amount: float
+    yango_due_date: date
+    days_overdue_yango: int
+    overdue_bucket_yango: str
+    yango_payment_status: str  # 'PAID' | 'PAID_MISAPPLIED' | 'UNPAID'
+    payment_key: Optional[str] = None
+    pay_date: Optional[date] = None
+    reason_code: str
+    match_rule: Optional[str] = None
+    match_confidence: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class YangoCabinetClaimsForCollectionResponse(BaseModel):
+    """Respuesta del endpoint de claims for collection"""
+    rows: List[YangoCabinetClaimsForCollectionRow]
+    aggregates: Dict[str, Any]

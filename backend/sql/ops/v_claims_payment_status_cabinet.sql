@@ -1,13 +1,16 @@
 -- ============================================================================
 -- Vista: ops.v_claims_payment_status_cabinet
 -- ============================================================================
--- OBJETIVO:
--- Responder sin ambigüedad: "Para cada conductor que entró por cabinet y 
--- alcanzó un milestone, ¿nos pagaron o no?"
---
+-- PROPÓSITO DE NEGOCIO (5 líneas):
+-- Vista orientada a cobranza que responde: "Para cada conductor que entró por 
+-- cabinet y alcanzó un milestone, ¿nos pagaron o no, cuándo vence, qué tan vencido 
+-- está, y por qué no pagaron si no pagaron?". Proporciona aging (vencimiento), 
+-- reason_code (diagnóstico de no pago) y action_priority (prioridad operativa) 
+-- para soportar gestión de cobranza eficiente.
+-- ============================================================================
 -- REGLAS DE NEGOCIO:
 -- 1. Universo: Solo drivers que entraron por cabinet. Solo milestones 1, 5, 25.
--- 2. Un claim = (driver_id + milestone_value).
+-- 2. Un claim = (driver_id + milestone_value). GARANTIZADO: 1 fila por claim (deduplicación).
 -- 3. Un claim se considera PAGADO si existe AL MENOS UN pago en 
 --    ops.v_yango_payments_ledger_latest_enriched con:
 --    - is_paid = true
@@ -17,25 +20,54 @@
 --    - SIN filtrar por ventana de fecha del pago
 -- 4. Si no existe pago → NO PAGADO.
 -- 5. NO calcular montos en frontend. Todo sale de SQL.
---
--- IMPLEMENTACIÓN:
--- - Usar LEFT JOIN LATERAL para buscar el ÚLTIMO pago válido por 
---   driver_id + milestone_value.
--- - Priorizar simplicidad y trazabilidad.
--- - NO usar filtros de fecha sobre el ledger.
+-- 6. expected_amount se calcula según reglas: milestone 1=25, 5=35, 25=100.
+-- ============================================================================
+-- CORRECCIÓN DE BUG (2025-01-XX):
+-- BUG: La vista permitía múltiples filas por (driver_id, milestone_value) desde
+-- v_yango_receivable_payable_detail, causando expected_total incorrectos (ej: S/195 en vez de S/160).
+-- FIX: Agregada deduplicación con DISTINCT ON (driver_id, milestone_value) quedándose con
+-- la fila más reciente por lead_date. También se aplica regla de negocio para expected_amount.
 -- ============================================================================
 
 CREATE OR REPLACE VIEW ops.v_claims_payment_status_cabinet AS
-WITH base_claims AS (
+WITH base_claims_raw AS (
     SELECT 
         driver_id,
         person_key,
         lead_date,
         milestone_value,
-        amount AS expected_amount
+        amount AS expected_amount_raw
     FROM ops.v_yango_receivable_payable_detail
     WHERE lead_origin = 'cabinet'
         AND milestone_value IN (1, 5, 25)
+),
+base_claims_dedup AS (
+    -- Deduplicación: 1 fila por (driver_id + milestone_value), quedarse con lead_date más reciente
+    SELECT DISTINCT ON (driver_id, milestone_value)
+        driver_id,
+        person_key,
+        lead_date,
+        milestone_value,
+        expected_amount_raw,
+        -- Aplicar reglas de negocio para expected_amount (milestone 1=25, 5=35, 25=100)
+        -- CAST explícito a numeric(12,2) para mantener compatibilidad con vista existente
+        CASE 
+            WHEN milestone_value = 1 THEN 25::numeric(12,2)
+            WHEN milestone_value = 5 THEN 35::numeric(12,2)
+            WHEN milestone_value = 25 THEN 100::numeric(12,2)
+            ELSE expected_amount_raw
+        END AS expected_amount
+    FROM base_claims_raw
+    ORDER BY driver_id, milestone_value, lead_date DESC
+),
+base_claims AS (
+    SELECT 
+        driver_id,
+        person_key,
+        lead_date,
+        milestone_value,
+        expected_amount
+    FROM base_claims_dedup
 )
 SELECT 
     c.driver_id,
@@ -44,30 +76,76 @@ SELECT
     c.lead_date,
     c.lead_date + INTERVAL '14 days' AS due_date,
     c.expected_amount,
-    -- paid_flag: boolean indicando si existe al menos un pago
-    (p.payment_key IS NOT NULL) AS paid_flag,
-    -- paid_date: última fecha de pago si existe
-    p.pay_date AS paid_date,
-    -- payment_key: si existe
-    p.payment_key,
-    -- payment_identity_status: si existe
-    p.identity_status AS payment_identity_status,
-    -- payment_match_rule: si existe
-    p.match_rule AS payment_match_rule,
-    -- payment_match_confidence: si existe
-    p.match_confidence AS payment_match_confidence,
-    -- payment_status: ENUM TEXT
+    
+    -- Aging: cálculo de días vencidos y bucket
+    GREATEST(0, CURRENT_DATE - (c.lead_date + INTERVAL '14 days')::date) AS days_overdue,
     CASE 
-        WHEN p.payment_key IS NOT NULL THEN 'paid'
+        WHEN (c.lead_date + INTERVAL '14 days')::date >= CURRENT_DATE THEN '0_not_due'
+        WHEN (CURRENT_DATE - (c.lead_date + INTERVAL '14 days')::date) BETWEEN 1 AND 7 THEN '1_1_7'
+        WHEN (CURRENT_DATE - (c.lead_date + INTERVAL '14 days')::date) BETWEEN 8 AND 14 THEN '2_8_14'
+        WHEN (CURRENT_DATE - (c.lead_date + INTERVAL '14 days')::date) BETWEEN 15 AND 30 THEN '3_15_30'
+        WHEN (CURRENT_DATE - (c.lead_date + INTERVAL '14 days')::date) BETWEEN 31 AND 60 THEN '4_31_60'
+        ELSE '5_60_plus'
+    END AS bucket_overdue,
+    
+    -- Pago exacto: driver_id + milestone matching (usando LATERAL JOIN)
+    (p_exact.payment_key IS NOT NULL) AS paid_flag,
+    p_exact.pay_date AS paid_date,
+    p_exact.payment_key,
+    p_exact.identity_status AS payment_identity_status,
+    p_exact.match_rule AS payment_match_rule,
+    p_exact.match_confidence AS payment_match_confidence,
+    
+    -- payment_status: ENUM TEXT (mantener compatibilidad)
+    CASE 
+        WHEN p_exact.payment_key IS NOT NULL THEN 'paid'
         ELSE 'not_paid'
     END AS payment_status,
-    -- payment_reason: TEXT
+    
+    -- payment_reason: TEXT (mantener compatibilidad, pero será reemplazado por reason_code)
     CASE 
-        WHEN p.payment_key IS NOT NULL THEN 'payment_found'
+        WHEN p_exact.payment_key IS NOT NULL THEN 'payment_found'
         ELSE 'no_payment_found'
-    END AS payment_reason
+    END AS payment_reason,
+    
+    -- reason_code: diagnóstico detallado con prioridad
+    CASE 
+        WHEN p_exact.payment_key IS NOT NULL THEN 'paid'
+        WHEN c.driver_id IS NULL THEN 'missing_driver_id'
+        WHEN c.milestone_value IS NULL THEN 'missing_milestone'
+        WHEN EXISTS (
+            -- ¿Existe pago para este driver pero otro milestone?
+            SELECT 1
+            FROM ops.v_yango_payments_ledger_latest_enriched p
+            WHERE p.driver_id_final = c.driver_id
+                AND p.milestone_value != c.milestone_value
+                AND p.is_paid = true
+        ) THEN 'payment_found_other_milestone'
+        WHEN EXISTS (
+            -- ¿Existe pago para este milestone pero solo por person_key?
+            SELECT 1
+            FROM ops.v_yango_payments_ledger_latest_enriched p
+            WHERE p.milestone_value = c.milestone_value
+                AND p.is_paid = true
+                AND p.person_key_final = c.person_key
+                AND (p.driver_id_final IS NULL OR p.driver_id_final != c.driver_id)
+                AND c.person_key IS NOT NULL
+        ) THEN 'payment_found_person_key_only'
+        ELSE 'no_payment_found'
+    END AS reason_code,
+    
+    -- action_priority: prioridad operativa para cobranza
+    CASE 
+        WHEN p_exact.payment_key IS NOT NULL THEN 'P0_confirmed_paid'
+        WHEN (c.lead_date + INTERVAL '14 days')::date >= CURRENT_DATE THEN 'P2_not_due'
+        WHEN (CURRENT_DATE - (c.lead_date + INTERVAL '14 days')::date) BETWEEN 8 AND 14 THEN 'P1_watch'
+        WHEN (CURRENT_DATE - (c.lead_date + INTERVAL '14 days')::date) >= 15 THEN 'P0_collect_now'
+        ELSE 'P2_not_due'
+    END AS action_priority
+
 FROM base_claims c
 LEFT JOIN LATERAL (
+    -- Pago exacto: driver_id + milestone matching
     SELECT 
         payment_key,
         pay_date,
@@ -80,10 +158,13 @@ LEFT JOIN LATERAL (
         AND is_paid = true
     ORDER BY pay_date DESC, payment_key DESC
     LIMIT 1
-) p ON true;
+) p_exact ON true;
 
+-- ============================================================================
+-- Comentarios de la Vista
+-- ============================================================================
 COMMENT ON VIEW ops.v_claims_payment_status_cabinet IS 
-'Vista FINAL, SIMPLE y ORIENTADA A NEGOCIO que responde: "Para cada conductor que entró por cabinet y alcanzó un milestone, ¿nos pagaron o no?". Un claim = (driver_id + milestone_value). Un claim se considera PAGADO si existe AL MENOS UN pago en ops.v_yango_payments_ledger_latest_enriched con is_paid=true que matchee driver_id_final=driver_id y milestone_value=milestone_value, SIN filtrar por identity_status ni por ventana de fecha. Devuelve exactamente 1 fila por claim (driver_id + milestone).';
+'Vista orientada a cobranza que responde: "Para cada conductor que entró por cabinet y alcanzó un milestone, ¿nos pagaron o no, cuándo vence, qué tan vencido está, y por qué no pagaron si no pagaron?". Proporciona aging (vencimiento), reason_code (diagnóstico de no pago) y action_priority (prioridad operativa) para soportar gestión de cobranza eficiente. Devuelve exactamente 1 fila por claim (driver_id + milestone).';
 
 COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.driver_id IS 
 'ID del conductor que entró por cabinet.';
@@ -100,11 +181,17 @@ COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.lead_date IS
 COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.due_date IS 
 'Fecha de vencimiento del claim (lead_date + 14 días).';
 
+COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.days_overdue IS 
+'Número de días vencidos. 0 si el claim no está vencido.';
+
+COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.bucket_overdue IS 
+'Bucket de aging: 0_not_due (no vencido), 1_1_7 (1-7 días), 2_8_14 (8-14 días), 3_15_30 (15-30 días), 4_31_60 (31-60 días), 5_60_plus (más de 60 días).';
+
 COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.expected_amount IS 
-'Monto esperado del claim.';
+'Monto esperado del claim según reglas de negocio: milestone 1=25, 5=35, 25=100.';
 
 COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.paid_flag IS 
-'Boolean indicando si el claim tiene al menos un pago asociado (is_paid=true).';
+'Boolean indicando si el claim tiene al menos un pago asociado (is_paid=true, driver_id_final=driver_id, milestone_value=milestone_value).';
 
 COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.paid_date IS 
 'Última fecha de pago si existe, NULL si no hay pago.';
@@ -125,6 +212,10 @@ COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.payment_status IS
 'Estado de pago: ''paid'' si existe al menos un pago, ''not_paid'' si no existe pago.';
 
 COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.payment_reason IS 
-'Razón del estado de pago: ''payment_found'' si existe pago, ''no_payment_found'' si no existe pago.';
+'Razón del estado de pago (compatibilidad con versión anterior): ''payment_found'' si existe pago, ''no_payment_found'' si no existe pago.';
 
+COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.reason_code IS 
+'Código de razón detallado con prioridad: ''paid'' (pagado), ''missing_driver_id'' (sin driver_id), ''missing_milestone'' (sin milestone), ''payment_found_other_milestone'' (existe pago para otro milestone), ''payment_found_person_key_only'' (existe pago solo por person_key), ''no_payment_found'' (no existe pago).';
 
+COMMENT ON COLUMN ops.v_claims_payment_status_cabinet.action_priority IS 
+'Prioridad operativa para cobranza: ''P0_confirmed_paid'' (pagado confirmado), ''P0_collect_now'' (cobrar ahora: 15-60+ días vencido), ''P1_watch'' (vigilar: 8-14 días vencido), ''P2_not_due'' (no vencido).';
