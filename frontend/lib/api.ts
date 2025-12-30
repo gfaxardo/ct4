@@ -963,6 +963,9 @@ export async function getCabinetDrivers(params?: {
   limit?: number
   offset?: number
 }): Promise<CabinetDriversResponse> {
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/1f13ffc8-f707-43ff-9218-e0872113c413',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getCabinetDrivers:entry',message:'getCabinetDrivers called',data:{params,apiUrl:API_URL},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H3,H5'})}).catch(()=>{});
+  // #endregion
   const searchParams = new URLSearchParams()
   if (params) {
     if (params.week_start) searchParams.append('week_start', params.week_start)
@@ -973,9 +976,28 @@ export async function getCabinetDrivers(params?: {
     if (params.offset) searchParams.append('offset', String(params.offset))
   }
   const queryString = searchParams.toString()
-  const res = await fetch(`${API_URL}/api/v1/yango/payments/cabinet/drivers${queryString ? `?${queryString}` : ''}`)
-  if (!res.ok) throw new Error('Error obteniendo drivers cabinet')
-  return res.json()
+  const url = `${API_URL}/api/v1/yango/payments/cabinet/drivers${queryString ? `?${queryString}` : ''}`
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/1f13ffc8-f707-43ff-9218-e0872113c413',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getCabinetDrivers:before_fetch',message:'About to fetch',data:{url,queryString},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H3,H5'})}).catch(()=>{});
+  // #endregion
+  const fetchStartTime = Date.now()
+  const res = await fetch(url)
+  const fetchEndTime = Date.now()
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/1f13ffc8-f707-43ff-9218-e0872113c413',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getCabinetDrivers:after_fetch',message:'Fetch completed',data:{status:res.status,statusText:res.statusText,ok:res.ok,fetchDuration:fetchEndTime-fetchStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H2,H3,H5'})}).catch(()=>{});
+  // #endregion
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => 'Could not read error response')
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/1f13ffc8-f707-43ff-9218-e0872113c413',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getCabinetDrivers:error',message:'Response not ok',data:{status:res.status,statusText:res.statusText,errorText:errorText.substring(0,500)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H1,H2,H4'})}).catch(()=>{});
+    // #endregion
+    throw new Error('Error obteniendo drivers cabinet')
+  }
+  const jsonData = await res.json()
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/1f13ffc8-f707-43ff-9218-e0872113c413',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'api.ts:getCabinetDrivers:success',message:'Response parsed successfully',data:{responseStatus:jsonData?.status,rowCount:jsonData?.rows?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'H2'})}).catch(()=>{});
+  // #endregion
+  return jsonData
 }
 
 export interface DriverTimelineRow {
@@ -1146,6 +1168,43 @@ export async function scoutLiquidationMarkPaid(
     const error = await res.json().catch(() => ({ detail: 'Error marcando items como pagados' }))
     throw new Error(error.detail || 'Error marcando items como pagados')
   }
+  return res.json()
+}
+
+// Data Health APIs
+export interface DataFreshnessStatus {
+  source_name: string
+  max_business_date?: string | null
+  business_days_lag?: number | null
+  max_ingestion_ts?: string | null
+  ingestion_lag_interval?: string | null
+  rows_business_yesterday: number
+  rows_business_today: number
+  rows_ingested_yesterday: number
+  rows_ingested_today: number
+}
+
+export interface DataHealthStatus extends DataFreshnessStatus {
+  source_type?: 'activity' | 'ledger' | 'upstream' | 'ct_ingest' | 'master'
+  health_status: 'GREEN_OK' | 'YELLOW_INGESTION_1D' | 'YELLOW_BUSINESS_LAG' | 'RED_INGESTION_STALE' | 'RED_NO_INGESTION_2D' | 'RED_NO_DATA'
+}
+
+export interface DataIngestionDaily {
+  source_name: string
+  metric_type: 'business' | 'ingestion'
+  metric_date: string
+  rows_count: number
+}
+
+export interface DataHealthResponse {
+  freshness_status: DataFreshnessStatus[]
+  health_status: DataHealthStatus[]
+  ingestion_daily: DataIngestionDaily[]
+}
+
+export async function getDataHealth(days: number = 30): Promise<DataHealthResponse> {
+  const res = await fetch(`${API_URL}/api/v1/ops/data-health?days=${days}`)
+  if (!res.ok) throw new Error('Error obteniendo data health')
   return res.json()
 }
 
