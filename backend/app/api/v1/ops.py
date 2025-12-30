@@ -1,9 +1,16 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List
 from app.db import get_db
 from app.models.ops import IngestionRun, Alert
 from app.schemas.ingestion import IngestionRun as IngestionRunSchema
+from app.schemas.data_health import (
+    DataHealthResponse,
+    DataFreshnessStatus,
+    DataHealthStatus,
+    DataIngestionDaily
+)
 from app.services.alerts import AlertService
 
 router = APIRouter()
@@ -76,4 +83,122 @@ def acknowledge_alert(
     if not alert:
         raise HTTPException(status_code=404, detail="Alerta no encontrada")
     return {"message": "Alerta reconocida exitosamente", "alert_id": alert.id}
+
+
+@router.get("/data-health", response_model=DataHealthResponse)
+def get_data_health(
+    db: Session = Depends(get_db),
+    days: int = Query(30, ge=1, le=90, description="Días de historia para ingestion_daily")
+):
+    """
+    Obtiene el estado de salud de las ingestas de datos.
+    
+    Retorna:
+    - freshness_status: Estado de frescura por fuente
+    - health_status: Estado de salud por fuente (con semáforo)
+    - ingestion_daily: Métricas diarias de ingesta (últimos N días)
+    """
+    try:
+        # Consultar freshness_status
+        freshness_result = db.execute(text("""
+            SELECT 
+                source_name,
+                max_business_date,
+                business_days_lag,
+                max_ingestion_ts,
+                ingestion_lag_interval::text AS ingestion_lag_interval,
+                rows_business_yesterday,
+                rows_business_today,
+                rows_ingested_yesterday,
+                rows_ingested_today
+            FROM ops.v_data_freshness_status
+            ORDER BY source_name
+        """))
+        
+        freshness_status = [
+            DataFreshnessStatus(
+                source_name=row.source_name,
+                max_business_date=row.max_business_date,
+                business_days_lag=row.business_days_lag,
+                max_ingestion_ts=row.max_ingestion_ts,
+                ingestion_lag_interval=row.ingestion_lag_interval,
+                rows_business_yesterday=row.rows_business_yesterday or 0,
+                rows_business_today=row.rows_business_today or 0,
+                rows_ingested_yesterday=row.rows_ingested_yesterday or 0,
+                rows_ingested_today=row.rows_ingested_today or 0
+            )
+            for row in freshness_result
+        ]
+        
+        # Consultar health_status (incluye source_type)
+        health_result = db.execute(text("""
+            SELECT 
+                source_name,
+                source_type,
+                max_business_date,
+                business_days_lag,
+                max_ingestion_ts,
+                ingestion_lag_interval::text AS ingestion_lag_interval,
+                rows_business_yesterday,
+                rows_business_today,
+                rows_ingested_yesterday,
+                rows_ingested_today,
+                health_status
+            FROM ops.v_data_health_status
+            ORDER BY source_type, source_name
+        """))
+        
+        health_status = [
+            DataHealthStatus(
+                source_name=row.source_name,
+                max_business_date=row.max_business_date,
+                business_days_lag=row.business_days_lag,
+                max_ingestion_ts=row.max_ingestion_ts,
+                ingestion_lag_interval=row.ingestion_lag_interval,
+                rows_business_yesterday=row.rows_business_yesterday or 0,
+                rows_business_today=row.rows_business_today or 0,
+                rows_ingested_yesterday=row.rows_ingested_yesterday or 0,
+                rows_ingested_today=row.rows_ingested_today or 0,
+                source_type=row.source_type,
+                health_status=row.health_status
+            )
+            for row in health_result
+        ]
+        
+        # Consultar ingestion_daily (últimos N días)
+        # Usar make_interval para construir el intervalo correctamente
+        ingestion_result = db.execute(text("""
+            SELECT 
+                source_name,
+                metric_type,
+                metric_date,
+                rows_count
+            FROM ops.v_data_ingestion_daily
+            WHERE metric_date >= CURRENT_DATE - make_interval(days => :days)
+            ORDER BY source_name, metric_type, metric_date DESC
+        """), {"days": days})
+        
+        ingestion_daily = [
+            DataIngestionDaily(
+                source_name=row.source_name,
+                metric_type=row.metric_type,
+                metric_date=row.metric_date,
+                rows_count=row.rows_count or 0
+            )
+            for row in ingestion_result
+        ]
+        
+        return DataHealthResponse(
+            freshness_status=freshness_status,
+            health_status=health_status,
+            ingestion_daily=ingestion_daily
+        )
+        
+    except Exception as e:
+        # Rollback si hay error, pero no abortar transacción
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error consultando data health: {str(e)}"
+        )
 
