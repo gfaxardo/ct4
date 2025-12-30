@@ -1147,8 +1147,35 @@ def get_cabinet_drivers(
 ):
     """
     Obtiene drivers agrupados desde claims cabinet (driver-first view).
+    Usa ops.v_claims_cabinet_driver_rollup derivada de ops.v_yango_cabinet_claims_for_collection.
     Agrupa por driver_id (o person_key si driver_id es null).
     """
+    # #region agent log
+    try:
+        import json
+        from datetime import datetime
+        log_path = r'c:\Users\Pc\Documents\Cursor Proyectos\ct4\.cursor\debug.log'
+        with open(log_path, 'a', encoding='utf-8') as f:
+            log_entry = {
+                'location': 'yango_payments.py:get_cabinet_drivers:entry',
+                'message': 'Endpoint called',
+                'data': {
+                    'week_start': str(week_start) if week_start else None,
+                    'milestone_value': milestone_value,
+                    'payment_status_driver': payment_status_driver,
+                    'action_priority': action_priority,
+                    'skip': skip,
+                    'limit': limit
+                },
+                'timestamp': int(datetime.now().timestamp() * 1000),
+                'sessionId': 'debug-session',
+                'runId': 'initial',
+                'hypothesisId': 'H1,H3,H4'
+            }
+            f.write(json.dumps(log_entry) + '\n')
+    except: pass
+    # #endregion
+    # Construir WHERE conditions para filtrar en la vista claim-level antes de agregar
     where_conditions = []
     params = {}
     
@@ -1160,115 +1187,110 @@ def get_cabinet_drivers(
         where_conditions.append("milestone_value = :milestone_value")
         params["milestone_value"] = milestone_value
     
-    where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
-    
-    # Query principal: agrupar por driver_id/person_key
-    sql = f"""
-        WITH driver_claims AS (
+    # Si hay filtros a nivel de claim, necesitamos filtrar primero en la vista claim-level
+    if where_conditions:
+        where_clause = "WHERE " + " AND ".join(where_conditions)
+        # Usar subquery filtrada de la vista claim-level, luego agregar
+        sql = f"""
+            WITH filtered_claims AS (
+                SELECT *
+                FROM ops.v_yango_cabinet_claims_for_collection
+                {where_clause}
+            ),
+            driver_period AS (
+                SELECT 
+                    COALESCE(driver_id, 'person_' || person_key::text) AS driver_key,
+                    driver_id,
+                    person_key,
+                    driver_name,
+                    MIN(lead_date) AS lead_date_min,
+                    MAX(lead_date) AS lead_date_max,
+                    SUM(expected_amount) AS expected_total_yango,
+                    SUM(CASE WHEN yango_payment_status = 'PAID' THEN expected_amount ELSE 0 END) AS paid_total_yango,
+                    SUM(CASE WHEN yango_payment_status = 'UNPAID' THEN expected_amount ELSE 0 END) AS unpaid_total_yango,
+                    SUM(CASE WHEN yango_payment_status = 'PAID_MISAPPLIED' THEN expected_amount ELSE 0 END) AS misapplied_total_yango,
+                    COUNT(*) AS claims_total,
+                    SUM(CASE WHEN yango_payment_status = 'PAID' THEN 1 ELSE 0 END) AS claims_paid,
+                    SUM(CASE WHEN yango_payment_status = 'UNPAID' THEN 1 ELSE 0 END) AS claims_unpaid,
+                    SUM(CASE WHEN yango_payment_status = 'PAID_MISAPPLIED' THEN 1 ELSE 0 END) AS claims_misapplied,
+                    BOOL_OR(milestone_value = 1) AS milestone_1_hit,
+                    BOOL_OR(milestone_value = 5) AS milestone_5_hit,
+                    BOOL_OR(milestone_value = 25) AS milestone_25_hit,
+                    BOOL_OR(milestone_value = 1 AND yango_payment_status = 'PAID') AS milestone_1_paid,
+                    BOOL_OR(milestone_value = 5 AND yango_payment_status = 'PAID') AS milestone_5_paid,
+                    BOOL_OR(milestone_value = 25 AND yango_payment_status = 'PAID') AS milestone_25_paid,
+                    BOOL_OR(yango_payment_status = 'UNPAID' AND overdue_bucket_yango IN ('3_15_30', '4_30_plus')) AS has_p0_priority,
+                    BOOL_OR(yango_payment_status = 'PAID_MISAPPLIED') AS has_p1_priority
+                FROM filtered_claims
+                GROUP BY driver_key, driver_id, person_key, driver_name
+            )
             SELECT 
-                COALESCE(driver_id, 'person_' || person_key::text) AS driver_key,
                 driver_id,
                 person_key,
-                lead_date,
-                milestone_value,
-                expected_amount,
-                paid_flag,
-                bucket_overdue,
-                reason_code,
-                action_priority
-            FROM ops.v_claims_payment_status_cabinet
-            {where_clause}
-        ),
-        driver_agg AS (
+                COALESCE(driver_name, 'Sin Nombre') AS driver_name_display,
+                lead_date_min,
+                lead_date_max,
+                expected_total_yango AS expected_total,
+                paid_total_yango AS paid_total,
+                (unpaid_total_yango + misapplied_total_yango) AS not_paid_total,
+                jsonb_build_object(
+                    'm1', milestone_1_hit,
+                    'm5', milestone_5_hit,
+                    'm25', milestone_25_hit
+                ) AS milestones_reached,
+                jsonb_build_object(
+                    'paid_m1', milestone_1_paid,
+                    'paid_m5', milestone_5_paid,
+                    'paid_m25', milestone_25_paid
+                ) AS milestones_paid,
+                CASE 
+                    WHEN claims_unpaid = 0 AND claims_misapplied = 0 THEN 'paid'
+                    WHEN claims_paid > 0 OR claims_misapplied > 0 THEN 'partial'
+                    ELSE 'not_paid'
+                END AS payment_status_driver,
+                CASE 
+                    WHEN has_p0_priority THEN 'P0'
+                    WHEN has_p1_priority THEN 'P1'
+                    ELSE 'P2'
+                END AS action_priority_driver,
+                jsonb_build_object(
+                    'claims_total', claims_total,
+                    'claims_paid', claims_paid,
+                    'claims_not_paid', claims_unpaid + claims_misapplied
+                ) AS counts
+            FROM driver_period
+        """
+    else:
+        # Sin filtros a nivel de claim, usar directamente la vista rollup
+        sql = """
             SELECT 
-                driver_key,
-                MAX(driver_id) AS driver_id,
-                (array_agg(DISTINCT person_key) FILTER (WHERE person_key IS NOT NULL))[1] AS person_key,
-                MIN(lead_date) AS lead_date_min,
-                MAX(lead_date) AS lead_date_max,
-                SUM(expected_amount) AS expected_total,
-                SUM(CASE WHEN paid_flag THEN expected_amount ELSE 0 END) AS paid_total,
-                SUM(CASE WHEN NOT paid_flag THEN expected_amount ELSE 0 END) AS not_paid_total,
-                COUNT(*) AS claims_total,
-                SUM(CASE WHEN paid_flag THEN 1 ELSE 0 END) AS claims_paid,
-                SUM(CASE WHEN NOT paid_flag THEN 1 ELSE 0 END) AS claims_not_paid,
-                BOOL_OR(milestone_value = 1) AS milestone_1_reached,
-                BOOL_OR(milestone_value = 5) AS milestone_5_reached,
-                BOOL_OR(milestone_value = 25) AS milestone_25_reached,
-                BOOL_OR(milestone_value = 1 AND paid_flag) AS milestone_1_paid,
-                BOOL_OR(milestone_value = 5 AND paid_flag) AS milestone_5_paid,
-                BOOL_OR(milestone_value = 25 AND paid_flag) AS milestone_25_paid,
-                BOOL_OR(bucket_overdue IN ('3_15_30', '4_31_60', '5_60_plus') AND NOT paid_flag) AS has_p0_priority,
-                BOOL_OR(reason_code = 'payment_found_other_milestone') AS has_p1_priority
-            FROM driver_claims
-            GROUP BY driver_key
-        ),
-        driver_names AS (
-            SELECT DISTINCT ON (da.driver_id)
-                da.driver_id,
-                COALESCE(
-                    -- Prioridad 1: nombre del ledger
-                    (SELECT l.raw_driver_name 
-                     FROM ops.v_yango_payments_ledger_latest_enriched l 
-                     WHERE l.driver_id_final = da.driver_id 
-                       AND l.raw_driver_name IS NOT NULL 
-                     LIMIT 1),
-                    -- Prioridad 2: nombre de tabla drivers
-                    (SELECT d.full_name 
-                     FROM public.drivers d 
-                     WHERE d.driver_id = da.driver_id 
-                       AND d.full_name IS NOT NULL 
-                     LIMIT 1),
-                    -- Fallback
-                    'Sin Nombre (' || LEFT(da.driver_id, 8) || '...)'
-                ) AS driver_name_display
-            FROM driver_agg da
-            WHERE da.driver_id IS NOT NULL
-        )
-        SELECT 
-            da.driver_id,
-            da.person_key,
-            COALESCE(dn.driver_name_display, 'Sin Nombre') AS driver_name_display,
-            da.lead_date_min,
-            da.lead_date_max,
-            da.expected_total,
-            da.paid_total,
-            da.not_paid_total,
-            jsonb_build_object(
-                'm1', da.milestone_1_reached,
-                'm5', da.milestone_5_reached,
-                'm25', da.milestone_25_reached
-            ) AS milestones_reached,
-            jsonb_build_object(
-                'paid_m1', da.milestone_1_paid,
-                'paid_m5', da.milestone_5_paid,
-                'paid_m25', da.milestone_25_paid
-            ) AS milestones_paid,
-            CASE 
-                WHEN da.claims_not_paid = 0 THEN 'paid'
-                WHEN da.claims_paid > 0 THEN 'partial'
-                ELSE 'not_paid'
-            END AS payment_status_driver,
-            CASE 
-                WHEN da.has_p0_priority THEN 'P0'
-                WHEN da.has_p1_priority THEN 'P1'
-                ELSE 'P2'
-            END AS action_priority_driver,
-            jsonb_build_object(
-                'claims_total', da.claims_total,
-                'claims_paid', da.claims_paid,
-                'claims_not_paid', da.claims_not_paid
-            ) AS counts
-        FROM driver_agg da
-        LEFT JOIN driver_names dn ON dn.driver_id = da.driver_id
-        ORDER BY da.lead_date_min DESC
-        LIMIT :limit OFFSET :offset
-    """
+                driver_id,
+                person_key,
+                COALESCE(driver_name, 'Sin Nombre') AS driver_name_display,
+                lead_date_min,
+                lead_date_max,
+                expected_total_yango AS expected_total,
+                paid_total_yango AS paid_total,
+                (unpaid_total_yango + misapplied_total_yango) AS not_paid_total,
+                milestones_hit AS milestones_reached,
+                milestones_paid,
+                status AS payment_status_driver,
+                priority AS action_priority_driver,
+                jsonb_build_object(
+                    'claims_total', claims_total,
+                    'claims_paid', claims_paid,
+                    'claims_not_paid', claims_unpaid + claims_misapplied
+                ) AS counts
+            FROM ops.v_claims_cabinet_driver_rollup
+        """
+    
+    # Aplicar ORDER BY, LIMIT y OFFSET
+    sql = sql + " ORDER BY lead_date_min DESC LIMIT :limit OFFSET :offset"
     
     params["limit"] = limit
     params["offset"] = skip
     
-    # Filtros adicionales después de la agregación
+    # Filtros adicionales después de la agregación (payment_status_driver, action_priority)
     filter_conditions = []
     if payment_status_driver:
         filter_conditions.append("payment_status_driver = :payment_status_driver")
@@ -1282,91 +1304,52 @@ def get_cabinet_drivers(
         sql = f"SELECT * FROM ({sql}) sub WHERE {' AND '.join(filter_conditions)}"
     
     # Query para obtener total (aplicar mismos filtros)
-    count_base_sql = f"""
-        WITH driver_claims AS (
+    # Si hay filtros a nivel de claim, usar la misma lógica
+    if where_conditions:
+        count_base_sql = f"""
+            WITH filtered_claims AS (
+                SELECT *
+                FROM ops.v_yango_cabinet_claims_for_collection
+                {where_clause}
+            ),
+            driver_period AS (
+                SELECT 
+                    COALESCE(driver_id, 'person_' || person_key::text) AS driver_key,
+                    SUM(CASE WHEN yango_payment_status = 'UNPAID' THEN 1 ELSE 0 END) AS claims_unpaid,
+                    SUM(CASE WHEN yango_payment_status = 'PAID_MISAPPLIED' THEN 1 ELSE 0 END) AS claims_misapplied,
+                    SUM(CASE WHEN yango_payment_status = 'PAID' THEN 1 ELSE 0 END) AS claims_paid,
+                    BOOL_OR(yango_payment_status = 'UNPAID' AND overdue_bucket_yango IN ('3_15_30', '4_30_plus')) AS has_p0_priority,
+                    BOOL_OR(yango_payment_status = 'PAID_MISAPPLIED') AS has_p1_priority,
+                    CASE 
+                        WHEN SUM(CASE WHEN yango_payment_status = 'UNPAID' THEN 1 ELSE 0 END) = 0 
+                             AND SUM(CASE WHEN yango_payment_status = 'PAID_MISAPPLIED' THEN 1 ELSE 0 END) = 0 THEN 'paid'
+                        WHEN SUM(CASE WHEN yango_payment_status = 'PAID' THEN 1 ELSE 0 END) > 0 
+                             OR SUM(CASE WHEN yango_payment_status = 'PAID_MISAPPLIED' THEN 1 ELSE 0 END) > 0 THEN 'partial'
+                        ELSE 'not_paid'
+                    END AS payment_status_driver,
+                    CASE 
+                        WHEN BOOL_OR(yango_payment_status = 'UNPAID' AND overdue_bucket_yango IN ('3_15_30', '4_30_plus')) THEN 'P0'
+                        WHEN BOOL_OR(yango_payment_status = 'PAID_MISAPPLIED') THEN 'P1'
+                        ELSE 'P2'
+                    END AS action_priority_driver
+                FROM filtered_claims
+                GROUP BY driver_key
+            )
+            SELECT * FROM driver_period
+        """
+    else:
+        count_base_sql = """
             SELECT 
-                COALESCE(driver_id, 'person_' || person_key::text) AS driver_key,
-                driver_id,
-                milestone_value,
-                expected_amount,
-                paid_flag,
-                bucket_overdue,
-                reason_code
-            FROM ops.v_claims_payment_status_cabinet
-            {where_clause}
-        ),
-        driver_agg AS (
-            SELECT 
-                driver_key,
-                COUNT(*) AS claims_total,
-                SUM(CASE WHEN paid_flag THEN 1 ELSE 0 END) AS claims_paid,
-                SUM(CASE WHEN NOT paid_flag THEN 1 ELSE 0 END) AS claims_not_paid,
-                BOOL_OR(bucket_overdue IN ('3_15_30', '4_31_60', '5_60_plus') AND NOT paid_flag) AS has_p0_priority,
-                BOOL_OR(reason_code = 'payment_found_other_milestone') AS has_p1_priority,
-                CASE 
-                    WHEN SUM(CASE WHEN NOT paid_flag THEN 1 ELSE 0 END) = 0 THEN 'paid'
-                    WHEN SUM(CASE WHEN paid_flag THEN 1 ELSE 0 END) > 0 THEN 'partial'
-                    ELSE 'not_paid'
-                END AS payment_status_driver,
-                CASE 
-                    WHEN BOOL_OR(bucket_overdue IN ('3_15_30', '4_31_60', '5_60_plus') AND NOT paid_flag) THEN 'P0'
-                    WHEN BOOL_OR(reason_code = 'payment_found_other_milestone') THEN 'P1'
-                    ELSE 'P2'
-                END AS action_priority_driver
-            FROM driver_claims
-            GROUP BY driver_key
-        )
-        SELECT * FROM driver_agg
-    """
+                status AS payment_status_driver,
+                priority AS action_priority_driver
+            FROM ops.v_claims_cabinet_driver_rollup
+        """
     
     count_sql = f"SELECT COUNT(*) FROM ({count_base_sql}) sub"
     if filter_conditions:
         count_sql = f"SELECT COUNT(*) FROM ({count_base_sql}) sub WHERE {' AND '.join(filter_conditions)}"
     
     try:
-        # #region agent log - Diagnóstico: ver datos RAW de la vista antes de agregación
-        try:
-            debug_drivers = ['b264635aea6c41c7b14b481b02d8cb09', '88881990913f4b8181ff342c99635452', '3d809fc2cca64071a46dabe3223e314c']
-            debug_sql = """
-                SELECT 
-                    driver_id,
-                    milestone_value,
-                    COUNT(*) AS n_rows,
-                    SUM(expected_amount) AS sum_expected,
-                    ARRAY_AGG(expected_amount ORDER BY lead_date) AS expected_amounts,
-                    ARRAY_AGG(lead_date ORDER BY lead_date) AS lead_dates
-                FROM ops.v_claims_payment_status_cabinet
-                WHERE driver_id = ANY(:driver_ids)
-                GROUP BY driver_id, milestone_value
-                ORDER BY driver_id, milestone_value
-            """
-            debug_result = db.execute(text(debug_sql), {"driver_ids": debug_drivers})
-            debug_rows = debug_result.mappings().all()
-            import json
-            from datetime import datetime
-            log_path = r'c:\Users\Pc\Documents\Cursor Proyectos\ct4\.cursor\debug.log'
-            with open(log_path, 'a', encoding='utf-8') as f:
-                for row in debug_rows:
-                    log_entry = {
-                        'location': 'yango_payments.py:1340',
-                        'message': 'Debug: vista raw data por milestone',
-                        'data': {
-                            'driver_id': str(row.driver_id),
-                            'milestone_value': int(row.milestone_value),
-                            'n_rows': int(row.n_rows),
-                            'sum_expected': float(row.sum_expected),
-                            'expected_amounts': [float(x) for x in row.expected_amounts],
-                            'lead_dates': [str(d) for d in row.lead_dates]
-                        },
-                        'timestamp': int(datetime.now().timestamp() * 1000),
-                        'sessionId': 'debug-session',
-                        'hypothesisId': 'A'
-                    }
-                    f.write(json.dumps(log_entry) + '\n')
-        except Exception as e:
-            pass  # Ignorar errores en debug
-        # #endregion
-        
         # Obtener total
         count_params = {k: v for k, v in params.items() if k in ['week_start', 'milestone_value', 'payment_status_driver', 'action_priority']}
         total_result = db.execute(text(count_sql), count_params)
@@ -1376,42 +1359,25 @@ def get_cabinet_drivers(
         result = db.execute(text(sql), params)
         rows_data = result.mappings().all()
         
-        # #region agent log - Diagnóstico: ver expected_total después de agregación
-        try:
-            import json
-            from datetime import datetime
-            debug_drivers = ['b264635aea6c41c7b14b481b02d8cb09', '88881990913f4b8181ff342c99635452', '3d809fc2cca64071a46dabe3223e314c']
-            log_path = r'c:\Users\Pc\Documents\Cursor Proyectos\ct4\.cursor\debug.log'
-            with open(log_path, 'a', encoding='utf-8') as f:
-                for row_dict in rows_data:
-                    row_data = dict(row_dict)
-                    driver_id_val = row_data.get('driver_id')
-                    if driver_id_val in debug_drivers:
-                        counts_dict = row_data.get('counts', {}) if isinstance(row_data.get('counts'), dict) else {}
-                        log_entry = {
-                            'location': 'yango_payments.py:1365',
-                            'message': 'Debug: expected_total después de agregación',
-                            'data': {
-                                'driver_id': str(driver_id_val),
-                                'expected_total': float(row_data.get('expected_total', 0)),
-                                'claims_total': int(counts_dict.get('claims_total', 0))
-                            },
-                            'timestamp': int(datetime.now().timestamp() * 1000),
-                            'sessionId': 'debug-session',
-                            'hypothesisId': 'B'
-                        }
-                        f.write(json.dumps(log_entry) + '\n')
-        except Exception as e:
-            pass  # Ignorar errores en debug
-        # #endregion
-        
         rows = []
         for row_dict in rows_data:
             row_data = dict(row_dict)
-            # Convertir JSONB a dict
-            row_data['milestones_reached'] = dict(row_data.get('milestones_reached', {}))
-            row_data['milestones_paid'] = dict(row_data.get('milestones_paid', {}))
-            row_data['counts'] = dict(row_data.get('counts', {}))
+            # Convertir JSONB a dict (puede venir ya como dict desde la vista rollup o como JSONB desde la query)
+            if isinstance(row_data.get('milestones_reached'), dict):
+                row_data['milestones_reached'] = row_data.get('milestones_reached', {})
+            else:
+                row_data['milestones_reached'] = dict(row_data.get('milestones_reached', {}))
+            
+            if isinstance(row_data.get('milestones_paid'), dict):
+                row_data['milestones_paid'] = row_data.get('milestones_paid', {})
+            else:
+                row_data['milestones_paid'] = dict(row_data.get('milestones_paid', {}))
+            
+            if isinstance(row_data.get('counts'), dict):
+                row_data['counts'] = row_data.get('counts', {})
+            else:
+                row_data['counts'] = dict(row_data.get('counts', {}))
+            
             rows.append(CabinetDriverRow(**row_data))
         
         filters = {
@@ -1423,6 +1389,25 @@ def get_cabinet_drivers(
             "limit": limit
         }
         
+        # #region agent log
+        try:
+            import json
+            from datetime import datetime
+            log_path = r'c:\Users\Pc\Documents\Cursor Proyectos\ct4\.cursor\debug.log'
+            with open(log_path, 'a', encoding='utf-8') as f:
+                log_entry = {
+                    'location': 'yango_payments.py:get_cabinet_drivers:success',
+                    'message': 'Returning successful response',
+                    'data': {'rows_count': len(rows), 'total': total},
+                    'timestamp': int(datetime.now().timestamp() * 1000),
+                    'sessionId': 'debug-session',
+                    'runId': 'initial',
+                    'hypothesisId': 'H1'
+                }
+                f.write(json.dumps(log_entry) + '\n')
+        except: pass
+        # #endregion
+        
         return CabinetDriversResponse(
             status="ok",
             count=len(rows),
@@ -1431,6 +1416,29 @@ def get_cabinet_drivers(
             rows=rows
         )
     except Exception as e:
+        # #region agent log
+        try:
+            import json
+            from datetime import datetime
+            import traceback
+            log_path = r'c:\Users\Pc\Documents\Cursor Proyectos\ct4\.cursor\debug.log'
+            with open(log_path, 'a', encoding='utf-8') as f:
+                log_entry = {
+                    'location': 'yango_payments.py:get_cabinet_drivers:exception',
+                    'message': 'Exception in get_cabinet_drivers',
+                    'data': {
+                        'error_message': str(e),
+                        'error_type': type(e).__name__,
+                        'traceback': traceback.format_exc()[:1000]
+                    },
+                    'timestamp': int(datetime.now().timestamp() * 1000),
+                    'sessionId': 'debug-session',
+                    'runId': 'initial',
+                    'hypothesisId': 'H1,H4'
+                }
+                f.write(json.dumps(log_entry) + '\n')
+        except: pass
+        # #endregion
         logger.error(f"Error en cabinet drivers: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
@@ -1471,52 +1479,28 @@ def get_driver_timeline(
     except:
         driver_name_display = f'Sin Nombre ({driver_id[:8]}...)'
     
-    # Query para timeline
-    if include_evidence:
-        sql = """
-            SELECT 
-                c.lead_date,
-                c.milestone_value,
-                c.expected_amount,
-                c.paid_flag,
-                c.paid_date AS pay_date,
-                c.payment_key,
-                c.reason_code,
-                c.bucket_overdue,
-                e.evidence_level,
-                e.ledger_driver_id_final,
-                e.ledger_person_key_original,
-                e.match_rule,
-                e.match_confidence,
-                e.identity_status
-            FROM ops.v_claims_payment_status_cabinet c
-            LEFT JOIN ops.v_cabinet_payment_evidence_pack e
-                ON e.claim_driver_id = c.driver_id
-                AND e.claim_milestone_value = c.milestone_value
-            WHERE c.driver_id = :driver_id
-            ORDER BY c.lead_date ASC, c.milestone_value ASC
-        """
-    else:
-        sql = """
-            SELECT 
-                lead_date,
-                milestone_value,
-                expected_amount,
-                paid_flag,
-                paid_date AS pay_date,
-                payment_key,
-                reason_code,
-                bucket_overdue,
-                NULL AS evidence_level,
-                NULL AS ledger_driver_id_final,
-                NULL AS ledger_person_key_original,
-                NULL AS match_rule,
-                NULL AS match_confidence,
-                NULL AS identity_status
-            FROM ops.v_claims_payment_status_cabinet
-            WHERE driver_id = :driver_id
-            ORDER BY lead_date ASC, milestone_value ASC
-        """
+    # Query para timeline - usar la nueva vista claim-level (ops.v_yango_cabinet_claims_for_collection)
+    # Mapear yango_payment_status a paid_flag para compatibilidad con schema
+    sql = """
+        SELECT 
+            lead_date,
+            milestone_value,
+            expected_amount,
+            CASE WHEN yango_payment_status = 'PAID' THEN true ELSE false END AS paid_flag,
+            pay_date,
+            payment_key,
+            reason_code,
+            overdue_bucket_yango AS bucket_overdue,
+            NULL AS evidence_level,
+            NULL AS ledger_driver_id_final,
+            NULL AS ledger_person_key_original,
+            match_rule,
+            match_confidence,
+            NULL AS identity_status
+        FROM ops.v_yango_cabinet_claims_for_collection
+        WHERE driver_id = :driver_id
+        ORDER BY lead_date ASC, milestone_value ASC
+    """
     
     try:
         result = db.execute(text(sql), {"driver_id": driver_id})

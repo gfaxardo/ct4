@@ -1,0 +1,420 @@
+-- ============================================================================
+-- Sistema de Observabilidad Canónica de Ingestas ("Data Health")
+-- ============================================================================
+-- PROPÓSITO:
+-- Proporciona visibilidad sobre el estado de frescura y salud de las ingestas
+-- de datos del sistema YEGO. Permite monitorear:
+-- - Hasta cuándo está actualizada cada fuente
+-- - Si la ingesta está caída
+-- - Cuánto se ingesta por día
+--
+-- DISEÑO:
+-- Este sistema funciona con fuentes heterogéneas (date_file varchar DD-MM-YYYY,
+-- created_at timestamps, snapshot_at, etc.) y no depende de datestyle de PostgreSQL.
+-- Es robusto ante datos sucios mediante validación de regex antes de parsear fechas.
+--
+-- DIFERENCIA NEGOCIO VS INGESTA:
+-- - business_date: fecha del evento/transacción en el mundo real (ej: fecha de pago)
+-- - ingestion_ts: timestamp de cuándo se ingirió/registró el dato en el sistema
+-- 
+-- PARSEO DE date_file:
+-- - Solo parseamos si coincide con regex '^\d{2}-\d{2}-\d{4}$' (DD-MM-YYYY)
+-- - O si coincide con regex '^\d{4}-\d{2}-\d{2}$' (YYYY-MM-DD)
+-- - Evitamos usar to_date() sin validación previa para prevenir errores por datos sucios
+--
+-- POR QUÉ EVITAMOS datestyle:
+-- - PostgreSQL datestyle puede variar entre sesiones/servidores
+-- - Usar formato explícito en to_date() hace el código portable y predecible
+-- ============================================================================
+
+-- ============================================================================
+-- Vista: ops.v_data_freshness_status
+-- ============================================================================
+-- 1 fila por fuente (source_name)
+-- Campos:
+--   - source_name: nombre de la fuente
+--   - max_business_date: fecha de negocio más reciente
+--   - business_days_lag: días de retraso en fecha de negocio (vs hoy)
+--   - max_ingestion_ts: timestamp de ingesta más reciente
+--   - ingestion_lag_interval: intervalo de retraso en ingesta (vs ahora)
+--   - rows_business_yesterday: filas con business_date = ayer
+--   - rows_business_today: filas con business_date = hoy
+--   - rows_ingested_yesterday: filas con ingestion_ts::date = ayer
+--   - rows_ingested_today: filas con ingestion_ts::date = hoy
+-- ============================================================================
+
+CREATE OR REPLACE VIEW ops.v_data_freshness_status AS
+WITH source_yango_payment_ledger AS (
+    -- ops.yango_payment_ledger (VIEW) con pay_date y snapshot_at
+    SELECT 
+        'yango_payment_ledger' AS source_name,
+        MAX(pay_date) AS max_business_date,
+        CURRENT_DATE - MAX(pay_date) AS business_days_lag,
+        MAX(snapshot_at) AS max_ingestion_ts,
+        NOW() - MAX(snapshot_at) AS ingestion_lag_interval,
+        COUNT(*) FILTER (WHERE pay_date = CURRENT_DATE - INTERVAL '1 day') AS rows_business_yesterday,
+        COUNT(*) FILTER (WHERE pay_date = CURRENT_DATE) AS rows_business_today,
+        COUNT(*) FILTER (WHERE snapshot_at::date = CURRENT_DATE - INTERVAL '1 day') AS rows_ingested_yesterday,
+        COUNT(*) FILTER (WHERE snapshot_at::date = CURRENT_DATE) AS rows_ingested_today
+    FROM ops.yango_payment_ledger
+    WHERE pay_date IS NOT NULL
+),
+source_summary_daily AS (
+    -- public.summary_daily (TABLE) con date_file (varchar DD-MM-YYYY) y created_at
+    SELECT 
+        'summary_daily' AS source_name,
+        MAX(
+            CASE 
+                WHEN date_file ~ '^\d{2}-\d{2}-\d{4}$' THEN to_date(date_file, 'DD-MM-YYYY')
+                WHEN date_file ~ '^\d{4}-\d{2}-\d{2}$' THEN to_date(date_file, 'YYYY-MM-DD')
+                ELSE NULL
+            END
+        ) AS max_business_date,
+        CURRENT_DATE - MAX(
+            CASE 
+                WHEN date_file ~ '^\d{2}-\d{2}-\d{4}$' THEN to_date(date_file, 'DD-MM-YYYY')
+                WHEN date_file ~ '^\d{4}-\d{2}-\d{2}$' THEN to_date(date_file, 'YYYY-MM-DD')
+                ELSE NULL
+            END
+        ) AS business_days_lag,
+        MAX(created_at)::timestamptz AS max_ingestion_ts,
+        NOW() - MAX(created_at)::timestamptz AS ingestion_lag_interval,
+        COUNT(*) FILTER (
+            WHERE CASE 
+                WHEN date_file ~ '^\d{2}-\d{2}-\d{4}$' THEN to_date(date_file, 'DD-MM-YYYY')
+                WHEN date_file ~ '^\d{4}-\d{2}-\d{2}$' THEN to_date(date_file, 'YYYY-MM-DD')
+                ELSE NULL
+            END = CURRENT_DATE - INTERVAL '1 day'
+        ) AS rows_business_yesterday,
+        COUNT(*) FILTER (
+            WHERE CASE 
+                WHEN date_file ~ '^\d{2}-\d{2}-\d{4}$' THEN to_date(date_file, 'DD-MM-YYYY')
+                WHEN date_file ~ '^\d{4}-\d{2}-\d{2}$' THEN to_date(date_file, 'YYYY-MM-DD')
+                ELSE NULL
+            END = CURRENT_DATE
+        ) AS rows_business_today,
+        COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE - INTERVAL '1 day') AS rows_ingested_yesterday,
+        COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) AS rows_ingested_today
+    FROM public.summary_daily
+    WHERE date_file IS NOT NULL
+),
+source_module_ct_cabinet_leads AS (
+    -- public.module_ct_cabinet_leads con lead_created_at (timestamp)
+    -- business_date = lead_created_at::date, ingestion_ts = lead_created_at
+    SELECT 
+        'module_ct_cabinet_leads' AS source_name,
+        MAX(lead_created_at::date) AS max_business_date,
+        CURRENT_DATE - MAX(lead_created_at::date) AS business_days_lag,
+        MAX(lead_created_at)::timestamptz AS max_ingestion_ts,
+        NOW() - MAX(lead_created_at)::timestamptz AS ingestion_lag_interval,
+        COUNT(*) FILTER (WHERE lead_created_at::date = CURRENT_DATE - INTERVAL '1 day') AS rows_business_yesterday,
+        COUNT(*) FILTER (WHERE lead_created_at::date = CURRENT_DATE) AS rows_business_today,
+        COUNT(*) FILTER (WHERE lead_created_at::date = CURRENT_DATE - INTERVAL '1 day') AS rows_ingested_yesterday,
+        COUNT(*) FILTER (WHERE lead_created_at::date = CURRENT_DATE) AS rows_ingested_today
+    FROM public.module_ct_cabinet_leads
+    WHERE lead_created_at IS NOT NULL
+),
+source_module_ct_scouting_daily AS (
+    -- public.module_ct_scouting_daily con registration_date (date) y created_at (timestamp)
+    SELECT 
+        'module_ct_scouting_daily' AS source_name,
+        MAX(registration_date) AS max_business_date,
+        CURRENT_DATE - MAX(registration_date) AS business_days_lag,
+        MAX(created_at)::timestamptz AS max_ingestion_ts,
+        NOW() - MAX(created_at)::timestamptz AS ingestion_lag_interval,
+        COUNT(*) FILTER (WHERE registration_date = CURRENT_DATE - INTERVAL '1 day') AS rows_business_yesterday,
+        COUNT(*) FILTER (WHERE registration_date = CURRENT_DATE) AS rows_business_today,
+        COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE - INTERVAL '1 day') AS rows_ingested_yesterday,
+        COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) AS rows_ingested_today
+    FROM public.module_ct_scouting_daily
+    WHERE registration_date IS NOT NULL
+),
+source_drivers AS (
+    -- public.drivers con hire_date (date) y created_at/updated_at (timestamps)
+    -- Si no hay business_date, usar ingestion_ts::date como max_business_date (degradado)
+    SELECT 
+        'drivers' AS source_name,
+        COALESCE(
+            MAX(hire_date),
+            MAX(COALESCE(updated_at, created_at))::date
+        ) AS max_business_date,
+        CURRENT_DATE - COALESCE(
+            MAX(hire_date),
+            MAX(COALESCE(updated_at, created_at))::date
+        ) AS business_days_lag,
+        MAX(COALESCE(updated_at, created_at))::timestamptz AS max_ingestion_ts,
+        NOW() - MAX(COALESCE(updated_at, created_at))::timestamptz AS ingestion_lag_interval,
+        COUNT(*) FILTER (
+            WHERE COALESCE(hire_date, COALESCE(updated_at, created_at)::date) = CURRENT_DATE - INTERVAL '1 day'
+        ) AS rows_business_yesterday,
+        COUNT(*) FILTER (
+            WHERE COALESCE(hire_date, COALESCE(updated_at, created_at)::date) = CURRENT_DATE
+        ) AS rows_business_today,
+        COUNT(*) FILTER (
+            WHERE COALESCE(updated_at, created_at)::date = CURRENT_DATE - INTERVAL '1 day'
+        ) AS rows_ingested_yesterday,
+        COUNT(*) FILTER (
+            WHERE COALESCE(updated_at, created_at)::date = CURRENT_DATE
+        ) AS rows_ingested_today
+    FROM public.drivers
+    WHERE created_at IS NOT NULL OR updated_at IS NOT NULL
+)
+SELECT * FROM source_yango_payment_ledger
+UNION ALL
+SELECT * FROM source_summary_daily
+UNION ALL
+SELECT * FROM source_module_ct_cabinet_leads
+UNION ALL
+SELECT * FROM source_module_ct_scouting_daily
+UNION ALL
+SELECT * FROM source_drivers;
+
+-- Comentarios
+COMMENT ON VIEW ops.v_data_freshness_status IS 
+'Vista de frescura de datos por fuente. 1 fila por fuente con métricas de business_date e ingestion_ts.';
+
+COMMENT ON COLUMN ops.v_data_freshness_status.source_name IS 
+'Nombre de la fuente de datos (ej: yango_payment_ledger, summary_daily, etc.).';
+
+COMMENT ON COLUMN ops.v_data_freshness_status.max_business_date IS 
+'Fecha de negocio más reciente en la fuente (ej: fecha de pago, fecha de registro).';
+
+COMMENT ON COLUMN ops.v_data_freshness_status.business_days_lag IS 
+'Días de retraso en fecha de negocio vs hoy (NULL si no hay datos).';
+
+COMMENT ON COLUMN ops.v_data_freshness_status.max_ingestion_ts IS 
+'Timestamp de ingesta más reciente (cuándo se registró el dato en el sistema).';
+
+COMMENT ON COLUMN ops.v_data_freshness_status.ingestion_lag_interval IS 
+'Intervalo de retraso en ingesta vs ahora (ej: "2 hours", "1 day").';
+
+COMMENT ON COLUMN ops.v_data_freshness_status.rows_business_yesterday IS 
+'Cantidad de filas con business_date = ayer.';
+
+COMMENT ON COLUMN ops.v_data_freshness_status.rows_business_today IS 
+'Cantidad de filas con business_date = hoy.';
+
+COMMENT ON COLUMN ops.v_data_freshness_status.rows_ingested_yesterday IS 
+'Cantidad de filas con ingestion_ts::date = ayer.';
+
+COMMENT ON COLUMN ops.v_data_freshness_status.rows_ingested_today IS 
+'Cantidad de filas con ingestion_ts::date = hoy.';
+
+-- ============================================================================
+-- Vista: ops.v_data_ingestion_daily
+-- ============================================================================
+-- 1 fila por (source_name, metric_type, metric_date)
+-- metric_type: 'business' o 'ingestion'
+-- Muestra rows_count por día (últimos 30+ días)
+-- ============================================================================
+
+CREATE OR REPLACE VIEW ops.v_data_ingestion_daily AS
+WITH date_range AS (
+    SELECT generate_series(
+        CURRENT_DATE - INTERVAL '90 days',
+        CURRENT_DATE,
+        INTERVAL '1 day'
+    )::date AS metric_date
+),
+source_yango_payment_ledger_daily AS (
+    SELECT 
+        'yango_payment_ledger' AS source_name,
+        'business' AS metric_type,
+        pay_date AS metric_date,
+        COUNT(*) AS rows_count
+    FROM ops.yango_payment_ledger
+    WHERE pay_date IS NOT NULL
+        AND pay_date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY pay_date
+    UNION ALL
+    SELECT 
+        'yango_payment_ledger' AS source_name,
+        'ingestion' AS metric_type,
+        snapshot_at::date AS metric_date,
+        COUNT(*) AS rows_count
+    FROM ops.yango_payment_ledger
+    WHERE snapshot_at IS NOT NULL
+        AND snapshot_at::date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY snapshot_at::date
+),
+source_summary_daily_daily AS (
+    SELECT 
+        'summary_daily' AS source_name,
+        'business' AS metric_type,
+        CASE 
+            WHEN date_file ~ '^\d{2}-\d{2}-\d{4}$' THEN to_date(date_file, 'DD-MM-YYYY')
+            WHEN date_file ~ '^\d{4}-\d{2}-\d{2}$' THEN to_date(date_file, 'YYYY-MM-DD')
+            ELSE NULL
+        END AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.summary_daily
+    WHERE date_file IS NOT NULL
+        AND (
+            date_file ~ '^\d{2}-\d{2}-\d{4}$' OR 
+            date_file ~ '^\d{4}-\d{2}-\d{2}$'
+        )
+        AND CASE 
+            WHEN date_file ~ '^\d{2}-\d{2}-\d{4}$' THEN to_date(date_file, 'DD-MM-YYYY')
+            WHEN date_file ~ '^\d{4}-\d{2}-\d{2}$' THEN to_date(date_file, 'YYYY-MM-DD')
+            ELSE NULL
+        END IS NOT NULL
+        AND CASE 
+            WHEN date_file ~ '^\d{2}-\d{2}-\d{4}$' THEN to_date(date_file, 'DD-MM-YYYY')
+            WHEN date_file ~ '^\d{4}-\d{2}-\d{2}$' THEN to_date(date_file, 'YYYY-MM-DD')
+            ELSE NULL
+        END >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY 
+        CASE 
+            WHEN date_file ~ '^\d{2}-\d{2}-\d{4}$' THEN to_date(date_file, 'DD-MM-YYYY')
+            WHEN date_file ~ '^\d{4}-\d{2}-\d{2}$' THEN to_date(date_file, 'YYYY-MM-DD')
+            ELSE NULL
+        END
+    UNION ALL
+    SELECT 
+        'summary_daily' AS source_name,
+        'ingestion' AS metric_type,
+        created_at::date AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.summary_daily
+    WHERE created_at IS NOT NULL
+        AND created_at::date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY created_at::date
+),
+source_module_ct_cabinet_leads_daily AS (
+    SELECT 
+        'module_ct_cabinet_leads' AS source_name,
+        'business' AS metric_type,
+        lead_created_at::date AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.module_ct_cabinet_leads
+    WHERE lead_created_at IS NOT NULL
+        AND lead_created_at::date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY lead_created_at::date
+    UNION ALL
+    SELECT 
+        'module_ct_cabinet_leads' AS source_name,
+        'ingestion' AS metric_type,
+        lead_created_at::date AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.module_ct_cabinet_leads
+    WHERE lead_created_at IS NOT NULL
+        AND lead_created_at::date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY lead_created_at::date
+),
+source_module_ct_scouting_daily_daily AS (
+    SELECT 
+        'module_ct_scouting_daily' AS source_name,
+        'business' AS metric_type,
+        registration_date AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.module_ct_scouting_daily
+    WHERE registration_date IS NOT NULL
+        AND registration_date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY registration_date
+    UNION ALL
+    SELECT 
+        'module_ct_scouting_daily' AS source_name,
+        'ingestion' AS metric_type,
+        created_at::date AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.module_ct_scouting_daily
+    WHERE created_at IS NOT NULL
+        AND created_at::date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY created_at::date
+),
+source_drivers_daily AS (
+    SELECT 
+        'drivers' AS source_name,
+        'business' AS metric_type,
+        COALESCE(hire_date, COALESCE(updated_at, created_at)::date) AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.drivers
+    WHERE (created_at IS NOT NULL OR updated_at IS NOT NULL)
+        AND COALESCE(hire_date, COALESCE(updated_at, created_at)::date) >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY COALESCE(hire_date, COALESCE(updated_at, created_at)::date)
+    UNION ALL
+    SELECT 
+        'drivers' AS source_name,
+        'ingestion' AS metric_type,
+        COALESCE(updated_at, created_at)::date AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.drivers
+    WHERE (created_at IS NOT NULL OR updated_at IS NOT NULL)
+        AND COALESCE(updated_at, created_at)::date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY COALESCE(updated_at, created_at)::date
+)
+SELECT * FROM source_yango_payment_ledger_daily
+UNION ALL
+SELECT * FROM source_summary_daily_daily
+UNION ALL
+SELECT * FROM source_module_ct_cabinet_leads_daily
+UNION ALL
+SELECT * FROM source_module_ct_scouting_daily_daily
+UNION ALL
+SELECT * FROM source_drivers_daily;
+
+-- Comentarios
+COMMENT ON VIEW ops.v_data_ingestion_daily IS 
+'Vista diaria de ingesta por fuente. 1 fila por (source_name, metric_type, metric_date) con rows_count.';
+
+COMMENT ON COLUMN ops.v_data_ingestion_daily.source_name IS 
+'Nombre de la fuente de datos.';
+
+COMMENT ON COLUMN ops.v_data_ingestion_daily.metric_type IS 
+'Tipo de métrica: "business" (por fecha de negocio) o "ingestion" (por fecha de ingesta).';
+
+COMMENT ON COLUMN ops.v_data_ingestion_daily.metric_date IS 
+'Fecha de la métrica (business_date o ingestion_ts::date).';
+
+COMMENT ON COLUMN ops.v_data_ingestion_daily.rows_count IS 
+'Cantidad de filas para esa combinación (source, tipo, fecha).';
+
+-- ============================================================================
+-- Vista: ops.v_data_health_status
+-- ============================================================================
+-- Basada en ops.v_data_freshness_status
+-- Agrega campo health_status con reglas:
+--   RED_NO_INGESTION_2D: rows_ingested_today=0 and rows_ingested_yesterday=0
+--   RED_INGESTION_STALE: ingestion_lag_interval > interval '18 hours'
+--   YELLOW_BUSINESS_LAG: business_days_lag >= 2
+--   GREEN_OK: else
+-- ============================================================================
+
+CREATE OR REPLACE VIEW ops.v_data_health_status AS
+SELECT 
+    source_name,
+    max_business_date,
+    business_days_lag,
+    max_ingestion_ts,
+    ingestion_lag_interval,
+    rows_business_yesterday,
+    rows_business_today,
+    rows_ingested_yesterday,
+    rows_ingested_today,
+    CASE 
+        WHEN rows_ingested_today = 0 AND rows_ingested_yesterday = 0 THEN 'RED_NO_INGESTION_2D'
+        WHEN ingestion_lag_interval > INTERVAL '18 hours' THEN 'RED_INGESTION_STALE'
+        WHEN business_days_lag >= 2 THEN 'YELLOW_BUSINESS_LAG'
+        ELSE 'GREEN_OK'
+    END AS health_status
+FROM ops.v_data_freshness_status;
+
+-- Comentarios
+COMMENT ON VIEW ops.v_data_health_status IS 
+'Vista de salud de datos por fuente. Basada en v_data_freshness_status con campo health_status calculado.';
+
+COMMENT ON COLUMN ops.v_data_health_status.health_status IS 
+'Estado de salud: RED_NO_INGESTION_2D (sin ingesta 2 días), RED_INGESTION_STALE (ingesta > 18h), YELLOW_BUSINESS_LAG (lag >= 2 días), GREEN_OK (ok).';
+
+-- ============================================================================
+-- QUERIES DE VALIDACIÓN
+-- ============================================================================
+-- Para verificar las vistas:
+--
+-- SELECT * FROM ops.v_data_freshness_status ORDER BY source_name;
+-- SELECT * FROM ops.v_data_health_status ORDER BY source_name;
+-- SELECT * FROM ops.v_data_ingestion_daily 
+--   WHERE metric_date >= CURRENT_DATE - 30 
+--   ORDER BY source_name, metric_type, metric_date DESC;
+-- ============================================================================
+
