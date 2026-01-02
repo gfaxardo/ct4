@@ -1,328 +1,237 @@
-'use client'
+/**
+ * Pagos - Elegibilidad
+ * Basado en FRONTEND_UI_BLUEPRINT_v1.md
+ * 
+ * Objetivo: "¿Qué pagos son elegibles y cumplen condiciones?"
+ */
 
-import { useEffect, useState } from 'react'
-import {
-  getScoutSummary,
-  getScoutOpenItems,
-  ScoutSummary,
-  ScoutOpenItems
-} from '@/lib/api'
-import YangoDashboard from '@/components/payments/YangoDashboard'
-import YangoWeekDrilldown from '@/components/payments/YangoWeekDrilldown'
+'use client';
 
-type TabType = 'scouts' | 'yango'
+import { useEffect, useState } from 'react';
+import { getPaymentEligibility, ApiError } from '@/lib/api';
+import type { PaymentEligibilityResponse } from '@/lib/types';
+import DataTable from '@/components/DataTable';
+import Filters from '@/components/Filters';
+import Pagination from '@/components/Pagination';
+import Badge from '@/components/Badge';
 
 export default function PagosPage() {
-  const [activeTab, setActiveTab] = useState<TabType>('scouts')
-  
-  // Scout state
-  const [scoutSummary, setScoutSummary] = useState<ScoutSummary | null>(null)
-  const [scoutItems, setScoutItems] = useState<ScoutOpenItems | null>(null)
-  const [scoutLoading, setScoutLoading] = useState(true)
-  const [scoutWeekFilter, setScoutWeekFilter] = useState<string>('')
-  const [scoutPage, setScoutPage] = useState(0)
-  
-  // Yango state
-  const [yangoWeekFilter, setYangoWeekFilter] = useState<string>('')
-  const [selectedWeek, setSelectedWeek] = useState<string | null>(null)
-  
-  const limit = 50
-
-  // Generate last 12 weeks
-  const getLast12Weeks = () => {
-    const weeks: Array<{ value: string; label: string }> = [{ value: '', label: 'Todas' }]
-    const today = new Date()
-    for (let i = 0; i < 12; i++) {
-      const date = new Date(today)
-      date.setDate(date.getDate() - (i * 7))
-      const weekStart = new Date(date)
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1) // Monday
-      const weekEnd = new Date(weekStart)
-      weekEnd.setDate(weekEnd.getDate() + 6)
-      const isoWeek = getISOWeek(weekStart)
-      weeks.push({
-        value: weekStart.toISOString().split('T')[0],
-        label: `${isoWeek} (${formatDate(weekStart)} - ${formatDate(weekEnd)})`
-      })
-    }
-    return weeks
-  }
-
-  const getISOWeek = (date: Date) => {
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-    const dayNum = d.getUTCDay() || 7
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum)
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
-    const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
-    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`
-  }
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(amount)
-  }
+  const [eligibility, setEligibility] = useState<PaymentEligibilityResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState({
+    origin_tag: '',
+    rule_scope: '',
+    is_payable: '',
+    scout_id: '',
+    driver_id: '',
+    payable_from: '',
+    payable_to: '',
+    order_by: 'payable_date',
+    order_dir: 'asc',
+  });
+  const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(200);
 
   useEffect(() => {
-    if (activeTab === 'scouts') {
-      loadScoutData()
-    }
-    // Yango no necesita carga automática, el dashboard se carga internamente
-  }, [activeTab, scoutWeekFilter, scoutPage])
+    async function loadEligibility() {
+      try {
+        setLoading(true);
+        setError(null);
 
-  async function loadScoutData() {
-    setScoutLoading(true)
-    try {
-      const weekStart = scoutWeekFilter ? new Date(scoutWeekFilter) : undefined
-      let weekEnd = scoutWeekFilter ? new Date(scoutWeekFilter) : undefined
-      if (weekEnd) weekEnd.setDate(weekEnd.getDate() + 6)
-
-      const [summary, items] = await Promise.all([
-        getScoutSummary({
-          week_start: weekStart?.toISOString().split('T')[0],
-          week_end: weekEnd?.toISOString().split('T')[0],
-        }),
-        getScoutOpenItems({
-          week_start_monday: scoutWeekFilter || undefined,
-          confidence: 'policy', // Solo policy (pagables)
+        const data = await getPaymentEligibility({
+          origin_tag: filters.origin_tag || undefined,
+          rule_scope: filters.rule_scope || undefined,
+          is_payable: filters.is_payable ? filters.is_payable === 'true' : undefined,
+          scout_id: filters.scout_id ? parseInt(filters.scout_id) : undefined,
+          driver_id: filters.driver_id || undefined,
+          payable_from: filters.payable_from || undefined,
+          payable_to: filters.payable_to || undefined,
+          order_by: filters.order_by as 'payable_date' | 'lead_date' | 'amount',
+          order_dir: filters.order_dir as 'asc' | 'desc',
           limit,
-          offset: scoutPage * limit,
-        })
-      ])
-      setScoutSummary(summary)
-      setScoutItems(items)
-    } catch (error) {
-      console.error('Error cargando datos scout:', error)
-    } finally {
-      setScoutLoading(false)
+          offset,
+        });
+
+        setEligibility(data);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          if (err.status === 400) {
+            setError('Parámetros inválidos');
+          } else if (err.status === 500) {
+            setError('Error al cargar elegibilidad');
+          } else {
+            setError(`Error ${err.status}: ${err.detail || err.message}`);
+          }
+        } else {
+          setError('Error desconocido');
+        }
+      } finally {
+        setLoading(false);
+      }
     }
-  }
 
+    loadEligibility();
+  }, [filters, offset, limit]);
 
-  const weeks = getLast12Weeks()
+  const filterFields = [
+    {
+      name: 'origin_tag',
+      label: 'Origen',
+      type: 'select' as const,
+      options: [
+        { value: 'cabinet', label: 'Cabinet' },
+        { value: 'fleet_migration', label: 'Fleet Migration' },
+      ],
+    },
+    {
+      name: 'rule_scope',
+      label: 'Scope',
+      type: 'select' as const,
+      options: [
+        { value: 'scout', label: 'Scout' },
+        { value: 'partner', label: 'Partner' },
+      ],
+    },
+    {
+      name: 'is_payable',
+      label: 'Es Pagable',
+      type: 'select' as const,
+      options: [
+        { value: 'true', label: 'Sí' },
+        { value: 'false', label: 'No' },
+      ],
+    },
+    {
+      name: 'scout_id',
+      label: 'Scout ID',
+      type: 'number' as const,
+    },
+    {
+      name: 'driver_id',
+      label: 'Driver ID',
+      type: 'text' as const,
+    },
+    {
+      name: 'payable_from',
+      label: 'Payable Desde',
+      type: 'date' as const,
+    },
+    {
+      name: 'payable_to',
+      label: 'Payable Hasta',
+      type: 'date' as const,
+    },
+    {
+      name: 'order_by',
+      label: 'Ordenar Por',
+      type: 'select' as const,
+      options: [
+        { value: 'payable_date', label: 'Payable Date' },
+        { value: 'lead_date', label: 'Lead Date' },
+        { value: 'amount', label: 'Amount' },
+      ],
+    },
+    {
+      name: 'order_dir',
+      label: 'Dirección',
+      type: 'select' as const,
+      options: [
+        { value: 'asc', label: 'Asc' },
+        { value: 'desc', label: 'Desc' },
+      ],
+    },
+  ];
+
+  type EligibilityRow = PaymentEligibilityResponse['rows'][0];
+
+  const columns = [
+    { key: 'person_key', header: 'Person Key' },
+    { key: 'origin_tag', header: 'Origen' },
+    { key: 'scout_id', header: 'Scout ID' },
+    { key: 'driver_id', header: 'Driver ID' },
+    {
+      key: 'lead_date',
+      header: 'Lead Date',
+      render: (row: EligibilityRow) =>
+        row.lead_date ? new Date(row.lead_date).toLocaleDateString('es-ES') : '—',
+    },
+    { key: 'rule_scope', header: 'Scope' },
+    { key: 'milestone_trips', header: 'Trips' },
+    {
+      key: 'amount',
+      header: 'Monto',
+      render: (row: EligibilityRow) =>
+        row.amount ? `${row.amount} ${row.currency || ''}` : '—',
+    },
+    {
+      key: 'is_payable',
+      header: 'Es Pagable',
+      render: (row: EligibilityRow) => (
+        <Badge variant={row.is_payable ? 'success' : 'error'}>
+          {row.is_payable ? 'Sí' : 'No'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'payable_date',
+      header: 'Payable Date',
+      render: (row: EligibilityRow) =>
+        row.payable_date ? new Date(row.payable_date).toLocaleDateString('es-ES') : '—',
+    },
+  ];
 
   return (
     <div className="px-4 py-6">
-      <h1 className="text-3xl font-bold mb-6">PAGOS ✅ V2</h1>
+      <h1 className="text-3xl font-bold mb-6">Elegibilidad de Pagos</h1>
 
-      {/* Tabs */}
-      <div className="border-b mb-6">
-        <div className="flex space-x-4">
-          <button
-            onClick={() => setActiveTab('scouts')}
-            className={`px-4 py-2 font-medium ${
-              activeTab === 'scouts'
-                ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Scouts
-          </button>
-          <button
-            onClick={() => setActiveTab('yango')}
-            className={`px-4 py-2 font-medium ${
-              activeTab === 'yango'
-                ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Yango
-          </button>
-        </div>
-      </div>
-
-      {/* Scouts Tab */}
-      {activeTab === 'scouts' && (
-        <div>
-          {/* Filtros */}
-          <div className="bg-white rounded-lg shadow mb-6 p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Semana</label>
-                <select
-                  value={scoutWeekFilter}
-                  onChange={(e) => {
-                    setScoutWeekFilter(e.target.value)
-                    setScoutPage(0)
-                  }}
-                  className="w-full px-4 py-2 border rounded-md"
-                >
-                  {weeks.map((week) => (
-                    <option key={week.value} value={week.value}>
-                      {week.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {scoutLoading ? (
-            <div className="text-center py-12">Cargando...</div>
-          ) : (
-            <>
-              {/* Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold mb-4 text-green-600">Total Pagable</h3>
-                  <div className="space-y-2">
-                    <div className="text-2xl font-bold">{formatCurrency(scoutSummary?.totals.payable_amount || 0)}</div>
-                    <div className="text-sm text-gray-600">
-                      {scoutSummary?.totals.payable_items || 0} items · {scoutSummary?.totals.payable_drivers || 0} drivers · {scoutSummary?.totals.payable_scouts || 0} scouts
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-semibold mb-4 text-red-600">Total Bloqueado (Unknown)</h3>
-                  <div className="space-y-2">
-                    <div className="text-2xl font-bold">{formatCurrency(scoutSummary?.totals.blocked_amount || 0)}</div>
-                    <div className="text-sm text-gray-600">
-                      {scoutSummary?.totals.blocked_items || 0} items
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tabla Items Pagables */}
-              <div className="bg-white rounded-lg shadow overflow-hidden">
-                <div className="px-6 py-4 border-b">
-                  <h3 className="text-lg font-semibold">
-                    Items Pagables ({scoutItems?.total || 0})
-                  </h3>
-                </div>
-                {scoutItems && scoutItems.items.length > 0 ? (
-                  <>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Scout</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Origen</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Milestone</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monto</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver ID</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {scoutItems.items.map((item) => (
-                            <tr key={item.payment_item_key}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                {item.payable_date ? formatDate(new Date(item.payable_date)) : '-'}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                {item.acquisition_scout_name || '-'}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">{item.lead_origin || '-'}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                {item.milestone_type} {item.milestone_value ? `(${item.milestone_value})` : ''}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                {formatCurrency(item.amount)}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm">{item.driver_id || '-'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="px-6 py-4 border-t flex justify-between items-center">
-                      <div className="text-sm text-gray-600">
-                        Mostrando {scoutPage * limit + 1} - {Math.min((scoutPage + 1) * limit, scoutItems.total)} de {scoutItems.total}
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => setScoutPage(Math.max(0, scoutPage - 1))}
-                          disabled={scoutPage === 0}
-                          className="px-4 py-2 border rounded-md disabled:opacity-50"
-                        >
-                          Anterior
-                        </button>
-                        <button
-                          onClick={() => setScoutPage(scoutPage + 1)}
-                          disabled={(scoutPage + 1) * limit >= scoutItems.total}
-                          className="px-4 py-2 border rounded-md disabled:opacity-50"
-                        >
-                          Siguiente
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="px-6 py-12 text-center text-gray-500">No hay items</div>
-                )}
-              </div>
-            </>
-          )}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <p className="text-red-800">{error}</p>
         </div>
       )}
 
-      {/* Yango Tab */}
-      {activeTab === 'yango' && (
-        <div>
-          {/* Link a Claims 14d */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-blue-900">Vista Detallada de Claims</h3>
-                <p className="text-sm text-blue-700 mt-1">
-                  Accede a la vista canónica y auditable basada 100% en ops.v_yango_payments_claims_cabinet_14d
-                </p>
-              </div>
-              <a
-                href="/pagos/claims"
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
-              >
-                Ver Claims (14d) →
-              </a>
-            </div>
-          </div>
-
-          {/* Filtros */}
-          <div className="bg-white rounded-lg shadow mb-6 p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Filtrar por Semana (opcional)</label>
-                <select
-                  value={yangoWeekFilter}
-                  onChange={(e) => {
-                    setYangoWeekFilter(e.target.value)
-                  }}
-                  className="w-full px-4 py-2 border rounded-md"
-                >
-                  {weeks.map((week) => (
-                    <option key={week.value} value={week.value}>
-                      {week.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Dashboard Yango */}
-          <YangoDashboard
-            weekFilter={yangoWeekFilter && yangoWeekFilter !== '' ? yangoWeekFilter : undefined}
-            onWeekFilterChange={setYangoWeekFilter}
-            onWeekClick={(weekStart) => setSelectedWeek(weekStart)}
-            onReasonClick={(reasonCode) => {
-              // Al hacer click en un motivo, abrir drilldown con ese filtro
-              setSelectedWeek(yangoWeekFilter || weekStart)
-            }}
-          />
-
-          {/* Drilldown Modal */}
-          {selectedWeek && (
-            <YangoWeekDrilldown
-              weekStart={selectedWeek}
-              onClose={() => setSelectedWeek(null)}
-            />
-          )}
+      {eligibility && (
+        <div className="mb-4 text-sm text-gray-600">
+          Total: {eligibility.count} registros
         </div>
+      )}
+
+      <Filters
+        fields={filterFields}
+        values={filters}
+        onChange={(values) => setFilters(values as typeof filters)}
+        onReset={() => {
+          setFilters({
+            origin_tag: '',
+            rule_scope: '',
+            is_payable: '',
+            scout_id: '',
+            driver_id: '',
+            payable_from: '',
+            payable_to: '',
+            order_by: 'payable_date',
+            order_dir: 'asc',
+          });
+          setOffset(0);
+        }}
+      />
+
+      <DataTable
+        data={eligibility?.rows || []}
+        columns={columns}
+        loading={loading}
+        emptyMessage="No hay pagos elegibles que coincidan con los filtros"
+      />
+
+      {!loading && eligibility && eligibility.rows.length > 0 && (
+        <Pagination
+          total={eligibility.count}
+          limit={limit}
+          offset={offset}
+          onPageChange={(newOffset) => setOffset(newOffset)}
+        />
       )}
     </div>
-  )
+  );
 }
-

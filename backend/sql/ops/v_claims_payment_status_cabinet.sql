@@ -109,28 +109,13 @@ SELECT
     END AS payment_reason,
     
     -- reason_code: diagnóstico detallado con prioridad
+    -- Optimizado: usar LEFT JOIN LATERAL en lugar de subconsultas EXISTS costosas
     CASE 
         WHEN p_exact.payment_key IS NOT NULL THEN 'paid'
         WHEN c.driver_id IS NULL THEN 'missing_driver_id'
         WHEN c.milestone_value IS NULL THEN 'missing_milestone'
-        WHEN EXISTS (
-            -- ¿Existe pago para este driver pero otro milestone?
-            SELECT 1
-            FROM ops.v_yango_payments_ledger_latest_enriched p
-            WHERE p.driver_id_final = c.driver_id
-                AND p.milestone_value != c.milestone_value
-                AND p.is_paid = true
-        ) THEN 'payment_found_other_milestone'
-        WHEN EXISTS (
-            -- ¿Existe pago para este milestone pero solo por person_key?
-            SELECT 1
-            FROM ops.v_yango_payments_ledger_latest_enriched p
-            WHERE p.milestone_value = c.milestone_value
-                AND p.is_paid = true
-                AND p.person_key_final = c.person_key
-                AND (p.driver_id_final IS NULL OR p.driver_id_final != c.driver_id)
-                AND c.person_key IS NOT NULL
-        ) THEN 'payment_found_person_key_only'
+        WHEN p_other_milestone.payment_key IS NOT NULL THEN 'payment_found_other_milestone'
+        WHEN p_person_key.payment_key IS NOT NULL THEN 'payment_found_person_key_only'
         ELSE 'no_payment_found'
     END AS reason_code,
     
@@ -158,7 +143,33 @@ LEFT JOIN LATERAL (
         AND is_paid = true
     ORDER BY pay_date DESC, payment_key DESC
     LIMIT 1
-) p_exact ON true;
+) p_exact ON true
+-- Optimización: solo ejecutar estos JOINs cuando no hay pago exacto
+LEFT JOIN LATERAL (
+    -- ¿Existe pago para este driver pero otro milestone?
+    SELECT payment_key
+    FROM ops.v_yango_payments_ledger_latest_enriched p
+    WHERE p.driver_id_final = c.driver_id
+        AND p.milestone_value != c.milestone_value
+        AND p.is_paid = true
+    LIMIT 1
+) p_other_milestone ON p_exact.payment_key IS NULL 
+    AND c.driver_id IS NOT NULL
+    AND c.milestone_value IS NOT NULL
+LEFT JOIN LATERAL (
+    -- ¿Existe pago para este milestone pero solo por person_key?
+    SELECT payment_key
+    FROM ops.v_yango_payments_ledger_latest_enriched p
+    WHERE p.milestone_value = c.milestone_value
+        AND p.is_paid = true
+        AND p.person_key_final = c.person_key
+        AND (p.driver_id_final IS NULL OR p.driver_id_final != c.driver_id)
+    LIMIT 1
+) p_person_key ON p_exact.payment_key IS NULL 
+    AND p_other_milestone.payment_key IS NULL
+    AND c.person_key IS NOT NULL
+    AND c.driver_id IS NOT NULL
+    AND c.milestone_value IS NOT NULL;
 
 -- ============================================================================
 -- Comentarios de la Vista

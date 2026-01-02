@@ -22,12 +22,12 @@ try:
     from app.db import engine
     from sqlalchemy import text
 except ImportError as e:
-    print("❌ Error: No se pueden importar los módulos necesarios.")
-    print("   Asegúrate de:")
+    print("ERROR: No se pueden importar los modulos necesarios.")
+    print("   Asegurate de:")
     print("   1. Estar en el directorio backend/")
     print("   2. Tener el entorno virtual activado")
     print("   3. Haber instalado las dependencias: pip install -r requirements.txt")
-    print(f"\n   Error específico: {e}")
+    print(f"\n   Error especifico: {e}")
     sys.exit(1)
 
 def main():
@@ -35,23 +35,23 @@ def main():
     sql_file = Path(__file__).parent.parent / "sql" / "ops" / "v_claims_payment_status_cabinet.sql"
     
     if not sql_file.exists():
-        print(f"❌ Error: No se encontró el archivo SQL en: {sql_file}")
+        print(f"ERROR: No se encontro el archivo SQL en: {sql_file}")
         sys.exit(1)
     
-    print(f"📄 Leyendo SQL desde: {sql_file}")
+    print(f"Leyendo SQL desde: {sql_file}")
     sql_content = sql_file.read_text(encoding='utf-8')
     
-    print("🔌 Conectando a la base de datos...")
+    print("Conectando a la base de datos...")
     try:
         with engine.connect() as conn:
-            print("✅ Conectado. Ejecutando SQL...")
+            print("Conectado. Ejecutando SQL...")
             # Ejecutar el SQL
             conn.execute(text(sql_content))
             conn.commit()
-            print("✅ Vista creada exitosamente!")
+            print("Vista creada exitosamente!")
             
             # Verificar que la vista existe
-            print("🔍 Verificando que la vista existe...")
+            print("Verificando que la vista existe...")
             check_query = text("""
                 SELECT EXISTS (
                     SELECT 1 
@@ -63,12 +63,12 @@ def main():
             result = conn.execute(check_query).scalar()
             
             if result:
-                print("✅ Vista verificada correctamente")
+                print("Vista verificada correctamente")
             else:
-                print("⚠️  La vista podría no existir. Verifica manualmente.")
+                print("ADVERTENCIA: La vista podria no existir. Verifica manualmente.")
                 
     except Exception as e:
-        print(f"❌ Error al ejecutar SQL: {e}")
+        print(f"ERROR al ejecutar SQL: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

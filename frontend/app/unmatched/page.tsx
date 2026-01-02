@@ -1,205 +1,224 @@
-'use client'
+/**
+ * Unmatched - Registros no matcheados
+ * Basado en FRONTEND_UI_BLUEPRINT_v1.md
+ * 
+ * Objetivo: "¿Qué registros no pudieron ser matcheados?"
+ */
 
-import { useEffect, useState } from 'react'
-import { listUnmatched, IdentityUnmatched, listIngestionRuns, IngestionRun } from '@/lib/api'
-import { formatDate } from '@/lib/utils'
+'use client';
+
+import { useEffect, useState } from 'react';
+import { getUnmatched, resolveUnmatched, ApiError } from '@/lib/api';
+import type { IdentityUnmatched, UnmatchedResolveRequest } from '@/lib/types';
+import DataTable from '@/components/DataTable';
+import Filters from '@/components/Filters';
+import Pagination from '@/components/Pagination';
+import Badge from '@/components/Badge';
 
 export default function UnmatchedPage() {
-  const [unmatched, setUnmatched] = useState<IdentityUnmatched[]>([])
-  const [loading, setLoading] = useState(true)
-  const [reasonFilter, setReasonFilter] = useState<string>('')
-  const [statusFilter, setStatusFilter] = useState<string>('')
-  const [sourceTableFilter, setSourceTableFilter] = useState<string>('')
-  const [runIdFilter, setRunIdFilter] = useState<string>('')
-  const [runs, setRuns] = useState<IngestionRun[]>([])
-  const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({})
+  const [unmatched, setUnmatched] = useState<IdentityUnmatched[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState({
+    reason_code: '',
+    status: 'OPEN',
+  });
+  const [skip, setSkip] = useState(0);
+  const [limit, setLimit] = useState(100);
+  const [total, setTotal] = useState(0);
+  const [resolvingId, setResolvingId] = useState<number | null>(null);
+  const [resolvePersonKey, setResolvePersonKey] = useState('');
+  const [showResolveModal, setShowResolveModal] = useState(false);
 
   useEffect(() => {
-    loadRuns()
-  }, [])
+    async function loadUnmatched() {
+      try {
+        setLoading(true);
+        setError(null);
 
-  useEffect(() => {
-    loadUnmatched()
-  }, [reasonFilter, statusFilter, sourceTableFilter, runIdFilter])
+        const data = await getUnmatched({
+          ...filters,
+          skip,
+          limit,
+        });
 
-  async function loadRuns() {
-    try {
-      const data = await listIngestionRuns({ limit: 20 })
-      setRuns(data)
-    } catch (error) {
-      console.error('Error cargando runs:', error)
-    }
-  }
-
-  async function loadUnmatched() {
-    setLoading(true)
-    try {
-      const params: any = { limit: 100 }
-      if (reasonFilter) params.reason_code = reasonFilter
-      if (statusFilter) params.status = statusFilter
-      const data = await listUnmatched(params)
-      
-      let filtered = data
-      if (sourceTableFilter) {
-        filtered = filtered.filter(item => item.source_table === sourceTableFilter)
+        setUnmatched(data);
+        setTotal(data.length === limit ? skip + limit + 1 : skip + data.length);
+      } catch (err) {
+        if (err instanceof ApiError) {
+          if (err.status === 400) {
+            setError('Estado inválido');
+          } else if (err.status === 500) {
+            setError('Error al cargar unmatched');
+          } else {
+            setError(`Error ${err.status}: ${err.detail || err.message}`);
+          }
+        } else {
+          setError('Error desconocido');
+        }
+      } finally {
+        setLoading(false);
       }
-      if (runIdFilter) {
-        filtered = filtered.filter(item => item.run_id?.toString() === runIdFilter)
-      }
-      
-      setUnmatched(filtered)
-      
-      const counts: Record<string, number> = {}
-      filtered.forEach(item => {
-        counts[item.reason_code] = (counts[item.reason_code] || 0) + 1
-      })
-      setReasonCounts(counts)
-    } catch (error) {
-      console.error('Error cargando unmatched:', error)
-    } finally {
-      setLoading(false)
     }
-  }
 
-  const sourceTables = Array.from(new Set(unmatched.map(item => item.source_table)))
+    loadUnmatched();
+  }, [filters, skip, limit]);
+
+  const handleResolve = async () => {
+    if (!resolvingId || !resolvePersonKey) return;
+
+    try {
+      await resolveUnmatched(resolvingId, { person_key: resolvePersonKey });
+      // Recargar datos
+      const data = await getUnmatched({ ...filters, skip, limit });
+      setUnmatched(data);
+      setShowResolveModal(false);
+      setResolvePersonKey('');
+      setResolvingId(null);
+      alert('Registro resuelto exitosamente');
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 404) {
+          alert('Registro no encontrado o Persona no encontrada');
+        } else if (err.status === 500) {
+          alert('Error al resolver unmatched');
+        } else {
+          alert(`Error ${err.status}: ${err.detail || err.message}`);
+        }
+      } else {
+        alert('Error desconocido');
+      }
+    }
+  };
+
+  const filterFields = [
+    {
+      name: 'reason_code',
+      label: 'Código de Razón',
+      type: 'text' as const,
+    },
+    {
+      name: 'status',
+      label: 'Estado',
+      type: 'select' as const,
+      options: [
+        { value: 'OPEN', label: 'OPEN' },
+        { value: 'RESOLVED', label: 'RESOLVED' },
+      ],
+    },
+  ];
+
+  const columns = [
+    { key: 'id', header: 'ID' },
+    { key: 'source_table', header: 'Tabla Fuente' },
+    { key: 'source_pk', header: 'PK Fuente' },
+    { key: 'reason_code', header: 'Razón' },
+    {
+      key: 'status',
+      header: 'Estado',
+      render: (row: IdentityUnmatched) => (
+        <Badge variant={row.status === 'OPEN' ? 'warning' : 'success'}>
+          {row.status}
+        </Badge>
+      ),
+    },
+    {
+      key: 'created_at',
+      header: 'Creado',
+      render: (row: IdentityUnmatched) => new Date(row.created_at).toLocaleDateString('es-ES'),
+    },
+    {
+      key: 'actions',
+      header: 'Acciones',
+      render: (row: IdentityUnmatched) =>
+        row.status === 'OPEN' ? (
+          <button
+            onClick={() => {
+              setResolvingId(row.id);
+              setShowResolveModal(true);
+            }}
+            className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Resolver
+          </button>
+        ) : null,
+    },
+  ];
 
   return (
     <div className="px-4 py-6">
-      <h1 className="text-3xl font-bold mb-6">Registros Sin Resolver</h1>
+      <h1 className="text-3xl font-bold mb-6">Unmatched</h1>
 
-      {Object.keys(reasonCounts).length > 0 && (
-        <div className="bg-white rounded-lg shadow mb-6 p-4">
-          <h2 className="text-sm font-medium text-gray-700 mb-3">Contadores por Razón</h2>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(reasonCounts).map(([reason, count]) => (
-              <span
-                key={reason}
-                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium"
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <p className="text-red-800">{error}</p>
+        </div>
+      )}
+
+      <Filters
+        fields={filterFields}
+        values={filters}
+        onChange={(values) => setFilters(values as typeof filters)}
+        onReset={() => {
+          setFilters({ reason_code: '', status: 'OPEN' });
+          setSkip(0);
+        }}
+      />
+
+      <DataTable
+        data={unmatched}
+        columns={columns}
+        loading={loading}
+        emptyMessage="No hay registros unmatched que coincidan con los filtros"
+      />
+
+      {!loading && unmatched.length > 0 && (
+        <Pagination
+          total={total}
+          limit={limit}
+          offset={skip}
+          onPageChange={(newOffset) => setSkip(newOffset)}
+        />
+      )}
+
+      {/* Resolve Modal */}
+      {showResolveModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h2 className="text-xl font-semibold mb-4">Resolver Unmatched</h2>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Person Key (UUID)
+              </label>
+              <input
+                type="text"
+                value={resolvePersonKey}
+                onChange={(e) => setResolvePersonKey(e.target.value)}
+                placeholder="123e4567-e89b-12d3-a456-426614174000"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleResolve}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
-                {reason}: {count}
-              </span>
-            ))}
+                Resolver
+              </button>
+              <button
+                onClick={() => {
+                  setShowResolveModal(false);
+                  setResolvePersonKey('');
+                  setResolvingId(null);
+                }}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}
-
-      <div className="bg-white rounded-lg shadow mb-6 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <select
-            value={reasonFilter}
-            onChange={(e) => setReasonFilter(e.target.value)}
-            className="px-4 py-2 border rounded-md"
-          >
-            <option value="">Todos los códigos</option>
-            <option value="MISSING_KEYS">MISSING_KEYS</option>
-            <option value="NO_CANDIDATES">NO_CANDIDATES</option>
-            <option value="MULTIPLE_CANDIDATES">MULTIPLE_CANDIDATES</option>
-            <option value="WEAK_MATCH_ONLY">WEAK_MATCH_ONLY</option>
-            <option value="INVALID_DATE_FORMAT">INVALID_DATE_FORMAT</option>
-            <option value="ERROR">ERROR</option>
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border rounded-md"
-          >
-            <option value="">Todos los estados</option>
-            <option value="OPEN">Abierto</option>
-            <option value="RESOLVED">Resuelto</option>
-            <option value="IGNORED">Ignorado</option>
-          </select>
-          <select
-            value={sourceTableFilter}
-            onChange={(e) => setSourceTableFilter(e.target.value)}
-            className="px-4 py-2 border rounded-md"
-          >
-            <option value="">Todas las fuentes</option>
-            {sourceTables.map(table => (
-              <option key={table} value={table}>{table}</option>
-            ))}
-          </select>
-          <select
-            value={runIdFilter}
-            onChange={(e) => setRunIdFilter(e.target.value)}
-            className="px-4 py-2 border rounded-md"
-          >
-            <option value="">Todos los runs</option>
-            {runs.map(run => (
-              <option key={run.id} value={run.id.toString()}>Run #{run.id}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-12">Cargando...</div>
-      ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fuente</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PK</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Código</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha Snapshot</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Detalles</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {unmatched.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">{item.source_table}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono">{item.source_pk}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">{item.reason_code}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                      item.status === 'OPEN' ? 'bg-red-100 text-red-800' :
-                      item.status === 'RESOLVED' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {item.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(item.snapshot_date)}</td>
-                  <td className="px-6 py-4 text-sm">
-                    <div className="space-y-2">
-                      <div>
-                        <span className="font-medium text-red-600">{item.reason_code}</span>
-                        {item.run_id && (
-                          <span className="ml-2 text-xs text-gray-500">(Run #{item.run_id})</span>
-                        )}
-                      </div>
-                      {item.details && (
-                        <details>
-                          <summary className="cursor-pointer text-blue-600 hover:text-blue-800 text-xs">Detalles</summary>
-                          <pre className="mt-2 text-xs bg-gray-50 p-2 rounded overflow-auto max-h-40">
-                            {JSON.stringify(item.details, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                      {item.candidates_preview && (
-                        <details>
-                          <summary className="cursor-pointer text-green-600 hover:text-green-800 text-xs">Candidatos ({item.candidates_preview.candidates?.length || 0})</summary>
-                          <pre className="mt-2 text-xs bg-gray-50 p-2 rounded overflow-auto max-h-40">
-                            {JSON.stringify(item.candidates_preview, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {unmatched.length === 0 && (
-            <div className="text-center py-12 text-gray-500">No se encontraron registros sin resolver</div>
-          )}
-        </div>
-      )}
     </div>
-  )
+  );
 }
-
-
-

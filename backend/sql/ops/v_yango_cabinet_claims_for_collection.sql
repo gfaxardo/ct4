@@ -49,10 +49,57 @@ SELECT
     c.paid_date AS pay_date,
     c.reason_code,
     c.payment_match_rule AS match_rule,
-    c.payment_match_confidence AS match_confidence
+    c.payment_match_confidence AS match_confidence,
+    
+    -- Campos de identidad enriquecida (Opción B: diagnóstico de misapplied)
+    c.payment_identity_status AS identity_status,
+    
+    -- suggested_driver_id: driver_id sugerido desde ledger enriched cuando hay misapplied
+    -- Optimizado con LEFT JOIN LATERAL para evitar subconsultas correlacionadas costosas
+    COALESCE(
+        p_other_milestone.driver_id_final,
+        p_person_key.driver_id_final
+    ) AS suggested_driver_id,
+    
+    -- is_reconcilable_enriched: flag para identificar claims reconciliables
+    -- Regla: identity_status IN ('confirmed','enriched') AND match_confidence >= 0.85
+    -- Interpretación: 'high' >= 0.85, 'medium' con 'name_unique' >= 0.85
+    CASE
+        WHEN c.payment_identity_status IN ('confirmed', 'enriched') 
+            AND (
+                (c.payment_match_confidence = 'high') OR
+                (c.payment_match_confidence = 'medium' AND c.payment_match_rule = 'name_unique')
+            )
+        THEN true
+        ELSE false
+    END AS is_reconcilable_enriched
 
 FROM ops.v_claims_payment_status_cabinet c
-LEFT JOIN public.drivers d ON d.driver_id = c.driver_id;
+LEFT JOIN public.drivers d ON d.driver_id = c.driver_id
+-- Optimización: usar LEFT JOIN LATERAL solo cuando reason_code lo requiera
+-- Esto evita ejecutar subconsultas costosas para todas las filas
+LEFT JOIN LATERAL (
+    -- Para reason_code = 'payment_found_other_milestone': buscar driver_id del pago encontrado
+    SELECT driver_id_final
+    FROM ops.v_yango_payments_ledger_latest_enriched p
+    WHERE p.driver_id_final = c.driver_id
+        AND p.milestone_value != c.milestone_value
+        AND p.is_paid = true
+    ORDER BY p.pay_date DESC
+    LIMIT 1
+) p_other_milestone ON c.reason_code = 'payment_found_other_milestone'
+LEFT JOIN LATERAL (
+    -- Para reason_code = 'payment_found_person_key_only': buscar driver_id_final del pago por person_key
+    SELECT driver_id_final
+    FROM ops.v_yango_payments_ledger_latest_enriched p
+    WHERE p.person_key_final = c.person_key
+        AND p.milestone_value = c.milestone_value
+        AND p.is_paid = true
+        AND p.driver_id_final IS NOT NULL
+    ORDER BY p.pay_date DESC
+    LIMIT 1
+) p_person_key ON c.reason_code = 'payment_found_person_key_only' 
+    AND c.person_key IS NOT NULL;
 
 -- ============================================================================
 -- Comentarios de la Vista
@@ -104,6 +151,15 @@ COMMENT ON COLUMN ops.v_yango_cabinet_claims_for_collection.match_rule IS
 
 COMMENT ON COLUMN ops.v_yango_cabinet_claims_for_collection.match_confidence IS 
 'Confianza del matching del pago (high, medium, low) si existe, NULL si no hay pago.';
+
+COMMENT ON COLUMN ops.v_yango_cabinet_claims_for_collection.identity_status IS 
+'Estado de identidad del pago desde ledger enriched: confirmed (upstream), enriched (matching por nombre único), ambiguous (sin match único), no_match (sin datos). NULL si no hay pago.';
+
+COMMENT ON COLUMN ops.v_yango_cabinet_claims_for_collection.suggested_driver_id IS 
+'Driver ID sugerido desde ledger enriched cuando hay misapplied. Para payment_found_other_milestone: driver_id del pago encontrado. Para payment_found_person_key_only: driver_id_final del pago por person_key. NULL si no aplica.';
+
+COMMENT ON COLUMN ops.v_yango_cabinet_claims_for_collection.is_reconcilable_enriched IS 
+'Flag indicando si el claim es reconciliable usando identidad enriquecida. TRUE si identity_status IN (confirmed, enriched) AND (match_confidence=high OR (match_confidence=medium AND match_rule=name_unique)). FALSE en otros casos.';
 
 -- ============================================================================
 -- QUERY DE EXPORT EJEMPLO

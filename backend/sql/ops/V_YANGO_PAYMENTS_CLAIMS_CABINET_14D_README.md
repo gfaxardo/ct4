@@ -154,3 +154,8 @@ LIMIT 10;
 - El alias `is_paid` es para compatibilidad con queries legacy; preferir `paid_is_paid` o `is_paid_effective` en código nuevo.
 
 
+
+
+
+
+

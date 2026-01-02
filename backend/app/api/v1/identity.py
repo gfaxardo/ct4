@@ -7,10 +7,11 @@ from datetime import date, datetime
 import json
 from app.db import get_db, SessionLocal
 from app.models.canon import IdentityRegistry, IdentityLink, IdentityUnmatched, ConfidenceLevel, UnmatchedStatus
-from app.models.ops import IngestionRun, JobType
+from app.models.ops import IngestionRun, JobType, RunStatus
 from app.models.observational import ScoutingMatchCandidate
 from app.schemas.identity import IdentityRegistry as IdentityRegistrySchema, IdentityLink as IdentityLinkSchema, IdentityUnmatched as IdentityUnmatchedSchema, PersonDetail, UnmatchedResolveRequest, StatsResponse, RunReportResponse, MetricsScope, MetricsResponse
 from app.schemas.ingestion import IngestionRun as IngestionRunSchema
+from app.schemas.identity_runs import IdentityRunsResponse, IdentityRunRow, IngestionRunStatus, IngestionJobType
 from app.services.ingestion import IngestionService
 from app.services.normalization import normalize_phone, normalize_name, normalize_license, tokenize_name
 from app.services.scouting_observation import ScoutingObservationService
@@ -908,6 +909,90 @@ def _get_scouting_weekly_kpis(
         })
 
     return kpis
+
+
+@router.get("/runs", response_model=IdentityRunsResponse)
+def list_identity_runs(
+    db: Session = Depends(get_db),
+    limit: int = Query(20, ge=1, le=200, description="Número de resultados por página"),
+    offset: int = Query(0, ge=0, description="Offset para paginación"),
+    status: Optional[IngestionRunStatus] = Query(None, description="Filtrar por estado (RUNNING, COMPLETED, FAILED)"),
+    job_type: Optional[IngestionJobType] = Query(IngestionJobType.IDENTITY_RUN, description="Filtrar por tipo de job")
+):
+    """
+    Lista corridas de identidad con paginación y filtros.
+    
+    Retorna un listado paginado de corridas de identidad ordenadas por fecha de inicio
+    descendente (más recientes primero).
+    
+    Ejemplo curl:
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/identity/runs?limit=20&offset=0&status=COMPLETED&job_type=identity_run"
+    ```
+    
+    Args:
+        limit: Número máximo de resultados (1-200, default: 20)
+        offset: Número de resultados a saltar (default: 0)
+        status: Filtrar por estado (opcional)
+        job_type: Filtrar por tipo de job (default: identity_run)
+    
+    Returns:
+        IdentityRunsResponse con items, total, limit y offset
+    """
+    try:
+        # Construir query base
+        query = db.query(IngestionRun)
+        
+        # Filtrar por job_type (default: identity_run)
+        if job_type:
+            # Convertir IngestionJobType a JobType del modelo
+            job_type_value = JobType.IDENTITY_RUN if job_type == IngestionJobType.IDENTITY_RUN else JobType.DRIVERS_INDEX_REFRESH
+            query = query.filter(IngestionRun.job_type == job_type_value)
+        else:
+            # Default: identity_run
+            query = query.filter(IngestionRun.job_type == JobType.IDENTITY_RUN)
+        
+        # Filtrar por status si se proporciona
+        if status:
+            # Convertir IngestionRunStatus a RunStatus del modelo
+            status_value = None
+            if status == IngestionRunStatus.RUNNING:
+                status_value = RunStatus.RUNNING
+            elif status == IngestionRunStatus.COMPLETED:
+                status_value = RunStatus.COMPLETED
+            elif status == IngestionRunStatus.FAILED:
+                status_value = RunStatus.FAILED
+            
+            if status_value:
+                query = query.filter(IngestionRun.status == status_value)
+        
+        # Contar total (sin paginación)
+        total = query.count()
+        
+        # Ordenar por started_at DESC y aplicar paginación
+        runs = query.order_by(IngestionRun.started_at.desc()).offset(offset).limit(limit).all()
+        
+        # Convertir a schemas
+        items = [IdentityRunRow.model_validate(run) for run in runs]
+        
+        return IdentityRunsResponse(
+            items=items,
+            total=total,
+            limit=limit,
+            offset=offset
+        )
+    
+    except Exception as e:
+        # Log del error para debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error en list_identity_runs: {str(e)}", exc_info=True)
+        
+        # Retornar error 500
+        raise HTTPException(
+            status_code=500,
+            detail="database_error"
+        )
 
 
 @router.get("/runs/{run_id}/report", response_model=RunReportResponse)

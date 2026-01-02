@@ -1,0 +1,92 @@
+{
+  "timestamp": "2026-01-01T22:26:38.925204",
+  "summary": {
+    "status": "CRITICAL",
+    "global_status": "ERROR",
+    "error_count": 2.0,
+    "warn_count": 3.0,
+    "ok_count": 3.0
+  },
+  "coverage": {
+    "discovered_objects": 170,
+    "registered_objects": 170,
+    "unregistered_count": 0,
+    "missing_count": 0
+  },
+  "checks": [
+    {
+      "check_key": "mv_not_populated",
+      "severity": "error",
+      "status": "OK",
+      "message": "Todas las MVs están pobladas",
+      "drilldown_url": "/ops/health?tab=mv",
+      "last_evaluated_at": "2026-01-01T22:27:59.005563-05:00"
+    },
+    {
+      "check_key": "mv_refresh_failed",
+      "severity": "error",
+      "status": "OK",
+      "message": "Todas las MVs se refrescaron exitosamente",
+      "drilldown_url": "/ops/health?tab=mv",
+      "last_evaluated_at": "2026-01-01T22:27:59.005563-05:00"
+    },
+    {
+      "check_key": "raw_data_critical_stale",
+      "severity": "error",
+      "status": "ERROR",
+      "message": "Fuentes RAW con retraso crítico > 5 días: module_ct_scouting_daily, module_ct_scouts_list, yango_payment_ledger",
+      "drilldown_url": "/ops/health?tab=raw",
+      "last_evaluated_at": "2026-01-01T22:27:59.005563-05:00"
+    },
+    {
+      "check_key": "raw_data_health_errors",
+      "severity": "error",
+      "status": "ERROR",
+      "message": "Fuentes RAW con estado de error: module_ct_scout_drivers, module_ct_scouting_daily, summary_daily",
+      "drilldown_url": "/ops/health?tab=raw",
+      "last_evaluated_at": "2026-01-01T22:27:59.005563-05:00"
+    },
+    {
+      "check_key": "mv_refresh_stale",
+      "severity": "warning",
+      "status": "WARN",
+      "message": "MVs sin refrescar > 24h: mv_driver_name_index, mv_drivers_park_08e20910d81d42658d4334d3f6d10ac0, mv_drivers_park_08e20910d81d42658d4334d3f6d10ac0_active90d",
+      "drilldown_url": "/ops/health?tab=mv&stale_only=true",
+      "last_evaluated_at": "2026-01-01T22:27:59.005563-05:00"
+    },
+    {
+      "check_key": "raw_data_health_warnings",
+      "severity": "warning",
+      "status": "WARN",
+      "message": "Fuentes RAW con advertencias: yango_payment_ledger",
+      "drilldown_url": "/ops/health?tab=raw",
+      "last_evaluated_at": "2026-01-01T22:27:59.005563-05:00"
+    },
+    {
+      "check_key": "raw_data_stale",
+      "severity": "warning",
+      "status": "WARN",
+      "message": "Fuentes RAW con retraso > 2 días: module_ct_scouting_daily, module_ct_scouts_list, yango_payment_ledger",
+      "drilldown_url": "/ops/health?tab=raw",
+      "last_evaluated_at": "2026-01-01T22:27:59.005563-05:00"
+    },
+    {
+      "check_key": "critical_mv_no_refresh_log",
+      "severity": "info",
+      "status": "OK",
+      "message": "Todas las MVs críticas tienen historial de refresh",
+      "drilldown_url": "/ops/health?tab=mv",
+      "last_evaluated_at": "2026-01-01T22:27:59.005563-05:00"
+    }
+  ],
+  "uncovered_objects": [],
+  "missing_objects": [],
+  "unregistered_used_objects": [],
+  "critical_impacts": {
+    "raw_stale_affecting_critical": [],
+    "mv_refresh_failed": [],
+    "mv_not_populated": [],
+    "critical_mv_no_refresh_log": []
+  },
+  "infra_warnings": []
+}
