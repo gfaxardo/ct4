@@ -44,6 +44,7 @@ const navItems: NavItem[] = [
         children: [
           { label: 'Reconciliación', href: '/pagos/yango-cabinet', icon: '' },
           { label: 'Cobranza Yango', href: '/pagos/cobranza-yango', icon: '' },
+          { label: 'Claims Cabinet', href: '/pagos/yango-cabinet-claims', icon: '' },
         ],
       },
       { label: 'Claims', href: '/pagos/claims', icon: '', pending: true },
