@@ -700,6 +700,31 @@ def get_cabinet_claim_drilldown(
             claim_filter += " AND c.lead_date = :lead_date"
             params["lead_date"] = lead_date
         
+        # Verificar si hay múltiples claims para driver_id+milestone_value
+        count_claims_sql = f"""
+            SELECT COUNT(*) AS count
+            FROM ops.mv_yango_cabinet_claims_for_collection c
+            WHERE {claim_filter}
+        """
+        count_result = db.execute(text(count_claims_sql), params).fetchone()
+        claim_count = count_result.count if count_result else 0
+        
+        if claim_count == 0:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Claim no encontrado para driver_id={driver_id}, milestone_value={milestone_value}"
+            )
+        
+        if claim_count > 1 and not lead_date:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Ambigüedad: existen {claim_count} claims para driver_id={driver_id}, "
+                    f"milestone_value={milestone_value}. "
+                    f"Proporcione el parámetro 'lead_date' para desambiguar."
+                )
+            )
+        
         # QUERY 4.4: Drilldown genérico
         sql = f"""
             WITH claim_base AS (
@@ -1046,7 +1071,16 @@ def export_cabinet_claims_csv(
             
             for row in rows_data:
                 # Convertir valores None a string vacío para CSV
-                row_dict = {k: (v if v is not None else '') for k, v in dict(row).items()}
+                # Mitigar CSV injection: prefijar celdas que empiezan con (=,+,-,@) con '
+                row_dict = {}
+                for k, v in dict(row).items():
+                    if v is None:
+                        row_dict[k] = ''
+                    elif isinstance(v, str) and v and v[0] in ('=', '+', '-', '@'):
+                        # Prefijar con ' para prevenir ejecución de fórmulas en Excel
+                        row_dict[k] = "'" + v
+                    else:
+                        row_dict[k] = v
                 writer.writerow(row_dict)
         else:
             # CSV vacío con headers
@@ -1064,17 +1098,20 @@ def export_cabinet_claims_csv(
         csv_content = output.getvalue()
         output.close()
         
+        # Agregar BOM UTF-8 para compatibilidad Excel (utf-8-sig)
+        csv_content_utf8_sig = '\ufeff' + csv_content
+        
         # Generar nombre de archivo con timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         filename = f"yango_cabinet_claims_{timestamp}.csv"
         
-        # Retornar CSV como respuesta
+        # Retornar CSV como respuesta con UTF-8 BOM
         return Response(
-            content=csv_content,
+            content=csv_content_utf8_sig.encode('utf-8-sig'),
             media_type="text/csv",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
-                "Content-Type": "text/csv; charset=utf-8"
+                "Content-Type": "text/csv; charset=utf-8-sig"
             }
         )
     except HTTPException:

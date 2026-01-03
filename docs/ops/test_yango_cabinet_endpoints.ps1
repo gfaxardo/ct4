@@ -88,14 +88,22 @@ Test-Endpoint `
 # B3: GET /api/v1/yango/cabinet/claims/export
 Write-Host "`n--- B3: Export CSV ---" -ForegroundColor Cyan
 try {
-    $response = Invoke-WebRequest -Uri "$BaseUrl/api/v1/yango/cabinet/claims/export?limit=10" -Method GET -UseBasicParsing -ErrorAction Stop
+    $response = Invoke-WebRequest -Uri "$BaseUrl/api/v1/yango/cabinet/claims/export" -Method GET -UseBasicParsing -ErrorAction Stop
     $statusCode = $response.StatusCode
     $contentType = $response.Headers["Content-Type"]
+    $contentDisposition = $response.Headers["Content-Disposition"]
     
     if ($statusCode -eq 200 -and $contentType -like "*text/csv*") {
         Write-Host "  ✓ Status: $statusCode (OK)" -ForegroundColor Green
         Write-Host "  ✓ Content-Type: $contentType" -ForegroundColor Green
+        Write-Host "  ✓ Content-Disposition: $contentDisposition" -ForegroundColor Green
         Write-Host "  ✓ Content-Length: $($response.Content.Length) bytes" -ForegroundColor Green
+        
+        # Verificar que el contenido es CSV válido (tiene headers)
+        if ($response.Content -match "Driver ID") {
+            Write-Host "  ✓ CSV válido (contiene headers)" -ForegroundColor Green
+        }
+        
         $script:testsPassed++
     } else {
         Write-Host "  ✗ Status: $statusCode, Content-Type: $contentType" -ForegroundColor Red
@@ -104,6 +112,7 @@ try {
 } catch {
     $statusCode = $_.Exception.Response.StatusCode.value__
     Write-Host "  ✗ Error: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "    Status: $statusCode" -ForegroundColor Red
     $script:testsFailed++
 }
 

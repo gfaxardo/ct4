@@ -208,21 +208,21 @@ ORDER BY section, category;
 
 ---
 
-### 3.2 GET /api/v1/pagos/yango/claims
+### 3.2 GET /api/v1/yango/cabinet/claims-to-collect
 
-**Propósito:** Lista de claims para cobrar (filtrada por UNPAID)
+**Propósito:** Lista de claims exigibles a Yango (EXIGIMOS - filtrada por UNPAID)
 
 **Fuente de datos:** `ops.v_yango_cabinet_claims_exigimos`
 
 **Query Parameters:**
 - `limit` (int, default: 50, max: 200)
 - `offset` (int, default: 0)
+- `date_from` (date, optional): Filtra por fecha lead desde
+- `date_to` (date, optional): Filtra por fecha lead hasta
 - `milestone_value` (int, optional: 1, 5, 25)
-- `overdue_bucket` (string, optional: '0_not_due', '1_1_7', '2_8_14', '3_15_30', '4_30_plus')
-- `is_reconcilable` (boolean, optional)
-- `identity_status` (string, optional: 'confirmed', 'enriched', 'ambiguous', 'no_match')
-- `sort_by` (string, default: 'days_overdue_yango', options: 'days_overdue_yango', 'expected_amount', 'driver_id')
-- `sort_order` (string, default: 'DESC', options: 'ASC', 'DESC')
+- `search` (string, optional): Búsqueda en driver_name o driver_id
+
+**Orden:** `days_overdue_yango DESC, expected_amount DESC`
 
 **Response:**
 ```json
@@ -268,15 +268,23 @@ LIMIT :limit OFFSET :offset;
 
 ---
 
-### 3.3 GET /api/v1/pagos/yango/claims/{driver_id}/{milestone_value}
+### 3.3 GET /api/v1/yango/cabinet/claims/{driver_id}/{milestone_value}/drilldown
 
-**Propósito:** Drilldown de un claim específico (evidencia completa)
+**Propósito:** Drilldown de un claim específico (evidencia completa para defensa del cobro)
 
-**Fuente de datos:** Múltiples vistas (ver `docs/ops/yango_cabinet_claims_drilldown.sql`)
+**Fuente de datos:** Múltiples vistas (ver `docs/ops/yango_cabinet_claims_drilldown.sql` QUERY 4.4)
 
 **Path Parameters:**
 - `driver_id` (string, required)
 - `milestone_value` (int, required: 1, 5, 25)
+
+**Query Parameters:**
+- `lead_date` (date, optional): Fecha lead para desambiguar si hay múltiples claims
+
+**Códigos de respuesta:**
+- `200`: Drilldown exitoso
+- `404`: Claim no encontrado
+- `409`: Ambigüedad (múltiples claims para driver_id+milestone_value, requiere lead_date)
 
 **Response:**
 ```json
@@ -328,17 +336,32 @@ LIMIT :limit OFFSET :offset;
 
 ---
 
-### 3.4 GET /api/v1/pagos/yango/claims/export
+### 3.4 GET /api/v1/yango/cabinet/claims/export
 
-**Propósito:** Exportar lista de claims a Excel/CSV
+**Propósito:** Exportar lista de claims exigibles a CSV
 
 **Fuente de datos:** `ops.v_yango_cabinet_claims_exigimos`
 
-**Query Parameters:** (mismos que GET /api/v1/pagos/yango/claims)
+**Query Parameters:**
+- `date_from` (date, optional): Filtra por fecha lead desde
+- `date_to` (date, optional): Filtra por fecha lead hasta
+- `milestone_value` (int, optional: 1, 5, 25)
+- `search` (string, optional): Búsqueda en driver_name o driver_id
 
-**Response:** CSV o Excel file
+**Response:** CSV file (UTF-8 con BOM, compatible Excel)
+- Content-Type: `text/csv; charset=utf-8-sig`
+- Content-Disposition: `attachment; filename="yango_cabinet_claims_YYYYMMDD_HHMM.csv"`
+- Hard cap: 200,000 filas máximo (error 413 si excede)
+- CSV injection mitigation: celdas que empiezan con (=,+,-,@) se prefijan con '
 
 **Query SQL:** Ver `docs/ops/yango_cabinet_claims_to_collect.sql` QUERY 3.2
+
+**Ejemplo curl:**
+```bash
+curl -X GET "http://localhost:8000/api/v1/yango/cabinet/claims/export?milestone_value=1" \
+  -H "Accept: text/csv" \
+  -o yango_claims_export.csv
+```
 
 ---
 
