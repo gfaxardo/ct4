@@ -24,6 +24,7 @@ import os
 import sys
 import time
 import socket
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -58,6 +59,39 @@ def get_hostname():
         return socket.gethostname()
     except:
         return None
+
+
+def has_unique_index_for_mv(conn) -> bool:
+    """
+    Verifica si existe un índice único en el grano canónico de la MV.
+    
+    Consulta pg_index, pg_class, pg_namespace para verificar:
+    - nspname = 'ops'
+    - relname = 'mv_yango_cabinet_claims_for_collection'
+    - indisunique = true
+    
+    Retorna True si existe al menos un índice único, False en caso contrario.
+    """
+    try:
+        result = conn.execute(text("""
+            SELECT COUNT(*) > 0 AS has_unique_index
+            FROM pg_index i
+            JOIN pg_class c ON c.oid = i.indexrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            JOIN pg_class t ON t.oid = i.indrelid
+            JOIN pg_namespace tn ON tn.oid = t.relnamespace
+            WHERE tn.nspname = :schema_name
+              AND t.relname = :mv_name
+              AND i.indisunique = true
+        """), {
+            "schema_name": SCHEMA_NAME,
+            "mv_name": MV_NAME_ONLY
+        })
+        has_index = result.scalar()
+        return bool(has_index) if has_index is not None else False
+    except Exception as e:
+        print(f"    [WARN] No se pudo verificar índice único: {e}")
+        return False
 
 
 def insert_refresh_log_start(conn, log_id: int, started_at: datetime, host: str = None):
@@ -98,10 +132,12 @@ def insert_refresh_log_start(conn, log_id: int, started_at: datetime, host: str 
 
 def update_refresh_log_finish(
     conn, log_id: int, finished_at: datetime, status: str, 
-    rows_after: int = None, error_message: str = None, duration_ms: int = None
+    rows_after: int = None, error_message: str = None, duration_ms: int = None,
+    meta: dict = None
 ):
     """Actualiza registro de refresh al finalizar (status=OK/ERROR)."""
     try:
+        meta_json = json.dumps(meta) if meta else None
         conn.execute(text("""
             UPDATE ops.mv_refresh_log
             SET refresh_finished_at = :finished_at,
@@ -109,6 +145,7 @@ def update_refresh_log_finish(
                 rows_after_refresh = :rows_after,
                 error_message = :error_message,
                 duration_ms = :duration_ms,
+                meta = :meta::jsonb,
                 refreshed_at = :refreshed_at  -- Mantener compatibilidad
             WHERE id = :id
         """), {
@@ -118,6 +155,7 @@ def update_refresh_log_finish(
             "rows_after": rows_after,
             "error_message": error_message,
             "duration_ms": duration_ms,
+            "meta": meta_json,
             "refreshed_at": finished_at  # Compatibilidad
         })
         conn.commit()
@@ -143,16 +181,35 @@ def refresh_mv(conn, log_id: int, started_at: datetime, host: str = None):
     Retorna (success: bool, rows_after: int, error_message: str)
     """
     refresh_start_time = time.time()
+    meta = {}
     
     try:
-        # Intentar CONCURRENTLY primero si está habilitado
-        if USE_CONCURRENTLY:
+        # Verificar si existe índice único antes de intentar CONCURRENTLY
+        has_unique_index = has_unique_index_for_mv(conn)
+        
+        if not has_unique_index:
+            # NO hay índice único → NO intentar CONCURRENTLY
+            print(f"    [INFO] Índice único no encontrado, usando refresh NORMAL")
+            meta["missing_unique_index"] = True
+            meta["attempted_concurrently"] = False
+            
+            refresh_sql = f"REFRESH MATERIALIZED VIEW {MV_NAME};"
+            print(f"    Refrescando {MV_NAME} (NORMAL)...")
+            conn.execute(text(refresh_sql))
+            conn.commit()
+            print(f"    [OK] Refresh NORMAL completado")
+        else:
+            # Hay índice único → intentar CONCURRENTLY
+            meta["attempted_concurrently"] = True
+            meta["missing_unique_index"] = False
+            
             try:
                 refresh_sql = f"REFRESH MATERIALIZED VIEW CONCURRENTLY {MV_NAME};"
                 print(f"    Refrescando {MV_NAME} (CONCURRENTLY)...")
                 conn.execute(text(refresh_sql))
                 conn.commit()
                 print(f"    [OK] Refresh CONCURRENTLY completado")
+                meta["concurrently_succeeded"] = True
             except Exception as e:
                 error_msg = str(e)
                 if "concurrently" in error_msg.lower() or "unique index" in error_msg.lower():
@@ -161,15 +218,10 @@ def refresh_mv(conn, log_id: int, started_at: datetime, host: str = None):
                     refresh_sql = f"REFRESH MATERIALIZED VIEW {MV_NAME};"
                     conn.execute(text(refresh_sql))
                     conn.commit()
-                    print(f"    [OK] Refresh NORMAL completado (sin CONCURRENTLY)")
+                    print(f"    [OK] Refresh NORMAL completado (fallback desde CONCURRENTLY)")
+                    meta["concurrently_succeeded"] = False
                 else:
                     raise
-        else:
-            refresh_sql = f"REFRESH MATERIALIZED VIEW {MV_NAME};"
-            print(f"    Refrescando {MV_NAME} (NORMAL)...")
-            conn.execute(text(refresh_sql))
-            conn.commit()
-            print(f"    [OK] Refresh NORMAL completado")
         
         # Obtener conteo de filas
         rows_after = get_rows_count(conn)
@@ -185,7 +237,8 @@ def refresh_mv(conn, log_id: int, started_at: datetime, host: str = None):
         update_refresh_log_finish(
             conn, log_id, finished_at, "OK", 
             rows_after=rows_after, 
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
+            meta=meta
         )
         
         return (True, rows_after, None)
@@ -197,11 +250,12 @@ def refresh_mv(conn, log_id: int, started_at: datetime, host: str = None):
         
         finished_at = datetime.now()
         
-        # Actualizar log como ERROR
+        # Actualizar log como ERROR (incluir meta si está disponible)
         update_refresh_log_finish(
             conn, log_id, finished_at, "ERROR",
             error_message=error_msg,
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
+            meta=meta if meta else None
         )
         
         return (False, None, error_msg)
