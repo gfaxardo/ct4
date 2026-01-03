@@ -38,3 +38,4 @@ COMMENT ON COLUMN ops.mv_refresh_log.duration_ms IS
 COMMENT ON COLUMN ops.mv_refresh_log.error_message IS 
 'Mensaje de error si status=FAILED, NULL si status=SUCCESS.';
 
+

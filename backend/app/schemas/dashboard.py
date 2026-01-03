@@ -126,3 +126,4 @@ class YangoReceivableItemsResponse(BaseModel):
 
 
 
+

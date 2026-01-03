@@ -87,3 +87,4 @@ COMMENT ON COLUMN ops.source_registry.last_verified_at IS
 COMMENT ON COLUMN ops.source_registry.notes IS 
 'Notas manuales. NO se pisa si tiene valor.';
 
+
