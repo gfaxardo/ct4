@@ -116,6 +116,49 @@ try {
     $script:testsFailed++
 }
 
+# B4: GET /api/v1/yango/cabinet/mv-health (opcional)
+Write-Host "`n--- B4: MV Health Check (opcional) ---" -ForegroundColor Cyan
+try {
+    $response = Invoke-WebRequest -Uri "$BaseUrl/api/v1/yango/cabinet/mv-health" -Method GET -UseBasicParsing -ErrorAction Stop
+    $statusCode = $response.StatusCode
+    
+    if ($statusCode -eq 200) {
+        $json = $response.Content | ConvertFrom-Json
+        Write-Host "  ✓ Status: $statusCode (OK)" -ForegroundColor Green
+        
+        # Validar que exista status_bucket y hours_since_ok_refresh
+        if ($json.status_bucket) {
+            Write-Host "  ✓ status_bucket: $($json.status_bucket)" -ForegroundColor Green
+        } else {
+            Write-Host "  ✗ status_bucket no presente en response" -ForegroundColor Red
+            $script:testsFailed++
+        }
+        
+        if ($null -ne $json.hours_since_ok_refresh) {
+            Write-Host "  ✓ hours_since_ok_refresh: $($json.hours_since_ok_refresh)" -ForegroundColor Green
+        } else {
+            Write-Host "  ⚠ hours_since_ok_refresh es null (puede ser normal si no hay refresh)" -ForegroundColor Yellow
+        }
+        
+        $script:testsPassed++
+    } else {
+        Write-Host "  ✗ Status: $statusCode (esperado: 200)" -ForegroundColor Red
+        $script:testsFailed++
+    }
+} catch {
+    $statusCode = $_.Exception.Response.StatusCode.value__
+    # 404 es aceptable si no se aplicó el SQL de health check
+    if ($statusCode -eq 404) {
+        Write-Host "  ⚠ Status: 404 (vista no existe - ejecutar: psql -d database -f docs/ops/yango_cabinet_claims_mv_health.sql)" -ForegroundColor Yellow
+        Write-Host "  (Este test es opcional y 404 es aceptable)" -ForegroundColor Gray
+        # No contar como fallido si es 404
+    } else {
+        Write-Host "  ✗ Error: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "    Status: $statusCode" -ForegroundColor Red
+        $script:testsFailed++
+    }
+}
+
 # Resumen
 Write-Host "`n=== Resumen ===" -ForegroundColor Cyan
 Write-Host "Tests pasados: $testsPassed" -ForegroundColor Green

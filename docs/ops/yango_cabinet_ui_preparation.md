@@ -365,6 +365,53 @@ curl -X GET "http://localhost:8000/api/v1/yango/cabinet/claims/export?milestone_
 
 ---
 
+### 3.5 GET /api/v1/yango/cabinet/mv-health
+
+**Propósito:** Obtener estado de salud de la MV `ops.mv_yango_cabinet_claims_for_collection`
+
+**Fuente de datos:** `ops.v_yango_cabinet_claims_mv_health`
+
+**Query Parameters:** Ninguno
+
+**Códigos de respuesta:**
+- `200`: Health check disponible
+- `404`: Vista no existe o no hay datos
+- `500`: Invariante roto (más de 1 fila en la vista)
+
+**Response (200):**
+```json
+{
+  "mv_name": "ops.mv_yango_cabinet_claims_for_collection",
+  "last_ok_refresh_finished_at": "2024-01-15T10:30:00Z",
+  "hours_since_ok_refresh": 2.5,
+  "status_bucket": "OK",
+  "last_status": "OK",
+  "last_error": null,
+  "rows_after_refresh": 1234,
+  "calculated_at": "2024-01-15T13:00:00Z"
+}
+```
+
+**Response (404):**
+```json
+{
+  "detail": "Vista ops.v_yango_cabinet_claims_mv_health no existe. Ejecutar: psql -d database -f docs/ops/yango_cabinet_claims_mv_health.sql"
+}
+```
+
+**Ejemplo curl:**
+```bash
+curl -X GET "http://localhost:8000/api/v1/yango/cabinet/mv-health" \
+  -H "Accept: application/json"
+```
+
+**Query SQL:**
+```sql
+SELECT * FROM ops.v_yango_cabinet_claims_mv_health;
+```
+
+---
+
 ## 4. Mapeo de Columnas SQL → UI
 
 ### 4.1 Tabla de Claims para Cobrar

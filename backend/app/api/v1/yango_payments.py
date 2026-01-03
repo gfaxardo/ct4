@@ -34,7 +34,8 @@ from app.schemas.payments import (
     YangoCabinetClaimDrilldownResponse,
     LeadCabinetInfo,
     PaymentInfo,
-    ReconciliationInfo
+    ReconciliationInfo,
+    YangoCabinetMvHealthRow
 )
 
 logger = logging.getLogger(__name__)
@@ -1121,4 +1122,67 @@ def export_cabinet_claims_csv(
         raise HTTPException(
             status_code=500,
             detail=f"Error al exportar claims a CSV: {str(e)}"
+        )
+
+
+@router.get("/cabinet/mv-health", response_model=YangoCabinetMvHealthRow)
+def get_cabinet_mv_health(
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene el estado de salud de la MV ops.mv_yango_cabinet_claims_for_collection.
+    
+    Fuente: ops.v_yango_cabinet_claims_mv_health
+    READ-ONLY: No recalcula lógica, solo lee la vista existente.
+    
+    Retorna:
+    - 200: Health check disponible
+    - 404: Vista no existe o no hay datos
+    - 500: Invariante roto (más de 1 fila en la vista)
+    """
+    try:
+        # Verificar que la vista existe
+        view_check_sql = text("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.views 
+                WHERE table_schema = 'ops' 
+                AND table_name = 'v_yango_cabinet_claims_mv_health'
+            )
+        """)
+        view_exists = db.execute(view_check_sql).scalar()
+        
+        if not view_exists:
+            raise HTTPException(
+                status_code=404,
+                detail="Vista ops.v_yango_cabinet_claims_mv_health no existe. Ejecutar: psql -d database -f docs/ops/yango_cabinet_claims_mv_health.sql"
+            )
+        
+        # Leer de la vista (READ-ONLY, no recalcular)
+        sql = text("SELECT * FROM ops.v_yango_cabinet_claims_mv_health")
+        result = db.execute(sql)
+        rows_data = result.mappings().all()
+        
+        if len(rows_data) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="Vista ops.v_yango_cabinet_claims_mv_health no retorna datos. Verificar que ops.mv_refresh_log tiene registros."
+            )
+        
+        if len(rows_data) > 1:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Invariante roto: vista ops.v_yango_cabinet_claims_mv_health retorna {len(rows_data)} filas (esperado: 1). Revisar definición de la vista."
+            )
+        
+        # Retornar la única fila
+        row = rows_data[0]
+        return YangoCabinetMvHealthRow(**dict(row))
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en get_cabinet_mv_health: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar health check de MV: {str(e)}"
         )

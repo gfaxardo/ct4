@@ -256,3 +256,18 @@ class YangoCabinetClaimDrilldownResponse(BaseModel):
     payments_other_milestones: List[PaymentInfo] = []
     reconciliation: Optional[ReconciliationInfo] = None
     misapplied_explanation: Optional[str] = None
+
+
+# Yango Cabinet MV Health Schema
+class YangoCabinetMvHealthRow(BaseModel):
+    mv_name: str
+    last_ok_refresh_finished_at: Optional[datetime] = None
+    hours_since_ok_refresh: Optional[float] = None
+    status_bucket: str  # OK, WARN, CRIT, NO_REFRESH
+    last_status: Optional[str] = None
+    last_error: Optional[str] = None
+    rows_after_refresh: Optional[int] = None
+    calculated_at: datetime
+
+    class Config:
+        from_attributes = True
