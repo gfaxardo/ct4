@@ -137,27 +137,61 @@ def update_refresh_log_finish(
 ):
     """Actualiza registro de refresh al finalizar (status=OK/ERROR)."""
     try:
-        meta_json = json.dumps(meta) if meta else None
-        conn.execute(text("""
-            UPDATE ops.mv_refresh_log
-            SET refresh_finished_at = :finished_at,
-                status = :status,
-                rows_after_refresh = :rows_after,
-                error_message = :error_message,
-                duration_ms = :duration_ms,
-                meta = :meta::jsonb,
-                refreshed_at = :refreshed_at  -- Mantener compatibilidad
-            WHERE id = :id
-        """), {
-            "id": log_id,
-            "finished_at": finished_at,
-            "status": status,
-            "rows_after": rows_after,
-            "error_message": error_message,
-            "duration_ms": duration_ms,
-            "meta": meta_json,
-            "refreshed_at": finished_at  # Compatibilidad
-        })
+        # Preparar meta: convertir dict a JSON string si existe, None si no
+        if meta is not None:
+            meta_json = json.dumps(meta)
+            # Usar CAST para convertir el string JSON a jsonb
+            meta_sql = "CAST(:meta AS jsonb)"
+        else:
+            meta_json = None
+            meta_sql = "NULL"
+        
+        # Construir SQL dinámicamente según si meta es None o no
+        if meta_json is not None:
+            sql = f"""
+                UPDATE ops.mv_refresh_log
+                SET refresh_finished_at = :finished_at,
+                    status = :status,
+                    rows_after_refresh = :rows_after,
+                    error_message = :error_message,
+                    duration_ms = :duration_ms,
+                    meta = CAST(:meta AS jsonb),
+                    refreshed_at = :refreshed_at
+                WHERE id = :id
+            """
+            params = {
+                "id": log_id,
+                "finished_at": finished_at,
+                "status": status,
+                "rows_after": rows_after,
+                "error_message": error_message,
+                "duration_ms": duration_ms,
+                "meta": meta_json,
+                "refreshed_at": finished_at
+            }
+        else:
+            sql = """
+                UPDATE ops.mv_refresh_log
+                SET refresh_finished_at = :finished_at,
+                    status = :status,
+                    rows_after_refresh = :rows_after,
+                    error_message = :error_message,
+                    duration_ms = :duration_ms,
+                    meta = NULL,
+                    refreshed_at = :refreshed_at
+                WHERE id = :id
+            """
+            params = {
+                "id": log_id,
+                "finished_at": finished_at,
+                "status": status,
+                "rows_after": rows_after,
+                "error_message": error_message,
+                "duration_ms": duration_ms,
+                "refreshed_at": finished_at
+            }
+        
+        conn.execute(text(sql), params)
         conn.commit()
     except Exception as e:
         print(f"    [WARN] No se pudo actualizar registro final en BD: {e}")
