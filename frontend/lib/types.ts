@@ -529,6 +529,74 @@ export interface ClaimDetailRow {
   match_confidence: string | null;
 }
 
+// ============================================================================
+// Yango Cabinet Claims Types
+// ============================================================================
+
+export interface YangoCabinetClaimRow {
+  claim_key: string | null;
+  person_key: string | null;
+  driver_id: string | null;
+  driver_name: string | null;
+  milestone_value: number | null;
+  lead_date: string | null;
+  expected_amount: number | null;
+  yango_due_date: string | null;
+  days_overdue_yango: number | null;
+  overdue_bucket_yango: string | null;
+  yango_payment_status: string | null;
+  reason_code: string | null;
+  identity_status: string | null;
+  match_rule: string | null;
+  match_confidence: string | null;
+  is_reconcilable_enriched: boolean | null;
+  payment_key: string | null;
+  pay_date: string | null;
+  suggested_driver_id: string | null;
+}
+
+export interface YangoCabinetClaimsResponse {
+  status: string;
+  count: number;
+  total: number;
+  filters: Record<string, any>;
+  rows: YangoCabinetClaimRow[];
+}
+
+export interface LeadCabinetInfo {
+  source_pk: string | null;
+  match_rule: string | null;
+  match_score: number | null;
+  confidence_level: string | null;
+  linked_at: string | null;
+}
+
+export interface PaymentInfo {
+  payment_key: string | null;
+  pay_date: string | null;
+  milestone_value: number | null;
+  identity_status: string | null;
+  match_rule: string | null;
+}
+
+export interface ReconciliationInfo {
+  reconciliation_status: string | null;
+  expected_amount: number | null;
+  paid_payment_key: string | null;
+  paid_date: string | null;
+  match_method: string | null;
+}
+
+export interface YangoCabinetClaimDrilldownResponse {
+  status: string;
+  claim: YangoCabinetClaimRow | null;
+  lead_cabinet: LeadCabinetInfo | null;
+  payment_exact: PaymentInfo | null;
+  payments_other_milestones: PaymentInfo[];
+  reconciliation: ReconciliationInfo | null;
+  misapplied_explanation: string | null;
+}
+
 export interface YangoDriverDetailResponse {
   status: string;
   driver_id: string;

@@ -405,6 +405,49 @@ export async function getYangoDriverDetail(driverId: string): Promise<YangoDrive
 }
 
 // ============================================================================
+// Yango Cabinet Claims API
+// ============================================================================
+
+import type {
+  YangoCabinetClaimsResponse,
+  YangoCabinetClaimDrilldownResponse,
+} from './types';
+
+export async function getYangoCabinetClaimsToCollect(params?: {
+  date_from?: string;
+  date_to?: string;
+  milestone_value?: number;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<YangoCabinetClaimsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.date_from) searchParams.set('date_from', params.date_from);
+  if (params?.date_to) searchParams.set('date_to', params.date_to);
+  if (params?.milestone_value !== undefined) searchParams.set('milestone_value', params.milestone_value.toString());
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<YangoCabinetClaimsResponse>(`/api/v1/yango/cabinet/claims-to-collect${query ? `?${query}` : ''}`);
+}
+
+export async function getYangoCabinetClaimDrilldown(
+  driverId: string,
+  milestoneValue: number,
+  leadDate?: string
+): Promise<YangoCabinetClaimDrilldownResponse> {
+  const searchParams = new URLSearchParams();
+  if (leadDate) searchParams.set('lead_date', leadDate);
+  
+  const query = searchParams.toString();
+  return fetchApi<YangoCabinetClaimDrilldownResponse>(
+    `/api/v1/yango/cabinet/claims/${driverId}/${milestoneValue}/drilldown${query ? `?${query}` : ''}`
+  );
+}
+
+// ============================================================================
 // Ops API
 // ============================================================================
 

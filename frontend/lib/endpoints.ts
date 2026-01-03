@@ -31,6 +31,11 @@ export const ENDPOINTS = {
   YANGO_LEDGER_MATCHED: '/api/v1/yango/payments/reconciliation/ledger/matched',
   YANGO_DRIVER_DETAIL: (driverId: string) => `/api/v1/yango/payments/reconciliation/driver/${driverId}`,
   
+  // Yango Cabinet Claims
+  YANGO_CABINET_CLAIMS_TO_COLLECT: '/api/v1/yango/cabinet/claims-to-collect',
+  YANGO_CABINET_CLAIM_DRILLDOWN: (driverId: string, milestoneValue: number) => `/api/v1/yango/cabinet/claims/${driverId}/${milestoneValue}/drilldown`,
+  YANGO_CABINET_CLAIMS_EXPORT: '/api/v1/yango/cabinet/claims/export',
+  
   // Ops
   OPS_ALERTS: '/api/v1/ops/alerts',
   OPS_ACKNOWLEDGE_ALERT: (alertId: number) => `/api/v1/ops/alerts/${alertId}/acknowledge`,
