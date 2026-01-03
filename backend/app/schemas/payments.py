@@ -178,3 +178,81 @@ class PaymentEligibilityResponse(BaseModel):
     count: int
     filters: Dict[str, Any]
     rows: List[PaymentEligibilityRow]
+
+
+# Yango Cabinet Claims Schemas
+class YangoCabinetClaimRow(BaseModel):
+    claim_key: Optional[str] = None
+    person_key: Optional[str] = None
+    driver_id: Optional[str] = None
+    driver_name: Optional[str] = None
+    milestone_value: Optional[int] = None
+    lead_date: Optional[date] = None
+    expected_amount: Optional[Decimal] = None
+    yango_due_date: Optional[date] = None
+    days_overdue_yango: Optional[int] = None
+    overdue_bucket_yango: Optional[str] = None
+    yango_payment_status: Optional[str] = None
+    reason_code: Optional[str] = None
+    identity_status: Optional[str] = None
+    match_rule: Optional[str] = None
+    match_confidence: Optional[str] = None
+    is_reconcilable_enriched: Optional[bool] = None
+    payment_key: Optional[str] = None
+    pay_date: Optional[date] = None
+    suggested_driver_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class YangoCabinetClaimsResponse(BaseModel):
+    status: str
+    count: int
+    total: int
+    filters: Dict[str, Any]
+    rows: List[YangoCabinetClaimRow]
+
+
+# Yango Cabinet Claim Drilldown Schemas
+class LeadCabinetInfo(BaseModel):
+    source_pk: Optional[str] = None
+    match_rule: Optional[str] = None
+    match_score: Optional[float] = None
+    confidence_level: Optional[str] = None
+    linked_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PaymentInfo(BaseModel):
+    payment_key: Optional[str] = None
+    pay_date: Optional[date] = None
+    milestone_value: Optional[int] = None
+    identity_status: Optional[str] = None
+    match_rule: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ReconciliationInfo(BaseModel):
+    reconciliation_status: Optional[str] = None
+    expected_amount: Optional[Decimal] = None
+    paid_payment_key: Optional[str] = None
+    paid_date: Optional[date] = None
+    match_method: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class YangoCabinetClaimDrilldownResponse(BaseModel):
+    status: str
+    claim: Optional[YangoCabinetClaimRow] = None
+    lead_cabinet: Optional[LeadCabinetInfo] = None
+    payment_exact: Optional[PaymentInfo] = None
+    payments_other_milestones: List[PaymentInfo] = []
+    reconciliation: Optional[ReconciliationInfo] = None
+    misapplied_explanation: Optional[str] = None

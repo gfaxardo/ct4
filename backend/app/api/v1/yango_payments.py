@@ -14,6 +14,7 @@ from sqlalchemy import text
 from typing import Optional, Literal
 from datetime import date
 import logging
+import hashlib
 
 from app.db import get_db
 from app.schemas.payments import (
@@ -24,7 +25,13 @@ from app.schemas.payments import (
     YangoLedgerUnmatchedRow,
     YangoLedgerUnmatchedResponse,
     YangoDriverDetailResponse,
-    ClaimDetailRow
+    ClaimDetailRow,
+    YangoCabinetClaimRow,
+    YangoCabinetClaimsResponse,
+    YangoCabinetClaimDrilldownResponse,
+    LeadCabinetInfo,
+    PaymentInfo,
+    ReconciliationInfo
 )
 
 logger = logging.getLogger(__name__)
@@ -537,4 +544,383 @@ def get_driver_detail(
         raise HTTPException(
             status_code=500,
             detail=f"Error al consultar detalle del conductor: {str(e)}"
+        )
+
+
+@router.get("/cabinet/claims-to-collect", response_model=YangoCabinetClaimsResponse)
+def get_cabinet_claims_to_collect(
+    db: Session = Depends(get_db),
+    date_from: Optional[date] = Query(None, description="Filtra por fecha lead desde"),
+    date_to: Optional[date] = Query(None, description="Filtra por fecha lead hasta"),
+    milestone_value: Optional[int] = Query(None, description="Filtra por milestone (1, 5, 25)"),
+    search: Optional[str] = Query(None, description="Búsqueda en driver_name o driver_id"),
+    limit: int = Query(50, ge=1, le=200, description="Límite de resultados por página"),
+    offset: int = Query(0, ge=0, description="Offset para paginación")
+):
+    """
+    Obtiene lista de claims exigibles a Yango (EXIGIMOS).
+    
+    Basado en QUERY 3.1 de docs/ops/yango_cabinet_claims_to_collect.sql
+    Fuente: ops.v_yango_cabinet_claims_exigimos (ya filtra UNPAID)
+    
+    READ-ONLY: No recalcula estados, solo consume la vista existente.
+    """
+    # Construir query base (QUERY 3.1)
+    where_conditions = []
+    params = {}
+    
+    # Filtros opcionales
+    if date_from:
+        where_conditions.append("lead_date >= :date_from")
+        params["date_from"] = date_from
+    
+    if date_to:
+        where_conditions.append("lead_date <= :date_to")
+        params["date_to"] = date_to
+    
+    if milestone_value:
+        where_conditions.append("milestone_value = :milestone_value")
+        params["milestone_value"] = milestone_value
+    
+    if search:
+        # Búsqueda en driver_name o driver_id
+        where_conditions.append("(driver_name ILIKE :search OR driver_id ILIKE :search)")
+        params["search"] = f"%{search}%"
+    
+    where_clause = ""
+    if where_conditions:
+        where_clause = "WHERE " + " AND ".join(where_conditions)
+    
+    # Query para contar total
+    count_sql = f"""
+        SELECT COUNT(*) AS total
+        FROM ops.v_yango_cabinet_claims_exigimos
+        {where_clause}
+    """
+    
+    # Query para obtener datos (QUERY 3.1)
+    sql = f"""
+        SELECT 
+            claim_key,
+            driver_id,
+            driver_name,
+            person_key,
+            milestone_value,
+            expected_amount,
+            lead_date,
+            yango_due_date,
+            days_overdue_yango,
+            overdue_bucket_yango,
+            yango_payment_status,
+            reason_code,
+            identity_status,
+            match_rule,
+            match_confidence,
+            is_reconcilable_enriched,
+            payment_key,
+            pay_date,
+            suggested_driver_id
+        FROM ops.v_yango_cabinet_claims_exigimos
+        {where_clause}
+        ORDER BY 
+            days_overdue_yango DESC,
+            expected_amount DESC,
+            driver_id,
+            milestone_value
+        LIMIT :limit OFFSET :offset
+    """
+    
+    params["limit"] = limit
+    params["offset"] = offset
+    
+    try:
+        # Obtener total
+        count_result = db.execute(text(count_sql), params).fetchone()
+        total = count_result.total if count_result else 0
+        
+        # Obtener datos
+        result = db.execute(text(sql), params)
+        rows_data = result.mappings().all()
+        
+        rows = [YangoCabinetClaimRow(**dict(row)) for row in rows_data]
+        
+        filters = {
+            "date_from": str(date_from) if date_from else None,
+            "date_to": str(date_to) if date_to else None,
+            "milestone_value": milestone_value,
+            "search": search,
+            "limit": limit,
+            "offset": offset
+        }
+        
+        return YangoCabinetClaimsResponse(
+            status="ok",
+            count=len(rows),
+            total=total,
+            filters={k: v for k, v in filters.items() if v is not None},
+            rows=rows
+        )
+    except Exception as e:
+        logger.error(f"Error en cabinet claims to collect: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar claims exigibles: {str(e)}"
+        )
+
+
+@router.get("/cabinet/claims/{driver_id}/{milestone_value}/drilldown", response_model=YangoCabinetClaimDrilldownResponse)
+def get_cabinet_claim_drilldown(
+    driver_id: str,
+    milestone_value: int,
+    db: Session = Depends(get_db),
+    lead_date: Optional[date] = Query(None, description="Fecha lead opcional para desambiguar si hay múltiples claims")
+):
+    """
+    Obtiene drilldown completo de un claim específico (evidencia para defensa del cobro).
+    
+    Basado en QUERY 4.4 de docs/ops/yango_cabinet_claims_drilldown.sql
+    Fuente: ops.mv_yango_cabinet_claims_for_collection
+    
+    Identificadores: driver_id + milestone_value (+ lead_date opcional si hay ambigüedad)
+    
+    READ-ONLY: Solo agrega bloques de evidencia, sin lógica adicional.
+    """
+    try:
+        # Construir filtro para claim_base
+        claim_filter = "c.driver_id = :driver_id AND c.milestone_value = :milestone_value"
+        params = {
+            "driver_id": driver_id,
+            "milestone_value": milestone_value
+        }
+        
+        if lead_date:
+            claim_filter += " AND c.lead_date = :lead_date"
+            params["lead_date"] = lead_date
+        
+        # QUERY 4.4: Drilldown genérico
+        sql = f"""
+            WITH claim_base AS (
+                SELECT 
+                    c.*
+                FROM ops.mv_yango_cabinet_claims_for_collection c
+                WHERE {claim_filter}
+                LIMIT 1
+            ),
+            lead_cabinet AS (
+                SELECT 
+                    il.source_pk,
+                    il.match_rule,
+                    il.match_score,
+                    il.confidence_level,
+                    il.linked_at
+                FROM canon.identity_links il
+                WHERE il.source_table = 'module_ct_cabinet_leads'
+                    AND il.person_key = (SELECT person_key FROM claim_base LIMIT 1)
+                LIMIT 1
+            ),
+            payment_exact AS (
+                SELECT 
+                    p.payment_key,
+                    p.pay_date,
+                    p.milestone_value,
+                    p.identity_status,
+                    p.match_rule
+                FROM ops.v_yango_payments_ledger_latest_enriched p
+                WHERE p.driver_id_final = (SELECT driver_id FROM claim_base LIMIT 1)
+                    AND p.milestone_value = (SELECT milestone_value FROM claim_base LIMIT 1)
+                    AND p.is_paid = true
+                ORDER BY p.pay_date DESC
+                LIMIT 1
+            ),
+            payments_other_milestones AS (
+                SELECT 
+                    p.milestone_value,
+                    p.payment_key,
+                    p.pay_date,
+                    p.identity_status,
+                    p.match_rule
+                FROM ops.v_yango_payments_ledger_latest_enriched p
+                WHERE p.driver_id_final = (SELECT driver_id FROM claim_base LIMIT 1)
+                    AND p.milestone_value != (SELECT milestone_value FROM claim_base LIMIT 1)
+                    AND p.is_paid = true
+            ),
+            reconciliation AS (
+                SELECT 
+                    r.reconciliation_status,
+                    r.expected_amount,
+                    r.paid_payment_key,
+                    r.paid_date,
+                    r.match_method
+                FROM ops.v_yango_reconciliation_detail r
+                WHERE r.driver_id = (SELECT driver_id FROM claim_base LIMIT 1)
+                    AND r.milestone_value = (SELECT milestone_value FROM claim_base LIMIT 1)
+                LIMIT 1
+            )
+            SELECT 
+                -- Información del claim
+                cb.driver_id,
+                cb.driver_name,
+                cb.person_key,
+                cb.milestone_value,
+                cb.expected_amount,
+                cb.lead_date,
+                cb.yango_due_date,
+                cb.days_overdue_yango,
+                cb.yango_payment_status,
+                cb.reason_code,
+                cb.identity_status,
+                cb.match_rule,
+                cb.match_confidence,
+                cb.is_reconcilable_enriched,
+                cb.payment_key,
+                cb.pay_date,
+                cb.suggested_driver_id,
+                
+                -- Información del lead cabinet
+                lc.source_pk AS lead_cabinet_source_pk,
+                lc.match_rule AS lead_cabinet_match_rule,
+                lc.match_score AS lead_cabinet_match_score,
+                lc.confidence_level AS lead_cabinet_confidence_level,
+                lc.linked_at AS lead_cabinet_linked_at,
+                
+                -- Pago exacto (si existe)
+                pe.payment_key AS payment_exact_key,
+                pe.pay_date AS payment_exact_date,
+                pe.milestone_value AS payment_exact_milestone,
+                pe.identity_status AS payment_exact_identity_status,
+                pe.match_rule AS payment_exact_match_rule,
+                
+                -- Estado de reconciliación
+                rec.reconciliation_status,
+                rec.expected_amount AS reconciliation_expected_amount,
+                rec.paid_payment_key AS reconciliation_paid_payment_key,
+                rec.paid_date AS reconciliation_paid_date,
+                rec.match_method AS reconciliation_match_method
+            FROM claim_base cb
+            LEFT JOIN lead_cabinet lc ON lc.source_pk IS NOT NULL
+            LEFT JOIN payment_exact pe ON pe.payment_key IS NOT NULL
+            LEFT JOIN reconciliation rec ON rec.reconciliation_status IS NOT NULL
+        """
+        
+        result = db.execute(text(sql), params)
+        row_data = result.mappings().first()
+        
+        if not row_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Claim no encontrado para driver_id={driver_id}, milestone_value={milestone_value}"
+            )
+        
+        row_dict = dict(row_data)
+        
+        # Calcular claim_key (MD5 de driver_id|milestone_value|lead_date)
+        claim_key_str = f"{row_dict.get('driver_id') or 'NULL'}|{row_dict.get('milestone_value') or 'NULL'}|{row_dict.get('lead_date') or 'NULL'}"
+        claim_key = hashlib.md5(claim_key_str.encode()).hexdigest()
+        
+        # Construir claim_row
+        claim_row = YangoCabinetClaimRow(
+            claim_key=claim_key,
+            driver_id=row_dict.get("driver_id"),
+            driver_name=row_dict.get("driver_name"),
+            person_key=row_dict.get("person_key"),
+            milestone_value=row_dict.get("milestone_value"),
+            expected_amount=row_dict.get("expected_amount"),
+            lead_date=row_dict.get("lead_date"),
+            yango_due_date=row_dict.get("yango_due_date"),
+            days_overdue_yango=row_dict.get("days_overdue_yango"),
+            yango_payment_status=row_dict.get("yango_payment_status"),
+            reason_code=row_dict.get("reason_code"),
+            identity_status=row_dict.get("identity_status"),
+            match_rule=row_dict.get("match_rule"),
+            match_confidence=row_dict.get("match_confidence"),
+            is_reconcilable_enriched=row_dict.get("is_reconcilable_enriched"),
+            payment_key=row_dict.get("payment_key"),
+            pay_date=row_dict.get("pay_date"),
+            suggested_driver_id=row_dict.get("suggested_driver_id")
+        )
+        
+        # Construir lead_cabinet
+        lead_cabinet = None
+        if row_dict.get("lead_cabinet_source_pk"):
+            lead_cabinet = LeadCabinetInfo(
+                source_pk=row_dict.get("lead_cabinet_source_pk"),
+                match_rule=row_dict.get("lead_cabinet_match_rule"),
+                match_score=row_dict.get("lead_cabinet_match_score"),
+                confidence_level=row_dict.get("lead_cabinet_confidence_level"),
+                linked_at=row_dict.get("lead_cabinet_linked_at")
+            )
+        
+        # Construir payment_exact
+        payment_exact = None
+        if row_dict.get("payment_exact_key"):
+            payment_exact = PaymentInfo(
+                payment_key=row_dict.get("payment_exact_key"),
+                pay_date=row_dict.get("payment_exact_date"),
+                milestone_value=row_dict.get("payment_exact_milestone"),
+                identity_status=row_dict.get("payment_exact_identity_status"),
+                match_rule=row_dict.get("payment_exact_match_rule")
+            )
+        
+        # Obtener payments_other_milestones (query separada)
+        payments_other_sql = text("""
+            SELECT 
+                p.milestone_value,
+                p.payment_key,
+                p.pay_date,
+                p.identity_status,
+                p.match_rule
+            FROM ops.v_yango_payments_ledger_latest_enriched p
+            WHERE p.driver_id_final = :driver_id
+                AND p.milestone_value != :milestone_value
+                AND p.is_paid = true
+            ORDER BY p.pay_date DESC
+        """)
+        payments_other_result = db.execute(payments_other_sql, {"driver_id": driver_id, "milestone_value": milestone_value})
+        payments_other_data = payments_other_result.mappings().all()
+        payments_other_milestones = [PaymentInfo(**dict(row)) for row in payments_other_data]
+        
+        # Construir reconciliation
+        reconciliation = None
+        if row_dict.get("reconciliation_status"):
+            reconciliation = ReconciliationInfo(
+                reconciliation_status=row_dict.get("reconciliation_status"),
+                expected_amount=row_dict.get("reconciliation_expected_amount"),
+                paid_payment_key=row_dict.get("reconciliation_paid_payment_key"),
+                paid_date=row_dict.get("reconciliation_paid_date"),
+                match_method=row_dict.get("reconciliation_match_method")
+            )
+        
+        # Construir misapplied_explanation si aplica
+        misapplied_explanation = None
+        if row_dict.get("yango_payment_status") == "PAID_MISAPPLIED":
+            reason = row_dict.get("reason_code", "")
+            if reason == "payment_found_other_milestone":
+                misapplied_explanation = (
+                    f"PAID_MISAPPLIED: Se encontró un pago para este driver pero en otro milestone. "
+                    f"Milestone esperado: {milestone_value}, Payment key encontrado: {row_dict.get('payment_key', 'N/A')}. "
+                    f"Ver payments_other_milestones para detalles."
+                )
+            else:
+                misapplied_explanation = (
+                    f"PAID_MISAPPLIED: {reason}. "
+                    f"Estado identidad: {row_dict.get('identity_status', 'N/A')}, "
+                    f"Confianza: {row_dict.get('match_confidence', 'N/A')}"
+                )
+        
+        return YangoCabinetClaimDrilldownResponse(
+            status="ok",
+            claim=claim_row,
+            lead_cabinet=lead_cabinet,
+            payment_exact=payment_exact,
+            payments_other_milestones=payments_other_milestones,
+            reconciliation=reconciliation,
+            misapplied_explanation=misapplied_explanation
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en cabinet claim drilldown: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar drilldown del claim: {str(e)}"
         )
