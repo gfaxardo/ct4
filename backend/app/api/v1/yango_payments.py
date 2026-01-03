@@ -1141,16 +1141,22 @@ def export_cabinet_claims_csv(
         csv_bytes = csv_content.encode('utf-8')
         
         # Agregar BOM UTF-8-SIG (EF BB BF) al inicio de los bytes
+        # BOM: b'\xef\xbb\xbf' = bytes EF BB BF en hexadecimal
         bom_bytes = b'\xef\xbb\xbf'
         csv_content_with_bom = bom_bytes + csv_bytes
         
         # Retornar CSV como respuesta con UTF-8 BOM
+        # NOTA: El BOM está en los bytes del contenido, no solo en el charset del header
+        # Verificación manual:
+        #   $r = Invoke-WebRequest -Uri "http://localhost:8000/api/v1/yango/cabinet/claims/export?limit=1"
+        #   $b = $r.Content; $h = ($b[0..2] | ForEach-Object { "{0:X2}" -f $_ }) -join ' '
+        #   # Debe mostrar: "EF BB BF"
         return Response(
             content=csv_content_with_bom,
             media_type="text/csv",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
-                "Content-Type": "text/csv; charset=utf-8-sig"
+                "Content-Type": "text/csv; charset=utf-8"
             }
         )
     except HTTPException:

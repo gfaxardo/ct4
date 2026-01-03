@@ -1,8 +1,8 @@
 # ============================================================================
 # Deploy Verification Gate: Yango Cabinet Claims
 # ============================================================================
-# Verifica que backend y frontend están funcionando correctamente.
-# Solo usa HTTP checks, no requiere psql ni conexión directa a BD.
+# Verifica que backend y frontend estan funcionando correctamente.
+# Solo usa HTTP checks, no requiere psql ni conexion directa a BD.
 #
 # USO:
 #   .\docs\ops\deploy_verify_yango_cabinet_claims.ps1
@@ -24,6 +24,8 @@ $ErrorActionPreference = if ($FailFast) { "Stop" } else { "Continue" }
 # Estado global
 $script:allChecksPassed = $true
 $script:checkCount = 0
+$script:shouldExit = $false
+$script:exitCode = 0
 
 # ============================================================================
 # Helper Functions
@@ -60,8 +62,9 @@ function Write-CheckResult {
         $script:allChecksPassed = $false
         if ($FailFast) {
             Write-Host ""
-            Write-Host "[FAIL-FAST] Deteniendo ejecución" -ForegroundColor Red
-            exit 1
+            Write-Host "[FAIL-FAST] Deteniendo ejecucion" -ForegroundColor Red
+            $script:shouldExit = $true
+            $script:exitCode = 1
         }
     }
 }
@@ -168,7 +171,7 @@ function Test-BackendChecks {
     
     if (-not $result.Success -or $result.StatusCode -ne 200) {
         Write-CheckResult -Status "FAIL" -Message "Status $($result.StatusCode): $($result.Error)" `
-            -FixCommand "Verificar que backend está corriendo en $BackendUrl"
+            -FixCommand "Verificar que backend esta corriendo en $BackendUrl"
         return
     }
     
@@ -184,7 +187,7 @@ function Test-BackendChecks {
         }
     }
     
-    Write-CheckResult -Status "OK" -Message "Status 200, JSON válido"
+    Write-CheckResult -Status "OK" -Message "Status 200, JSON valido"
     
     # B3: GET /api/v1/yango/cabinet/claims/export?limit=1
     Write-CheckHeader "B3: GET /api/v1/yango/cabinet/claims/export"
@@ -193,31 +196,55 @@ function Test-BackendChecks {
     $exportQueryParams = @{ limit = "1" }
     $exportFullUri = $exportUri + "?" + (($exportQueryParams.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join "&")
     
-    $exportResult = Invoke-SafeWebRequest -Uri $exportFullUri
-    
-    if (-not $exportResult.Success -or $exportResult.StatusCode -ne 200) {
-        Write-CheckResult -Status "FAIL" -Message "Status $($exportResult.StatusCode): $($exportResult.Error)" `
+    try {
+        # Hacer request con UseBasicParsing para mantener RawContentStream
+        $exportResponse = Invoke-WebRequest -Uri $exportFullUri -Method GET -UseBasicParsing -ErrorAction Stop
+        
+        if ($exportResponse.StatusCode -ne 200) {
+            Write-CheckResult -Status "FAIL" -Message "Status $($exportResponse.StatusCode)" `
+                -FixCommand "Verificar que endpoint /export funciona en $BackendUrl"
+            return
+        }
+        
+        $contentType = $exportResponse.Headers["Content-Type"]
+        if ($contentType -notlike "*text/csv*") {
+            Write-CheckResult -Status "FAIL" -Message "Content-Type no es text/csv: $contentType" `
+                -FixCommand "Verificar que endpoint export devuelve CSV correctamente"
+            return
+        }
+        
+        # Leer primeros 3 bytes reales desde RawContentStream
+        $exportResponse.RawContentStream.Position = 0
+        $head = New-Object byte[] 3
+        $bytesRead = $exportResponse.RawContentStream.Read($head, 0, 3)
+        
+        if ($bytesRead -lt 3) {
+            Write-CheckResult -Status "FAIL" -Message "CSV tiene menos de 3 bytes" `
+                -FixCommand "Verificar que endpoint export devuelve contenido valido"
+            return
+        }
+        
+        # Convertir a hexadecimal para comparacion
+        $hex = "{0:X2} {1:X2} {2:X2}" -f $head[0], $head[1], $head[2]
+        
+        if ($hex -ne "EF BB BF") {
+            Write-CheckResult -Status "FAIL" -Message "CSV no tiene BOM utf-8-sig (EF BB BF). Recibido: $hex" `
+                -FixCommand "Verificar que endpoint export incluye BOM utf-8-sig"
+            return
+        }
+        
+        Write-CheckResult -Status "OK" -Message "Status 200, Content-Type text/csv, BOM presente (EF BB BF)"
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode.value__
+        }
+        
+        Write-CheckResult -Status "FAIL" -Message "Error en request: $($_.Exception.Message) (Status: $statusCode)" `
             -FixCommand "Verificar que endpoint /export funciona en $BackendUrl"
         return
     }
-    
-    $contentType = $exportResult.Headers["Content-Type"]
-    if ($contentType -notlike "*text/csv*") {
-        Write-CheckResult -Status "FAIL" -Message "Content-Type no es text/csv: $contentType" `
-            -FixCommand "Verificar que endpoint export devuelve CSV"
-        return
-    }
-    
-    $contentBytes = [System.Text.Encoding]::UTF8.GetBytes($exportResult.Content)
-    $hasBom = Test-CsvBom -ContentBytes $contentBytes
-    
-    if (-not $hasBom) {
-        Write-CheckResult -Status "FAIL" -Message "CSV no tiene BOM utf-8-sig (EF BB BF)" `
-            -FixCommand "Verificar que endpoint export incluye BOM utf-8-sig"
-        return
-    }
-    
-    Write-CheckResult -Status "OK" -Message "Status 200, Content-Type text/csv, BOM presente"
     
     # B4: GET /api/v1/yango/cabinet/mv-health
     Write-CheckHeader "B4: GET /api/v1/yango/cabinet/mv-health"
@@ -276,7 +303,7 @@ function Test-FrontendChecks {
     
     if (-not $result.Success -or $result.StatusCode -ne 200) {
         Write-CheckResult -Status "FAIL" -Message "Status $($result.StatusCode): $($result.Error)" `
-            -FixCommand "Verificar que frontend está corriendo en $FrontendUrl"
+            -FixCommand "Verificar que frontend esta corriendo en $FrontendUrl"
         return
     }
     
@@ -294,7 +321,7 @@ function Test-FrontendChecks {
     }
     elseif ($pageResult.StatusCode -eq 404) {
         Write-CheckResult -Status "WARN" -Message "Página no encontrada (404)" `
-            -FixCommand "Verificar que la ruta /pagos/yango-cabinet-claims existe en el frontend"
+            -FixCommand "Verificar que la ruta /pagos/yango-cabinet-claims existe en frontend"
     }
     else {
         Write-CheckResult -Status "FAIL" -Message "Status $($pageResult.StatusCode): $($pageResult.Error)" `
@@ -307,9 +334,9 @@ function Test-FrontendChecks {
 # ============================================================================
 
 Write-Host ""
-Write-Host "=" * 70 -ForegroundColor Cyan
+Write-Host ("=" * 70) -ForegroundColor Cyan
 Write-Host "DEPLOY VERIFICATION: Yango Cabinet Claims" -ForegroundColor Cyan
-Write-Host "=" * 70 -ForegroundColor Cyan
+Write-Host ("=" * 70) -ForegroundColor Cyan
 Write-Host "Backend URL: $BackendUrl" -ForegroundColor Gray
 Write-Host "Frontend URL: $FrontendUrl" -ForegroundColor Gray
 Write-Host "Fail-Fast: $FailFast" -ForegroundColor Gray
@@ -318,16 +345,23 @@ Write-Host "Skip Backend: $SkipBackend" -ForegroundColor Gray
 Write-Host "Skip Frontend: $SkipFrontend" -ForegroundColor Gray
 
 Test-BackendChecks
+if ($script:shouldExit) {
+    exit $script:exitCode
+}
+
 Test-FrontendChecks
+if ($script:shouldExit) {
+    exit $script:exitCode
+}
 
 # ============================================================================
 # Summary
 # ============================================================================
 
 Write-Host ""
-Write-Host "=" * 70 -ForegroundColor Cyan
+Write-Host ("=" * 70) -ForegroundColor Cyan
 Write-Host "SUMMARY" -ForegroundColor Cyan
-Write-Host "=" * 70 -ForegroundColor Cyan
+Write-Host ("=" * 70) -ForegroundColor Cyan
 Write-Host "Checks executed: $script:checkCount" -ForegroundColor Gray
 
 if ($script:allChecksPassed) {
