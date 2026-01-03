@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import ProgrammingError, OperationalError
 from typing import Optional, Literal
 from datetime import date, datetime
 import logging
@@ -647,7 +647,15 @@ def get_cabinet_claims_to_collect(
         result = db.execute(text(sql), params)
         rows_data = result.mappings().all()
         
-        rows = [YangoCabinetClaimRow(**dict(row)) for row in rows_data]
+        # Convertir UUID a string para person_key (si existe)
+        rows = []
+        for row in rows_data:
+            row_dict = dict(row)
+            # Convertir person_key de UUID a string si existe
+            if 'person_key' in row_dict and row_dict['person_key'] is not None:
+                # PostgreSQL devuelve UUID como objeto UUID, convertir a string
+                row_dict['person_key'] = str(row_dict['person_key'])
+            rows.append(YangoCabinetClaimRow(**row_dict))
         
         filters = {
             "date_from": str(date_from) if date_from else None,
@@ -665,11 +673,36 @@ def get_cabinet_claims_to_collect(
             filters={k: v for k, v in filters.items() if v is not None},
             rows=rows
         )
-    except Exception as e:
-        logger.error(f"Error en cabinet claims to collect: {e}")
+    except OperationalError as e:
+        # Error de conexión a BD
+        logger.exception(f"Error de conexion a BD en cabinet claims to collect: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="DB no disponible / revisa DATABASE_URL"
+        )
+    except ProgrammingError as e:
+        # Error de SQL (vista no existe, etc.)
+        error_code = getattr(e.orig, 'pgcode', None) if hasattr(e, 'orig') else None
+        error_message = str(e.orig) if hasattr(e, 'orig') else str(e)
+        
+        # SQLSTATE 42P01 = undefined_table
+        if error_code == '42P01' or 'does not exist' in error_message.lower() or 'v_yango_cabinet_claims_exigimos' in error_message:
+            logger.exception(f"Vista no existe en cabinet claims to collect: {e}")
+            raise HTTPException(
+                status_code=404,
+                detail="Falta vista ops.v_yango_cabinet_claims_exigimos. Aplica backend/sql/ops/v_yango_cabinet_claims_exigimos.sql"
+            )
+        # Otro error de PostgreSQL
+        logger.exception(f"Error SQL en cabinet claims to collect: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error al consultar claims exigibles: {str(e)}"
+            detail=f"Error SQL: {error_message[:200]}"  # Limitar longitud, sin exponer credenciales
+        )
+    except Exception as e:
+        logger.exception(f"Error inesperado en cabinet claims to collect: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar claims exigibles: {str(e)[:200]}"
         )
 
 
@@ -1002,23 +1035,24 @@ def export_cabinet_claims_csv(
     if where_conditions:
         where_clause = "WHERE " + " AND ".join(where_conditions)
     
-    # Verificar conteo antes de exportar (hard cap defensivo)
-    count_sql = f"""
-        SELECT COUNT(*) AS total
-        FROM ops.v_yango_cabinet_claims_exigimos
-        {where_clause}
-    """
-    count_result = db.execute(text(count_sql), params).fetchone()
-    total = count_result.total if count_result else 0
-    
-    if total > 200000:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Export excede límite de 200,000 filas. Total filtrado: {total}. Aplique filtros más restrictivos."
-        )
-    
-    # Query para obtener datos (QUERY 3.2 - columnas exportables con nombres amigables)
-    sql = f"""
+    try:
+        # Verificar conteo antes de exportar (hard cap defensivo)
+        count_sql = f"""
+            SELECT COUNT(*) AS total
+            FROM ops.v_yango_cabinet_claims_exigimos
+            {where_clause}
+        """
+        count_result = db.execute(text(count_sql), params).fetchone()
+        total = count_result.total if count_result else 0
+        
+        if total > 200000:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Export excede límite de 200,000 filas. Total filtrado: {total}. Aplique filtros más restrictivos."
+            )
+        
+        # Query para obtener datos (QUERY 3.2 - columnas exportables con nombres amigables)
+        sql = f"""
         SELECT 
             -- Identificación
             driver_id AS "Driver ID",
@@ -1055,9 +1089,8 @@ def export_cabinet_claims_csv(
             expected_amount DESC,
             driver_id,
             milestone_value
-    """
-    
-    try:
+        """
+        
         # Obtener datos
         result = db.execute(text(sql), params)
         rows_data = result.mappings().all()
@@ -1100,16 +1133,20 @@ def export_cabinet_claims_csv(
         csv_content = output.getvalue()
         output.close()
         
-        # Agregar BOM UTF-8 para compatibilidad Excel (utf-8-sig)
-        csv_content_utf8_sig = '\ufeff' + csv_content
-        
         # Generar nombre de archivo con timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         filename = f"yango_cabinet_claims_{timestamp}.csv"
         
+        # Codificar CSV a bytes UTF-8 (sin BOM aún)
+        csv_bytes = csv_content.encode('utf-8')
+        
+        # Agregar BOM UTF-8-SIG (EF BB BF) al inicio de los bytes
+        bom_bytes = b'\xef\xbb\xbf'
+        csv_content_with_bom = bom_bytes + csv_bytes
+        
         # Retornar CSV como respuesta con UTF-8 BOM
         return Response(
-            content=csv_content_utf8_sig.encode('utf-8-sig'),
+            content=csv_content_with_bom,
             media_type="text/csv",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
@@ -1118,11 +1155,36 @@ def export_cabinet_claims_csv(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error en export cabinet claims CSV: {e}")
+    except OperationalError as e:
+        # Error de conexión a BD
+        logger.exception(f"Error de conexion a BD en export cabinet claims CSV: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="DB no disponible / revisa DATABASE_URL"
+        )
+    except ProgrammingError as e:
+        # Error de SQL (vista no existe, etc.)
+        error_code = getattr(e.orig, 'pgcode', None) if hasattr(e, 'orig') else None
+        error_message = str(e.orig) if hasattr(e, 'orig') else str(e)
+        
+        # SQLSTATE 42P01 = undefined_table
+        if error_code == '42P01' or 'does not exist' in error_message.lower() or 'v_yango_cabinet_claims_exigimos' in error_message:
+            logger.exception(f"Vista no existe en export cabinet claims CSV: {e}")
+            raise HTTPException(
+                status_code=404,
+                detail="Falta vista ops.v_yango_cabinet_claims_exigimos. Aplica backend/sql/ops/v_yango_cabinet_claims_exigimos.sql"
+            )
+        # Otro error de PostgreSQL
+        logger.exception(f"Error SQL en export cabinet claims CSV: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error al exportar claims a CSV: {str(e)}"
+            detail=f"Error SQL: {error_message[:200]}"  # Limitar longitud, sin exponer credenciales
+        )
+    except Exception as e:
+        logger.exception(f"Error inesperado en export cabinet claims CSV: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al exportar claims a CSV: {str(e)[:200]}"
         )
 
 
