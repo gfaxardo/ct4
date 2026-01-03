@@ -9,12 +9,15 @@ Endpoints:
 - GET /payments/reconciliation/driver/{driver_id} - Detalle de un conductor
 """
 from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional, Literal
-from datetime import date
+from datetime import date, datetime
 import logging
 import hashlib
+import csv
+import io
 
 from app.db import get_db
 from app.schemas.payments import (
@@ -923,4 +926,162 @@ def get_cabinet_claim_drilldown(
         raise HTTPException(
             status_code=500,
             detail=f"Error al consultar drilldown del claim: {str(e)}"
+        )
+
+
+@router.get("/cabinet/claims/export")
+def export_cabinet_claims_csv(
+    db: Session = Depends(get_db),
+    date_from: Optional[date] = Query(None, description="Filtra por fecha lead desde"),
+    date_to: Optional[date] = Query(None, description="Filtra por fecha lead hasta"),
+    milestone_value: Optional[int] = Query(None, description="Filtra por milestone (1, 5, 25)"),
+    search: Optional[str] = Query(None, description="Búsqueda en driver_name o driver_id")
+):
+    """
+    Exporta lista de claims exigibles a Yango (EXIGIMOS) a CSV.
+    
+    Basado en QUERY 3.2 de docs/ops/yango_cabinet_claims_to_collect.sql
+    Fuente: ops.v_yango_cabinet_claims_exigimos (ya filtra UNPAID)
+    
+    Columnas: Usa nombres amigables para Excel según QUERY 3.2
+    Orden: days_overdue_yango DESC, expected_amount DESC
+    
+    READ-ONLY: No recalcula estados, solo consume la vista existente.
+    Hard cap: 200,000 filas máximo (error 413 si excede).
+    """
+    # Construir query base (QUERY 3.2)
+    where_conditions = []
+    params = {}
+    
+    # Filtros opcionales (mismos que claims-to-collect)
+    if date_from:
+        where_conditions.append("lead_date >= :date_from")
+        params["date_from"] = date_from
+    
+    if date_to:
+        where_conditions.append("lead_date <= :date_to")
+        params["date_to"] = date_to
+    
+    if milestone_value:
+        where_conditions.append("milestone_value = :milestone_value")
+        params["milestone_value"] = milestone_value
+    
+    if search:
+        # Búsqueda en driver_name o driver_id
+        where_conditions.append("(driver_name ILIKE :search OR driver_id ILIKE :search)")
+        params["search"] = f"%{search}%"
+    
+    where_clause = ""
+    if where_conditions:
+        where_clause = "WHERE " + " AND ".join(where_conditions)
+    
+    # Verificar conteo antes de exportar (hard cap defensivo)
+    count_sql = f"""
+        SELECT COUNT(*) AS total
+        FROM ops.v_yango_cabinet_claims_exigimos
+        {where_clause}
+    """
+    count_result = db.execute(text(count_sql), params).fetchone()
+    total = count_result.total if count_result else 0
+    
+    if total > 200000:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Export excede límite de 200,000 filas. Total filtrado: {total}. Aplique filtros más restrictivos."
+        )
+    
+    # Query para obtener datos (QUERY 3.2 - columnas exportables con nombres amigables)
+    sql = f"""
+        SELECT 
+            -- Identificación
+            driver_id AS "Driver ID",
+            driver_name AS "Nombre Conductor",
+            milestone_value AS "Milestone",
+            
+            -- Monto
+            expected_amount AS "Monto Exigible (S/)",
+            
+            -- Fechas
+            lead_date AS "Fecha Lead",
+            yango_due_date AS "Fecha Vencimiento",
+            days_overdue_yango AS "Días Vencidos",
+            overdue_bucket_yango AS "Bucket Vencimiento",
+            
+            -- Estado
+            yango_payment_status AS "Estado Pago",
+            reason_code AS "Razón",
+            identity_status AS "Estado Identidad",
+            match_rule AS "Regla Matching",
+            match_confidence AS "Confianza Matching",
+            is_reconcilable_enriched AS "Reconciliable",
+            
+            -- Campos adicionales para contexto
+            payment_key AS "Payment Key",
+            pay_date AS "Fecha Pago Encontrado",
+            suggested_driver_id AS "Driver ID Sugerido",
+            person_key AS "Person Key"
+            
+        FROM ops.v_yango_cabinet_claims_exigimos
+        {where_clause}
+        ORDER BY 
+            days_overdue_yango DESC,
+            expected_amount DESC,
+            driver_id,
+            milestone_value
+    """
+    
+    try:
+        # Obtener datos
+        result = db.execute(text(sql), params)
+        rows_data = result.mappings().all()
+        
+        # Generar CSV en memoria
+        output = io.StringIO()
+        
+        # Obtener nombres de columnas del primer row (ya vienen con alias de SQL)
+        if rows_data:
+            fieldnames = list(rows_data[0].keys())
+            writer = csv.DictWriter(output, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL)
+            writer.writeheader()
+            
+            for row in rows_data:
+                # Convertir valores None a string vacío para CSV
+                row_dict = {k: (v if v is not None else '') for k, v in dict(row).items()}
+                writer.writerow(row_dict)
+        else:
+            # CSV vacío con headers
+            fieldnames = [
+                "Driver ID", "Nombre Conductor", "Milestone",
+                "Monto Exigible (S/)", "Fecha Lead", "Fecha Vencimiento",
+                "Días Vencidos", "Bucket Vencimiento", "Estado Pago",
+                "Razón", "Estado Identidad", "Regla Matching",
+                "Confianza Matching", "Reconciliable", "Payment Key",
+                "Fecha Pago Encontrado", "Driver ID Sugerido", "Person Key"
+            ]
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+        
+        csv_content = output.getvalue()
+        output.close()
+        
+        # Generar nombre de archivo con timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        filename = f"yango_cabinet_claims_{timestamp}.csv"
+        
+        # Retornar CSV como respuesta
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "text/csv; charset=utf-8"
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en export cabinet claims CSV: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al exportar claims a CSV: {str(e)}"
         )
