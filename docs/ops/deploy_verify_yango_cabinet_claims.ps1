@@ -97,6 +97,46 @@ function Test-Check {
     }
 }
 
+# Helper function para checks de WARNING (no fallan el deploy)
+function Test-Warning {
+    param(
+        [string]$Name,
+        [scriptblock]$Test,
+        [string]$FixCommand = ""
+    )
+    
+    $script:checkCount++
+    Write-Host "`n[$checkCount] $Name" -ForegroundColor Yellow
+    
+    if ($Verbose) {
+        Write-Host "  [VERBOSE] Ejecutando check de warning..." -ForegroundColor DarkGray
+    }
+    
+    try {
+        $result = & $Test
+        if ($result -eq $true) {
+            Write-Host "  ✓ OK" -ForegroundColor Green
+            return $true
+        } else {
+            Write-Host "  ⚠ WARNING" -ForegroundColor Yellow
+            if ($FixCommand) {
+                Write-Host "`n  🔧 COMANDO PARA CORREGIR:" -ForegroundColor Yellow
+                Write-Host "  $FixCommand" -ForegroundColor White
+            }
+            # WARNING no marca allChecksPassed como false ni hace exit
+            return $false
+        }
+    } catch {
+        Write-Host "  ⚠ WARNING: $($_.Exception.Message)" -ForegroundColor Yellow
+        if ($FixCommand) {
+            Write-Host "`n  🔧 COMANDO PARA CORREGIR:" -ForegroundColor Yellow
+            Write-Host "  $FixCommand" -ForegroundColor White
+        }
+        # WARNING no marca allChecksPassed como false ni hace exit
+        return $false
+    }
+}
+
 # ============================================================================
 # BLOQUE D: Migración y Health Check
 # ============================================================================
@@ -276,6 +316,33 @@ except Exception as e:
         }
     } finally {
         Pop-Location
+    }
+}
+
+# E3: Verificar índice único para CONCURRENT refresh (WARNING, no falla deploy)
+Test-Warning -Name "E3: Unique index for CONCURRENT refresh" -FixCommand "psql `"`$DATABASE_URL`" -v ON_ERROR_STOP=1 -f backend/sql/ops/mv_yango_cabinet_claims_unique_index.sql" {
+    if (-not $DatabaseUrl) {
+        Write-Host "  ⚠ DATABASE_URL no definida, saltando verificación de índice" -ForegroundColor Yellow
+        return $true  # No fallar si no hay DATABASE_URL
+    }
+    
+    try {
+        # Usar psql para verificar existencia del índice
+        $query = "SELECT 1 FROM pg_indexes WHERE schemaname='ops' AND tablename='mv_yango_cabinet_claims_for_collection' AND indexname='ux_mv_yango_cabinet_claims_for_collection_grain' LIMIT 1;"
+        
+        $psqlOutput = & psql "$DatabaseUrl" -t -A -c $query 2>&1
+        $exitCode = $LASTEXITCODE
+        
+        if ($exitCode -eq 0 -and $psqlOutput -match "^\s*1\s*$") {
+            Write-Host "  Índice único presente" -ForegroundColor Gray
+            return $true
+        } else {
+            Write-Host "  Índice único no encontrado (REFRESH será no-concurrently)" -ForegroundColor Yellow
+            return $false
+        }
+    } catch {
+        Write-Host "  ⚠ Error verificando índice: $($_.Exception.Message)" -ForegroundColor Yellow
+        return $false
     }
 }
 
