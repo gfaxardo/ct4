@@ -13,10 +13,14 @@
 param(
     [string]$BackendUrl = "http://localhost:8000",
     [string]$FrontendUrl = "http://localhost:3000",
-    [string]$DatabaseUrl = $env:DATABASE_URL
+    [string]$DatabaseUrl = $env:DATABASE_URL,
+    [switch]$FailFast = $true,
+    [switch]$Verbose,
+    [switch]$SkipFrontend,
+    [switch]$SkipBackend
 )
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = if ($FailFast) { "Stop" } else { "Continue" }
 
 Write-Host "`n" -NoNewline
 Write-Host "=" * 80 -ForegroundColor Cyan
@@ -24,6 +28,10 @@ Write-Host "CHECKLIST: Deploy + Verificación Bloques B/C/D" -ForegroundColor Cy
 Write-Host "=" * 80 -ForegroundColor Cyan
 Write-Host "Backend URL: $BackendUrl" -ForegroundColor Gray
 Write-Host "Frontend URL: $FrontendUrl" -ForegroundColor Gray
+Write-Host "Fail-Fast: $FailFast" -ForegroundColor Gray
+Write-Host "Verbose: $Verbose" -ForegroundColor Gray
+Write-Host "Skip Backend: $SkipBackend" -ForegroundColor Gray
+Write-Host "Skip Frontend: $SkipFrontend" -ForegroundColor Gray
 Write-Host "`n" -NoNewline
 
 $allChecksPassed = $true
@@ -34,17 +42,25 @@ function Test-Check {
     param(
         [string]$Name,
         [scriptblock]$Test,
-        [string]$ExpectedOutput = ""
+        [string]$ExpectedOutput = "",
+        [string]$FixCommand = ""
     )
     
     $script:checkCount++
     Write-Host "`n[$checkCount] $Name" -ForegroundColor Yellow
     
+    if ($Verbose) {
+        Write-Host "  [VERBOSE] Ejecutando check..." -ForegroundColor DarkGray
+    }
+    
     try {
         $result = & $Test
         if ($result -eq $true -or ($result -is [string] -and $result -ne "")) {
             Write-Host "  ✓ PASSED" -ForegroundColor Green
-            if ($ExpectedOutput -and $result -is [string]) {
+            if ($Verbose -and $result -is [string]) {
+                Write-Host "  [VERBOSE] Output: $result" -ForegroundColor DarkGray
+            }
+            if ($ExpectedOutput -and $result -is [string] -and -not $Verbose) {
                 Write-Host "  Output: $result" -ForegroundColor Gray
             }
             return $true
@@ -53,12 +69,30 @@ function Test-Check {
             if ($ExpectedOutput) {
                 Write-Host "  Expected: $ExpectedOutput" -ForegroundColor Gray
             }
+            if ($FixCommand) {
+                Write-Host "`n  🔧 COMANDO PARA CORREGIR:" -ForegroundColor Yellow
+                Write-Host "  $FixCommand" -ForegroundColor White
+            }
             $script:allChecksPassed = $false
+            
+            if ($FailFast) {
+                Write-Host "`n  ⛔ FAIL-FAST: Deteniendo ejecución" -ForegroundColor Red
+                throw "Check falló: $Name"
+            }
             return $false
         }
     } catch {
         Write-Host "  ✗ ERROR: $($_.Exception.Message)" -ForegroundColor Red
+        if ($FixCommand) {
+            Write-Host "`n  🔧 COMANDO PARA CORREGIR:" -ForegroundColor Yellow
+            Write-Host "  $FixCommand" -ForegroundColor White
+        }
         $script:allChecksPassed = $false
+        
+        if ($FailFast) {
+            Write-Host "`n  ⛔ FAIL-FAST: Deteniendo ejecución" -ForegroundColor Red
+            throw
+        }
         return $false
     }
 }
@@ -71,7 +105,7 @@ Write-Host "`n" -NoNewline
 Write-Host "--- BLOQUE D: Migración y Health Check ---" -ForegroundColor Cyan
 
 # D1: Aplicar migración mv_refresh_log_extended
-Test-Check -Name "D1: Aplicar migración mv_refresh_log_extended" -ExpectedOutput "✓ Verificación: todas las columnas nuevas existen" {
+Test-Check -Name "D1: Aplicar migración mv_refresh_log_extended" -ExpectedOutput "✓ Verificación: todas las columnas nuevas existen" -FixCommand "cd backend && python scripts/apply_mv_refresh_log_extended.py" {
     Push-Location backend
     try {
         $output = python scripts/apply_mv_refresh_log_extended.py 2>&1 | Out-String
@@ -88,7 +122,7 @@ Test-Check -Name "D1: Aplicar migración mv_refresh_log_extended" -ExpectedOutpu
 }
 
 # D2: Aplicar SQL health check (crear vista)
-Test-Check -Name "D2: Aplicar SQL health check (crear ops.v_yango_cabinet_claims_mv_health)" -ExpectedOutput "CREATE VIEW" {
+Test-Check -Name "D2: Aplicar SQL health check (crear ops.v_yango_cabinet_claims_mv_health)" -ExpectedOutput "Vista ops.v_yango_cabinet_claims_mv_health existe" -FixCommand "psql -d `$DATABASE_NAME -f docs/ops/yango_cabinet_claims_mv_health.sql" {
     if (-not $DatabaseUrl) {
         Write-Host "  ⚠ DATABASE_URL no definida, saltando verificación SQL directa" -ForegroundColor Yellow
         Write-Host "  Ejecutar manualmente: psql -d database -f docs/ops/yango_cabinet_claims_mv_health.sql" -ForegroundColor Gray
@@ -141,7 +175,7 @@ except Exception as e:
 }
 
 # D3: Correr refresh manual y confirmar log OK
-Test-Check -Name "D3: Correr refresh manual y confirmar log OK" -ExpectedOutput "status=OK" {
+Test-Check -Name "D3: Correr refresh manual y confirmar log OK" -ExpectedOutput "STATUS_OK" -FixCommand "cd backend && python scripts/refresh_yango_cabinet_claims_mv.py" {
     Push-Location backend
     try {
         $output = python scripts/refresh_yango_cabinet_claims_mv.py 2>&1 | Out-String
@@ -196,7 +230,7 @@ except Exception as e:
 }
 
 # D4: Verificar health check (status_bucket=OK)
-Test-Check -Name "D4: Verificar health check (status_bucket debe ser OK o WARN)" -ExpectedOutput "status_bucket=OK" {
+Test-Check -Name "D4: Verificar health check (status_bucket debe ser OK o WARN)" -ExpectedOutput "STATUS_BUCKET: OK o WARN" -FixCommand "cd backend && python scripts/refresh_yango_cabinet_claims_mv.py" {
     Push-Location backend
     try {
         $verifyScript = @"
@@ -249,11 +283,12 @@ except Exception as e:
 # BLOQUE B: Endpoints Backend
 # ============================================================================
 
-Write-Host "`n" -NoNewline
-Write-Host "--- BLOQUE B: Endpoints Backend ---" -ForegroundColor Cyan
+if (-not $SkipBackend) {
+    Write-Host "`n" -NoNewline
+    Write-Host "--- BLOQUE B: Endpoints Backend ---" -ForegroundColor Cyan
 
-# B1: GET /api/v1/yango/cabinet/claims-to-collect
-Test-Check -Name "B1: GET /api/v1/yango/cabinet/claims-to-collect (sin filtros)" -ExpectedOutput "status=200, response tiene 'rows'" {
+    # B1: GET /api/v1/yango/cabinet/claims-to-collect
+    Test-Check -Name "B1: GET /api/v1/yango/cabinet/claims-to-collect (sin filtros)" -ExpectedOutput "status=200, response tiene 'rows'" -FixCommand "Verificar que backend está corriendo en $BackendUrl" {
     try {
         $response = Invoke-WebRequest -Uri "$BackendUrl/api/v1/yango/cabinet/claims-to-collect?limit=10" -Method GET -UseBasicParsing -ErrorAction Stop
         $json = $response.Content | ConvertFrom-Json
@@ -271,8 +306,8 @@ Test-Check -Name "B1: GET /api/v1/yango/cabinet/claims-to-collect (sin filtros)"
     }
 }
 
-# B1 con filtros
-Test-Check -Name "B1: GET /api/v1/yango/cabinet/claims-to-collect (con filtro milestone)" -ExpectedOutput "status=200" {
+    # B1 con filtros
+    Test-Check -Name "B1: GET /api/v1/yango/cabinet/claims-to-collect (con filtro milestone)" -ExpectedOutput "status=200" -FixCommand "Verificar que backend está corriendo en $BackendUrl" {
     try {
         $response = Invoke-WebRequest -Uri "$BackendUrl/api/v1/yango/cabinet/claims-to-collect?milestone_value=1&limit=5" -Method GET -UseBasicParsing -ErrorAction Stop
         if ($response.StatusCode -eq 200) {
@@ -288,8 +323,8 @@ Test-Check -Name "B1: GET /api/v1/yango/cabinet/claims-to-collect (con filtro mi
     }
 }
 
-# B2: GET /api/v1/yango/cabinet/claims/{driver_id}/{milestone_value}/drilldown
-Test-Check -Name "B2: GET /api/v1/yango/cabinet/claims/{driver_id}/{milestone_value}/drilldown (puede ser 404 si no hay datos)" -ExpectedOutput "status=200 o 404" {
+    # B2: GET /api/v1/yango/cabinet/claims/{driver_id}/{milestone_value}/drilldown
+    Test-Check -Name "B2: GET /api/v1/yango/cabinet/claims/{driver_id}/{milestone_value}/drilldown (puede ser 404 si no hay datos)" -ExpectedOutput "status=200 o 404" -FixCommand "Verificar que backend está corriendo en $BackendUrl" {
     try {
         # Intentar con un driver_id que probablemente no existe
         $response = Invoke-WebRequest -Uri "$BackendUrl/api/v1/yango/cabinet/claims/TEST_DRIVER_ID/1/drilldown" -Method GET -UseBasicParsing -ErrorAction Stop
@@ -312,46 +347,68 @@ Test-Check -Name "B2: GET /api/v1/yango/cabinet/claims/{driver_id}/{milestone_va
     }
 }
 
-# B3: GET /api/v1/yango/cabinet/claims/export
-Test-Check -Name "B3: GET /api/v1/yango/cabinet/claims/export (CSV)" -ExpectedOutput "status=200, Content-Type=text/csv" {
-    try {
-        $response = Invoke-WebRequest -Uri "$BackendUrl/api/v1/yango/cabinet/claims/export" -Method GET -UseBasicParsing -ErrorAction Stop
-        $contentType = $response.Headers["Content-Type"]
-        $contentDisposition = $response.Headers["Content-Disposition"]
-        
-        if ($response.StatusCode -eq 200 -and $contentType -like "*text/csv*") {
-            Write-Host "  Status: $($response.StatusCode)" -ForegroundColor Gray
-            Write-Host "  Content-Type: $contentType" -ForegroundColor Gray
-            Write-Host "  Content-Disposition: $contentDisposition" -ForegroundColor Gray
-            Write-Host "  Content-Length: $($response.Content.Length) bytes" -ForegroundColor Gray
+    # B3: GET /api/v1/yango/cabinet/claims/export (CSV con BOM utf-8-sig)
+    Test-Check -Name "B3: GET /api/v1/yango/cabinet/claims/export (CSV con BOM utf-8-sig)" -ExpectedOutput "status=200, Content-Type=text/csv, BOM presente" -FixCommand "Verificar que backend está corriendo en $BackendUrl y endpoint export funciona" {
+        try {
+            $response = Invoke-WebRequest -Uri "$BackendUrl/api/v1/yango/cabinet/claims/export" -Method GET -UseBasicParsing -ErrorAction Stop
+            $contentType = $response.Headers["Content-Type"]
+            $contentDisposition = $response.Headers["Content-Disposition"]
             
-            # Verificar que tiene headers CSV
-            if ($response.Content -match "Driver ID|driver_id") {
-                Write-Host "  CSV válido (contiene headers)" -ForegroundColor Gray
-                return $true
+            if ($response.StatusCode -eq 200 -and $contentType -like "*text/csv*") {
+                Write-Host "  Status: $($response.StatusCode)" -ForegroundColor Gray
+                Write-Host "  Content-Type: $contentType" -ForegroundColor Gray
+                Write-Host "  Content-Disposition: $contentDisposition" -ForegroundColor Gray
+                Write-Host "  Content-Length: $($response.Content.Length) bytes" -ForegroundColor Gray
+                
+                # Verificar BOM utf-8-sig (primeros 3 bytes: EF BB BF)
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($response.Content)
+                if ($bytes.Length -ge 3) {
+                    $bomBytes = $bytes[0..2]
+                    $hasBOM = ($bomBytes[0] -eq 0xEF -and $bomBytes[1] -eq 0xBB -and $bomBytes[2] -eq 0xBF)
+                    
+                    if ($hasBOM) {
+                        Write-Host "  ✓ BOM utf-8-sig presente (EF BB BF)" -ForegroundColor Green
+                    } else {
+                        Write-Host "  ✗ BOM utf-8-sig NO presente (primeros bytes: $($bomBytes[0].ToString('X2')) $($bomBytes[1].ToString('X2')) $($bomBytes[2].ToString('X2')))" -ForegroundColor Red
+                        if ($FailFast) {
+                            return $false
+                        }
+                    }
+                } else {
+                    Write-Host "  ⚠ Contenido muy corto para verificar BOM" -ForegroundColor Yellow
+                }
+                
+                # Verificar que tiene headers CSV
+                if ($response.Content -match "Driver ID|driver_id") {
+                    Write-Host "  ✓ CSV válido (contiene headers)" -ForegroundColor Green
+                    return $true
+                } else {
+                    Write-Host "  ✗ CSV no tiene headers esperados" -ForegroundColor Red
+                    return $false
+                }
             } else {
-                Write-Host "  CSV no tiene headers esperados" -ForegroundColor Yellow
-                return $true  # No fallar, solo warning
+                Write-Host "  Status: $($response.StatusCode), Content-Type: $contentType" -ForegroundColor Red
+                return $false
             }
-        } else {
-            Write-Host "  Status: $($response.StatusCode), Content-Type: $contentType" -ForegroundColor Red
+        } catch {
+            Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
             return $false
         }
-    } catch {
-        Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
-        return $false
     }
+} else {
+    Write-Host "`n--- BLOQUE B: Endpoints Backend (SKIPPED) ---" -ForegroundColor DarkGray
 }
 
 # ============================================================================
 # BLOQUE C: Frontend UI
 # ============================================================================
 
-Write-Host "`n" -NoNewline
-Write-Host "--- BLOQUE C: Frontend UI ---" -ForegroundColor Cyan
+if (-not $SkipFrontend) {
+    Write-Host "`n" -NoNewline
+    Write-Host "--- BLOQUE C: Frontend UI ---" -ForegroundColor Cyan
 
-# C1: Verificar que la ruta existe (verificar que el servidor responde)
-Test-Check -Name "C1: Verificar que frontend responde en $FrontendUrl" -ExpectedOutput "status=200" {
+    # C1: Verificar que la ruta existe (verificar que el servidor responde)
+    Test-Check -Name "C1: Verificar que frontend responde en $FrontendUrl" -ExpectedOutput "status=200" -FixCommand "Verificar que frontend está corriendo en $FrontendUrl" {
     try {
         $response = Invoke-WebRequest -Uri "$FrontendUrl" -Method GET -UseBasicParsing -ErrorAction Stop
         if ($response.StatusCode -eq 200) {
@@ -367,16 +424,19 @@ Test-Check -Name "C1: Verificar que frontend responde en $FrontendUrl" -Expected
     }
 }
 
-# C2: Instrucciones para verificar UI manualmente
-Write-Host "`n[C2] Verificación Manual de UI" -ForegroundColor Yellow
-Write-Host "  Instrucciones:" -ForegroundColor Gray
-Write-Host "  1. Abrir navegador en: $FrontendUrl/pagos/yango-cabinet-claims" -ForegroundColor Gray
-Write-Host "  2. Verificar que la página carga sin errores" -ForegroundColor Gray
-Write-Host "  3. Verificar que la tabla muestra datos (o mensaje 'No hay claims')" -ForegroundColor Gray
-Write-Host "  4. Probar filtros: date_from, date_to, milestone_value, search" -ForegroundColor Gray
-Write-Host "  5. Probar botón 'Exportar CSV' (debe descargar archivo CSV)" -ForegroundColor Gray
-Write-Host "  6. Hacer click en una fila para ver drilldown modal" -ForegroundColor Gray
-Write-Host "`n  ✓ Verificación manual completada (asumir OK si no hay errores visibles)" -ForegroundColor Green
+    # C2: Instrucciones para verificar UI manualmente
+    Write-Host "`n[C2] Verificación Manual de UI" -ForegroundColor Yellow
+    Write-Host "  Instrucciones:" -ForegroundColor Gray
+    Write-Host "  1. Abrir navegador en: $FrontendUrl/pagos/yango-cabinet-claims" -ForegroundColor Gray
+    Write-Host "  2. Verificar que la página carga sin errores" -ForegroundColor Gray
+    Write-Host "  3. Verificar que la tabla muestra datos (o mensaje 'No hay claims')" -ForegroundColor Gray
+    Write-Host "  4. Probar filtros: date_from, date_to, milestone_value, search" -ForegroundColor Gray
+    Write-Host "  5. Probar botón 'Exportar CSV' (debe descargar archivo CSV)" -ForegroundColor Gray
+    Write-Host "  6. Hacer click en una fila para ver drilldown modal" -ForegroundColor Gray
+    Write-Host "`n  ✓ Verificación manual completada (asumir OK si no hay errores visibles)" -ForegroundColor Green
+} else {
+    Write-Host "`n--- BLOQUE C: Frontend UI (SKIPPED) ---" -ForegroundColor DarkGray
+}
 
 # ============================================================================
 # RESUMEN FINAL
