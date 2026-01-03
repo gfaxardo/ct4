@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.exc import ProgrammingError
 from typing import Optional, Literal
 from datetime import date, datetime
 import logging
@@ -1141,23 +1142,8 @@ def get_cabinet_mv_health(
     - 500: Invariante roto (más de 1 fila en la vista)
     """
     try:
-        # Verificar que la vista existe
-        view_check_sql = text("""
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.views 
-                WHERE table_schema = 'ops' 
-                AND table_name = 'v_yango_cabinet_claims_mv_health'
-            )
-        """)
-        view_exists = db.execute(view_check_sql).scalar()
-        
-        if not view_exists:
-            raise HTTPException(
-                status_code=404,
-                detail="Vista ops.v_yango_cabinet_claims_mv_health no existe. Ejecutar: psql -d database -f docs/ops/yango_cabinet_claims_mv_health.sql"
-            )
-        
         # Leer de la vista (READ-ONLY, no recalcular)
+        # Usar text() para todas las queries
         sql = text("SELECT * FROM ops.v_yango_cabinet_claims_mv_health")
         result = db.execute(sql)
         rows_data = result.mappings().all()
@@ -1178,6 +1164,23 @@ def get_cabinet_mv_health(
         row = rows_data[0]
         return YangoCabinetMvHealthRow(**dict(row))
         
+    except ProgrammingError as e:
+        # Capturar error de PostgreSQL cuando la vista no existe
+        # SQLSTATE 42P01 = undefined_table
+        error_code = getattr(e.orig, 'pgcode', None) if hasattr(e, 'orig') else None
+        error_message = str(e.orig) if hasattr(e, 'orig') else str(e)
+        
+        if error_code == '42P01' or 'does not exist' in error_message.lower() or 'v_yango_cabinet_claims_mv_health' in error_message:
+            raise HTTPException(
+                status_code=404,
+                detail="Aplica docs/ops/yango_cabinet_claims_mv_health.sql"
+            )
+        # Si es otro error de PostgreSQL, re-raise como 500
+        logger.error(f"Error de PostgreSQL en get_cabinet_mv_health: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar health check de MV: {str(e)}"
+        )
     except HTTPException:
         raise
     except Exception as e:
