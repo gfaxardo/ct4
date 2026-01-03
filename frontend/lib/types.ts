@@ -597,6 +597,88 @@ export interface YangoCabinetClaimDrilldownResponse {
   misapplied_explanation: string | null;
 }
 
+// ============================================================================
+// Driver Matrix Types (Ops)
+// ============================================================================
+
+export interface DriverMatrixRow {
+  driver_id: string | null;
+  person_key: string | null;
+  driver_name: string | null;
+  lead_date: string | null;
+  week_start: string | null;
+  origin_tag: string | null;
+  connected_flag: boolean | null;
+  connected_date: string | null;
+  // Milestone M1
+  m1_achieved_flag: boolean | null;
+  m1_achieved_date: string | null;
+  m1_expected_amount_yango: number | null;
+  m1_yango_payment_status: string | null;
+  m1_window_status: string | null;
+  m1_overdue_days: number | null;
+  // Milestone M5
+  m5_achieved_flag: boolean | null;
+  m5_achieved_date: string | null;
+  m5_expected_amount_yango: number | null;
+  m5_yango_payment_status: string | null;
+  m5_window_status: string | null;
+  m5_overdue_days: number | null;
+  // Milestone M25
+  m25_achieved_flag: boolean | null;
+  m25_achieved_date: string | null;
+  m25_expected_amount_yango: number | null;
+  m25_yango_payment_status: string | null;
+  m25_window_status: string | null;
+  m25_overdue_days: number | null;
+  // Scout
+  scout_due_flag: boolean | null;
+  scout_paid_flag: boolean | null;
+  scout_amount: number | null;
+}
+
+export interface OpsDriverMatrixMeta {
+  limit: number;
+  offset: number;
+  returned: number;
+  total: number;
+}
+
+export interface OpsDriverMatrixResponse {
+  meta: OpsDriverMatrixMeta;
+  data: DriverMatrixRow[];
+}
+  m25_expected_amount_yango: number | null;
+  m25_yango_payment_status: string | null;
+  m25_window_status: string | null;
+  m25_overdue_days: number | null;
+  // Scout
+  scout_due_flag: boolean | null;
+  scout_paid_flag: boolean | null;
+  scout_amount: number | null;
+}
+
+export interface DriverMatrixTotals {
+  drivers: number;
+  expected_yango_sum: number;
+  paid_sum: number;
+  receivable_sum: number;
+  expired_count: number;
+  in_window_count: number;
+}
+
+export interface DriverMatrixMeta {
+  page: number;
+  limit: number;
+  total_rows: number;
+}
+
+export interface DriverMatrixResponse {
+  rows: DriverMatrixRow[];
+  meta: DriverMatrixMeta;
+  totals: DriverMatrixTotals;
+}
+
 export interface YangoDriverDetailResponse {
   status: string;
   driver_id: string;

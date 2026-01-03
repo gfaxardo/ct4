@@ -47,6 +47,8 @@ const navItems: NavItem[] = [
           { label: 'Claims Cabinet', href: '/pagos/yango-cabinet-claims', icon: '' },
         ],
       },
+      { label: 'Resumen por Conductor', href: '/pagos/resumen-conductor', icon: '' },
+      { label: 'Driver Matrix', href: '/pagos/driver-matrix', icon: '' },
       { label: 'Claims', href: '/pagos/claims', icon: '', pending: true },
     ],
   },

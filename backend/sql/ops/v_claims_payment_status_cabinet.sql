@@ -22,24 +22,36 @@
 -- 5. NO calcular montos en frontend. Todo sale de SQL.
 -- 6. expected_amount se calcula según reglas: milestone 1=25, 5=35, 25=100.
 -- ============================================================================
--- CORRECCIÓN DE BUG (2025-01-XX):
--- BUG: La vista permitía múltiples filas por (driver_id, milestone_value) desde
--- v_yango_receivable_payable_detail, causando expected_total incorrectos (ej: S/195 en vez de S/160).
--- FIX: Agregada deduplicación con DISTINCT ON (driver_id, milestone_value) quedándose con
--- la fila más reciente por lead_date. También se aplica regla de negocio para expected_amount.
+-- CORRECCIÓN DE DEPENDENCIAS (2026-01-XX):
+-- CAMBIO: Eliminada dependencia de ops.v_yango_receivable_payable_detail (vista UI/report).
+-- NUEVA FUENTE: ops.v_payment_calculation (vista canónica C2).
+-- RAZÓN: Driver Matrix debe depender solo de vistas canónicas, no de vistas UI/report.
+-- MANTIENE: Deduplicación con DISTINCT ON (driver_id, milestone_value) y reglas de expected_amount.
 -- ============================================================================
 
 CREATE OR REPLACE VIEW ops.v_claims_payment_status_cabinet AS
 WITH base_claims_raw AS (
+    -- Fuente core: ops.v_payment_calculation (vista canónica C2)
+    -- Filtra solo claims de Yango (partner) para cabinet con milestones 1, 5, 25
     SELECT 
-        driver_id,
-        person_key,
-        lead_date,
-        milestone_value,
-        amount AS expected_amount_raw
-    FROM ops.v_yango_receivable_payable_detail
-    WHERE lead_origin = 'cabinet'
-        AND milestone_value IN (1, 5, 25)
+        pc.driver_id,
+        pc.person_key,
+        pc.lead_date,
+        pc.milestone_trips AS milestone_value,
+        -- Aplicar reglas de negocio para expected_amount (milestone 1=25, 5=35, 25=100)
+        -- NO usar amount de la vista, aplicar reglas directamente
+        CASE 
+            WHEN pc.milestone_trips = 1 THEN 25::numeric(12,2)
+            WHEN pc.milestone_trips = 5 THEN 35::numeric(12,2)
+            WHEN pc.milestone_trips = 25 THEN 100::numeric(12,2)
+            ELSE NULL::numeric(12,2)
+        END AS expected_amount
+    FROM ops.v_payment_calculation pc
+    WHERE pc.origin_tag = 'cabinet'
+        AND pc.rule_scope = 'partner'  -- Solo Yango (partner), no scouts
+        AND pc.milestone_trips IN (1, 5, 25)
+        AND pc.milestone_achieved = true  -- Solo milestones alcanzados
+        AND pc.driver_id IS NOT NULL
 ),
 base_claims_dedup AS (
     -- Deduplicación: 1 fila por (driver_id + milestone_value), quedarse con lead_date más reciente
@@ -48,15 +60,7 @@ base_claims_dedup AS (
         person_key,
         lead_date,
         milestone_value,
-        expected_amount_raw,
-        -- Aplicar reglas de negocio para expected_amount (milestone 1=25, 5=35, 25=100)
-        -- CAST explícito a numeric(12,2) para mantener compatibilidad con vista existente
-        CASE 
-            WHEN milestone_value = 1 THEN 25::numeric(12,2)
-            WHEN milestone_value = 5 THEN 35::numeric(12,2)
-            WHEN milestone_value = 25 THEN 100::numeric(12,2)
-            ELSE expected_amount_raw
-        END AS expected_amount
+        expected_amount
     FROM base_claims_raw
     ORDER BY driver_id, milestone_value, lead_date DESC
 ),

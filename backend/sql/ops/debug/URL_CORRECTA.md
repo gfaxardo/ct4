@@ -29,3 +29,5 @@ http://localhost:8000/api/v1/payments/cabinet/drivers?limit=100
 
 Los logs se generarán automáticamente en: `c:\Users\Pc\Documents\Cursor Proyectos\ct4\.cursor\debug.log`
 
+
+

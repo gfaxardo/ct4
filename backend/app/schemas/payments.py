@@ -3,6 +3,7 @@ from typing import Optional, List, Dict, Any
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
+from uuid import UUID
 
 
 # Yango Reconciliation Summary Schemas
@@ -271,3 +272,77 @@ class YangoCabinetMvHealthRow(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Driver Matrix Schemas
+class DriverMatrixRow(BaseModel):
+    driver_id: Optional[str] = None
+    person_key: Optional[UUID] = None
+    driver_name: Optional[str] = None
+    lead_date: Optional[date] = None
+    week_start: Optional[date] = None
+    origin_tag: Optional[str] = None
+    connected_flag: Optional[bool] = None
+    connected_date: Optional[date] = None
+    # Milestone M1
+    m1_achieved_flag: Optional[bool] = None
+    m1_achieved_date: Optional[date] = None
+    m1_expected_amount_yango: Optional[Decimal] = None
+    m1_yango_payment_status: Optional[str] = None
+    m1_window_status: Optional[str] = None
+    m1_overdue_days: Optional[int] = None
+    # Milestone M5
+    m5_achieved_flag: Optional[bool] = None
+    m5_achieved_date: Optional[date] = None
+    m5_expected_amount_yango: Optional[Decimal] = None
+    m5_yango_payment_status: Optional[str] = None
+    m5_window_status: Optional[str] = None
+    m5_overdue_days: Optional[int] = None
+    # Milestone M25
+    m25_achieved_flag: Optional[bool] = None
+    m25_achieved_date: Optional[date] = None
+    m25_expected_amount_yango: Optional[Decimal] = None
+    m25_yango_payment_status: Optional[str] = None
+    m25_window_status: Optional[str] = None
+    m25_overdue_days: Optional[int] = None
+    # Scout
+    scout_due_flag: Optional[bool] = None
+    scout_paid_flag: Optional[bool] = None
+    scout_amount: Optional[Decimal] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DriverMatrixTotals(BaseModel):
+    drivers: int
+    expected_yango_sum: Decimal
+    paid_sum: Decimal
+    receivable_sum: Decimal
+    expired_count: int
+    in_window_count: int
+
+
+class DriverMatrixMeta(BaseModel):
+    page: int
+    limit: int
+    total_rows: int
+
+
+class DriverMatrixResponse(BaseModel):
+    rows: List[DriverMatrixRow]
+    meta: DriverMatrixMeta
+    totals: DriverMatrixTotals
+
+
+# Ops Driver Matrix Response (formato meta/data)
+class OpsDriverMatrixMeta(BaseModel):
+    limit: int
+    offset: int
+    returned: int
+    total: int
+
+
+class OpsDriverMatrixResponse(BaseModel):
+    meta: OpsDriverMatrixMeta
+    data: List[DriverMatrixRow]

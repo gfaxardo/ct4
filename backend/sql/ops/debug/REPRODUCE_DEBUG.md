@@ -38,3 +38,5 @@ Buscar en los logs:
 2. Si `expected_amounts` contiene valores != {25, 35, 100} → montos no corregidos
 3. Si la vista tiene datos correctos pero `expected_total = 195` → problema en agregación
 
+
+

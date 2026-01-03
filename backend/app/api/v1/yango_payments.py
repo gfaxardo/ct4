@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError, OperationalError
 from typing import Optional, Literal
 from datetime import date, datetime
+from uuid import UUID
 import logging
 import hashlib
 import csv
@@ -114,11 +115,12 @@ def get_reconciliation_summary(
             rows.append(YangoReconciliationSummaryRow(**row_dict))
         
         # Obtener datos de validación
+        # Nota: driver_id_final puede no existir en todas las versiones de la vista
         validation_query = text("""
             SELECT 
                 COUNT(*) AS ledger_total_rows,
                 COUNT(*) FILTER (WHERE is_paid = true) AS ledger_rows_is_paid_true,
-                COUNT(*) FILTER (WHERE is_paid = true AND driver_id IS NULL) AS ledger_rows_is_paid_true_and_driver_id_null
+                COUNT(*) FILTER (WHERE is_paid = true AND driver_id_final IS NULL) AS ledger_rows_is_paid_true_and_driver_id_null
             FROM ops.v_yango_payments_ledger_latest_enriched
         """)
         validation_result = db.execute(validation_query).fetchone()
@@ -240,7 +242,21 @@ def get_reconciliation_items(
         result = db.execute(text(sql), params)
         rows_data = result.mappings().all()
         
-        rows = [YangoReconciliationItemRow(**dict(row)) for row in rows_data]
+        # Convertir UUIDs a strings y datetime a date si es necesario
+        def convert_uuids_to_strings(row_dict):
+            """Convierte UUIDs a strings y datetime a date para compatibilidad con Pydantic"""
+            converted = {}
+            for key, value in row_dict.items():
+                if isinstance(value, UUID):
+                    converted[key] = str(value)
+                elif isinstance(value, datetime):
+                    # Si el campo debería ser date, convertir
+                    converted[key] = value.date() if hasattr(value, 'date') else value
+                else:
+                    converted[key] = value
+            return converted
+        
+        rows = [YangoReconciliationItemRow(**convert_uuids_to_strings(dict(row))) for row in rows_data]
         
         filters = {
             "week_start": str(week_start) if week_start else None,

@@ -48,3 +48,5 @@ Si el endpoint retorna un error de base de datos (como "relation does not exist"
 
 Recuerda que ahora la funcionalidad está integrada en `/pagos/claims` con un toggle entre "Modo Driver" y "Modo Cobranza Yango". Puedes usar esa página en lugar de `/pagos/yango-cabinet`.
 
+
+

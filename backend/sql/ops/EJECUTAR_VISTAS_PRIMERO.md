@@ -33,3 +33,5 @@ Ejecutar para verificar que SUM(rollup) == SUM(claim-level).
 
 **SIN estas vistas ejecutadas, los endpoints fallarán con "relation does not exist".**
 
+
+

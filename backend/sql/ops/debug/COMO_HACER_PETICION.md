@@ -68,3 +68,5 @@ c:\Users\Pc\Documents\Cursor Proyectos\ct4\.cursor\debug.log
 
 Puedes abrir este archivo con cualquier editor de texto para ver los datos capturados.
 
+
+

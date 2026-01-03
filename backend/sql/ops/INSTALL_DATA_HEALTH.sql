@@ -76,3 +76,5 @@ WHERE metric_date >= CURRENT_DATE - 7
 GROUP BY source_name
 ORDER BY source_name;
 
+
+

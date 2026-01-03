@@ -16,3 +16,5 @@ try {
     Write-Host "Asegúrate de que el backend esté corriendo en http://localhost:8000" -ForegroundColor Yellow
 }
 
+
+

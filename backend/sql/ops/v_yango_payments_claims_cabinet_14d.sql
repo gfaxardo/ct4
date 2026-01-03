@@ -8,8 +8,8 @@
 -- IMPORTANTE: Esta vista NO debe referenciarse a sí misma (ni directa ni 
 -- indirectamente) para evitar recursión infinita.
 --
--- Fuentes de datos (ÚNICAS dependencias permitidas):
--- - ops.v_yango_receivable_payable_detail (claims base)
+-- Fuentes de datos (ÚNICAS dependencias permitidas - vistas canónicas C2-C4):
+-- - ops.v_payment_calculation (claims base - vista canónica C2)
 -- - ops.v_yango_payments_ledger_latest_enriched (pagos reales enriquecidos)
 --
 -- NOTA: No usar DROP VIEW ... CASCADE (provoca statement timeout).
@@ -20,20 +20,32 @@ CREATE OR REPLACE VIEW ops.v_yango_payments_claims_cabinet_14d AS
 -- Performance: filter pushdown before joins for UI stability
 -- Apply date filter early to reduce data volume before expensive LEFT JOINs
 WITH base_claims AS (
+    -- Fuente core: ops.v_payment_calculation (vista canónica C2)
+    -- Filtra solo claims de Yango (partner) para cabinet con milestones 1, 5, 25
     SELECT 
-        driver_id,
-        person_key,
-        lead_date,
-        pay_week_start_monday,
-        milestone_value,
-        amount AS expected_amount,
-        currency
-    FROM ops.v_yango_receivable_payable_detail
-    WHERE lead_origin = 'cabinet'
-        AND milestone_value IN (1, 5, 25)
+        pc.driver_id,
+        pc.person_key,
+        pc.lead_date,
+        date_trunc('week', pc.payable_date)::date AS pay_week_start_monday,
+        pc.milestone_trips AS milestone_value,
+        -- Aplicar reglas de negocio para expected_amount (milestone 1=25, 5=35, 25=100)
+        CASE 
+            WHEN pc.milestone_trips = 1 THEN 25::numeric(12,2)
+            WHEN pc.milestone_trips = 5 THEN 35::numeric(12,2)
+            WHEN pc.milestone_trips = 25 THEN 100::numeric(12,2)
+            ELSE NULL::numeric(12,2)
+        END AS expected_amount,
+        pc.currency
+    FROM ops.v_payment_calculation pc
+    WHERE pc.origin_tag = 'cabinet'
+        AND pc.rule_scope = 'partner'  -- Solo Yango (partner), no scouts
+        AND pc.milestone_trips IN (1, 5, 25)
+        AND pc.milestone_achieved = true  -- Solo milestones alcanzados
+        AND pc.driver_id IS NOT NULL
+        AND pc.payable_date IS NOT NULL
         -- Performance: filter by date BEFORE expensive JOINs to reduce data volume
         -- Default filter: last 1 week (7 days) from start of current week (very aggressive for UI stability)
-        AND pay_week_start_monday >= (date_trunc('week', current_date)::date - interval '7 days')::date
+        AND date_trunc('week', pc.payable_date)::date >= (date_trunc('week', current_date)::date - interval '7 days')::date
 ),
 -- Usar ledger enriquecido para matching
 -- Performance: filter ledger by pay_date BEFORE expensive JOINs to reduce scan volume

@@ -40,3 +40,5 @@ ORDER BY table_schema, table_name;
 
 -- Si alguna tabla aparece como "OPCIONAL" o no aparece, comentar su CTE en v_data_health.sql
 
+
+

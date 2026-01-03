@@ -319,6 +319,60 @@ export async function getPaymentEligibility(params?: {
   return fetchApi<PaymentEligibilityResponse>(`/api/v1/payments/eligibility${query ? `?${query}` : ''}`);
 }
 
+import type {
+  DriverMatrixResponse,
+} from './types';
+
+export async function getDriverMatrix(params?: {
+  week_from?: string;
+  week_to?: string;
+  search?: string;
+  only_pending?: boolean;
+  page?: number;
+  limit?: number;
+}): Promise<DriverMatrixResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.week_from) searchParams.set('week_from', params.week_from);
+  if (params?.week_to) searchParams.set('week_to', params.week_to);
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.only_pending !== undefined) searchParams.set('only_pending', params.only_pending.toString());
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString());
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<DriverMatrixResponse>(`/api/v1/payments/driver-matrix${query ? `?${query}` : ''}`);
+}
+
+export async function exportDriverMatrix(params?: {
+  week_from?: string;
+  week_to?: string;
+  search?: string;
+  only_pending?: boolean;
+}): Promise<Blob> {
+  const searchParams = new URLSearchParams();
+  if (params?.week_from) searchParams.set('week_from', params.week_from);
+  if (params?.week_to) searchParams.set('week_to', params.week_to);
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.only_pending !== undefined) searchParams.set('only_pending', params.only_pending.toString());
+  
+  const query = searchParams.toString();
+  const url = `${API_BASE_URL}/api/v1/payments/driver-matrix/export${query ? `?${query}` : ''}`;
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const errorData = await response.json();
+      detail = errorData.detail || errorData.message;
+    } catch {
+      detail = response.statusText;
+    }
+    throw new ApiError(response.status, response.statusText, detail);
+  }
+  
+  return response.blob();
+}
+
 // ============================================================================
 // Yango Payments Reconciliation API
 // ============================================================================
@@ -445,6 +499,39 @@ export async function getYangoCabinetClaimDrilldown(
   return fetchApi<YangoCabinetClaimDrilldownResponse>(
     `/api/v1/yango/cabinet/claims/${driverId}/${milestoneValue}/drilldown${query ? `?${query}` : ''}`
   );
+}
+
+// ============================================================================
+// Ops Payments API
+// ============================================================================
+
+import type {
+  OpsDriverMatrixResponse,
+} from './types';
+
+export async function getOpsDriverMatrix(params?: {
+  week_start_from?: string;
+  week_start_to?: string;
+  origin_tag?: 'cabinet' | 'fleet_migration' | string;
+  only_pending?: boolean;
+  limit?: number;
+  offset?: number;
+  order?: 'week_start_desc' | 'week_start_asc' | 'lead_date_desc' | 'lead_date_asc';
+}): Promise<OpsDriverMatrixResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.week_start_from) searchParams.set('week_start_from', params.week_start_from);
+  if (params?.week_start_to) searchParams.set('week_start_to', params.week_start_to);
+  // Validar origin_tag antes de agregarlo
+  if (params?.origin_tag && (params.origin_tag === 'cabinet' || params.origin_tag === 'fleet_migration')) {
+    searchParams.set('origin_tag', params.origin_tag);
+  }
+  if (params?.only_pending !== undefined) searchParams.set('only_pending', params.only_pending.toString());
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+  if (params?.order) searchParams.set('order', params.order);
+  
+  const query = searchParams.toString();
+  return fetchApi<OpsDriverMatrixResponse>(`/api/v1/ops/payments/driver-matrix${query ? `?${query}` : ''}`);
 }
 
 // ============================================================================

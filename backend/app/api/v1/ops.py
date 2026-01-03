@@ -25,9 +25,13 @@ from app.schemas.ops_health_checks import HealthChecksResponse, HealthCheckRow
 from app.schemas.ops_health_global import HealthGlobalResponse
 from app.schemas.ops_source_registry import SourceRegistryResponse, SourceRegistryRow
 from app.schemas.ops_source_registry import SourceRegistryResponse, SourceRegistryRow
+from app.api.v1 import ops_payments
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Incluir subrouter de payments
+router.include_router(ops_payments.router, prefix="/payments", tags=["ops-payments"])
 
 
 @router.get("/health")

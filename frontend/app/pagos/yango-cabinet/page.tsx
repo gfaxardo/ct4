@@ -23,6 +23,7 @@ import DataTable from '@/components/DataTable';
 import Filters from '@/components/Filters';
 import Pagination from '@/components/Pagination';
 import Badge from '@/components/Badge';
+import PaymentsLegend from '@/components/payments/PaymentsLegend';
 
 export default function YangoCabinetPage() {
   const router = useRouter();
@@ -122,24 +123,24 @@ export default function YangoCabinetPage() {
     {
       key: 'amount_expected_sum',
       header: 'Esperado',
-      render: (row: SummaryRow) => row.amount_expected_sum?.toFixed(2) || '—',
+      render: (row: SummaryRow) => row.amount_expected_sum ? Number(row.amount_expected_sum).toFixed(2) : '—',
     },
     {
       key: 'amount_paid_total_visible',
       header: 'Pagado Visible',
-      render: (row: SummaryRow) => row.amount_paid_total_visible?.toFixed(2) || '—',
+      render: (row: SummaryRow) => row.amount_paid_total_visible ? Number(row.amount_paid_total_visible).toFixed(2) : '—',
     },
     {
       key: 'amount_pending_active_sum',
       header: 'Pendiente Activo',
-      render: (row: SummaryRow) => row.amount_pending_active_sum?.toFixed(2) || '—',
+      render: (row: SummaryRow) => row.amount_pending_active_sum ? Number(row.amount_pending_active_sum).toFixed(2) : '—',
     },
     {
       key: 'amount_diff',
       header: 'Diferencia',
       render: (row: SummaryRow) => (
         <span className={row.amount_diff && row.amount_diff < 0 ? 'text-red-600' : ''}>
-          {row.amount_diff?.toFixed(2) || '—'}
+          {row.amount_diff ? Number(row.amount_diff).toFixed(2) : '—'}
         </span>
       ),
     },
@@ -228,7 +229,10 @@ export default function YangoCabinetPage() {
 
   return (
     <div className="px-4 py-6">
-      <h1 className="text-3xl font-bold mb-6">Yango - Reconciliación</h1>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">Yango - Reconciliación</h1>
+        <PaymentsLegend />
+      </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">

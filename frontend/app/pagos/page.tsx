@@ -8,6 +8,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { getPaymentEligibility, ApiError } from '@/lib/api';
 import type { PaymentEligibilityResponse } from '@/lib/types';
 import DataTable from '@/components/DataTable';
@@ -183,7 +184,63 @@ export default function PagosPage() {
 
   return (
     <div className="px-4 py-6">
-      <h1 className="text-3xl font-bold mb-6">Elegibilidad de Pagos</h1>
+      <h1 className="text-3xl font-bold mb-6">Pagos</h1>
+
+      {/* Navegación a subrutas */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        <Link
+          href="/pagos/yango-cabinet"
+          className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border border-gray-200"
+        >
+          <h2 className="text-xl font-semibold mb-2">Reconciliación Yango</h2>
+          <p className="text-sm text-gray-600">
+            Reconciliación de pagos Yango por semana y milestone
+          </p>
+        </Link>
+
+        <Link
+          href="/pagos/cobranza-yango"
+          className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border border-gray-200"
+        >
+          <h2 className="text-xl font-semibold mb-2">Cobranza Yango</h2>
+          <p className="text-sm text-gray-600">
+            Claims exigibles y estado de cobranza
+          </p>
+        </Link>
+
+        <Link
+          href="/pagos/yango-cabinet-claims"
+          className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border border-gray-200"
+        >
+          <h2 className="text-xl font-semibold mb-2">Claims Cabinet</h2>
+          <p className="text-sm text-gray-600">
+            Claims exigibles de Yango Cabinet con detalles
+          </p>
+        </Link>
+
+        <Link
+          href="/pagos/resumen-conductor"
+          className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border border-gray-200"
+        >
+          <h2 className="text-xl font-semibold mb-2">Resumen por Conductor</h2>
+          <p className="text-sm text-gray-600">
+            Resumen de pagos y milestones por conductor
+          </p>
+        </Link>
+
+        <Link
+          href="/pagos/driver-matrix"
+          className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border border-gray-200"
+        >
+          <h2 className="text-xl font-semibold mb-2">Driver Matrix</h2>
+          <p className="text-sm text-gray-600">
+            Matriz por conductor: hitos M1/M5/M25, expected vs paid y ventana de pagos
+          </p>
+        </Link>
+      </div>
+
+      <div className="border-t border-gray-200 pt-8 mt-8">
+        <h2 className="text-2xl font-bold mb-6">Elegibilidad de Pagos</h2>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">

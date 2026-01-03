@@ -17,8 +17,11 @@ export default function Badge({ children, variant = 'default', className = '' }:
     info: 'bg-blue-100 text-blue-800',
   };
 
+  // Si el variant no existe, usar default
+  const variantClass = variants[variant] || variants.default;
+
   return (
-    <span className={`px-2 py-1 text-xs font-semibold rounded ${variants[variant]} ${className}`}>
+    <span className={`px-2 py-1 text-xs font-semibold rounded ${variantClass} ${className}`}>
       {children}
     </span>
   );

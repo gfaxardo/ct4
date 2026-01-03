@@ -208,7 +208,7 @@ export default function MvHealthPanel() {
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <span className="text-sm font-medium text-gray-700">
-                Solo stale (>24h o sin refresh)
+                Solo stale (&gt;24h o sin refresh)
               </span>
             </label>
           </div>

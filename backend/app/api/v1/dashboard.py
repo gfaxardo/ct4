@@ -404,24 +404,32 @@ def get_yango_receivable_items(
     """)
     
     rows = db.execute(items_query, params).fetchall()
+    def to_date(value):
+        """Convierte datetime a date si es necesario"""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        return value
+    
     items = [
         YangoReceivableItem(
-            pay_week_start_monday=row.pay_week_start_monday,
+            pay_week_start_monday=to_date(row.pay_week_start_monday),
             pay_iso_year_week=row.pay_iso_year_week,
-            payable_date=row.payable_date,
-            achieved_date=row.achieved_date,
-            lead_date=row.lead_date,
+            payable_date=to_date(row.payable_date),
+            achieved_date=to_date(row.achieved_date),
+            lead_date=to_date(row.lead_date),
             lead_origin=row.lead_origin,
             payer=row.payer,
             milestone_type=row.milestone_type,
             milestone_value=row.milestone_value,
             window_days=row.window_days,
             trips_in_window=row.trips_in_window,
-            person_key=row.person_key,
+            person_key=str(row.person_key) if row.person_key else None,
             driver_id=row.driver_id,
             amount=Decimal(str(row.amount or 0)),
             currency=row.currency,
-            created_at_export=row.created_at_export
+            created_at_export=to_date(row.created_at_export)
         )
         for row in rows
     ]

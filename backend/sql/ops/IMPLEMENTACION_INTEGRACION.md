@@ -70,3 +70,5 @@ claims_total, claims_paid, claims_unpaid, claims_misapplied → counts
 - Modo Cobranza: KPIs desde claim-level (SUM de expected_amount por status)
 - Reconciliación: rollup_total debe igualar claim_level_total
 
+
+

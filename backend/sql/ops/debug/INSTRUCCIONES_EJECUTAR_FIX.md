@@ -85,3 +85,5 @@ Después de ejecutar el fix, verifica que funcionó:
 
 Instala PostgreSQL client tools o usa un cliente gráfico como DBeaver (gratis).
 
+
+

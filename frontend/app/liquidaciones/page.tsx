@@ -142,7 +142,7 @@ export default function LiquidacionesPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
           <StatCard
             title="Monto Pagable"
-            value={`${summary.totals.payable_amount.toFixed(2)}`}
+            value={`${Number(summary.totals.payable_amount).toFixed(2)}`}
           />
           <StatCard
             title="Items Pagables"

@@ -21,6 +21,7 @@ import DataTable from '@/components/DataTable';
 import Filters from '@/components/Filters';
 import Pagination from '@/components/Pagination';
 import Badge from '@/components/Badge';
+import PaymentsLegend from '@/components/payments/PaymentsLegend';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -211,7 +212,7 @@ export default function YangoCabinetClaimsPage() {
       key: 'expected_amount',
       header: 'Monto Exigible',
       render: (row: YangoCabinetClaimRow) =>
-        row.expected_amount ? `S/ ${row.expected_amount.toFixed(2)}` : '—',
+        row.expected_amount ? `S/ ${Number(row.expected_amount).toFixed(2)}` : '—',
     },
     {
       key: 'lead_date',
@@ -261,7 +262,10 @@ export default function YangoCabinetClaimsPage() {
   return (
     <div className="px-4 py-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Yango Cabinet - Claims Exigibles</h1>
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Yango Cabinet - Claims Exigibles</h1>
+          <PaymentsLegend />
+        </div>
         <button
           onClick={handleExportCSV}
           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
@@ -397,7 +401,7 @@ export default function YangoCabinetClaimsPage() {
                         <div>
                           <span className="text-sm text-gray-600">Monto Esperado:</span>
                           <p className="font-medium">
-                            {drilldownData.claim.expected_amount ? `S/ ${drilldownData.claim.expected_amount.toFixed(2)}` : '—'}
+                            {drilldownData.claim.expected_amount ? `S/ ${Number(drilldownData.claim.expected_amount).toFixed(2)}` : '—'}
                           </p>
                         </div>
                         <div>
@@ -533,7 +537,7 @@ export default function YangoCabinetClaimsPage() {
                           <span className="text-sm text-gray-600">Expected Amount:</span>
                           <p className="font-medium">
                             {drilldownData.reconciliation.expected_amount
-                              ? `S/ ${drilldownData.reconciliation.expected_amount.toFixed(2)}`
+                              ? `S/ ${Number(drilldownData.reconciliation.expected_amount).toFixed(2)}`
                               : '—'}
                           </p>
                         </div>

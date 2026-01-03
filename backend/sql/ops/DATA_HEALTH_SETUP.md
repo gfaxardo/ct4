@@ -56,3 +56,5 @@ SELECT * FROM ops.v_data_ingestion_daily
 - `module_ct_cabinet_payments` (ct_ingest)
 - `module_ct_scouts_list` (master)
 
+
+

@@ -23,6 +23,7 @@ import DataTable from '@/components/DataTable';
 import Filters from '@/components/Filters';
 import Pagination from '@/components/Pagination';
 import Badge from '@/components/Badge';
+import PaymentsLegend from '@/components/payments/PaymentsLegend';
 
 export default function CobranzaYangoPage() {
   const router = useRouter();
@@ -138,7 +139,10 @@ export default function CobranzaYangoPage() {
 
   return (
     <div className="px-4 py-6">
-      <h1 className="text-3xl font-bold mb-6">Yango - Cobranza</h1>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">Yango - Cobranza</h1>
+        <PaymentsLegend />
+      </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
@@ -151,7 +155,7 @@ export default function CobranzaYangoPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
           <StatCard
             title="Monto Receivable"
-            value={`${summary.totals.receivable_amount.toFixed(2)}`}
+            value={`${Number(summary.totals.receivable_amount).toFixed(2)}`}
           />
           <StatCard
             title="Items Receivable"
