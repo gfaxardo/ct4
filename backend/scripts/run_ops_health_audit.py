@@ -566,6 +566,47 @@ def get_critical_impacts(engine) -> tuple:
     return impacts, infra_warnings
 
 
+def get_yango_cabinet_claims_mv_health(engine) -> tuple:
+    """
+    Obtiene health check específico para ops.mv_yango_cabinet_claims_for_collection.
+    
+    Returns:
+        tuple: (health_dict, infra_warnings_list)
+    """
+    query = """
+        SELECT 
+            mv_name,
+            last_ok_refresh_finished_at,
+            hours_since_ok_refresh,
+            status_bucket,
+            last_status,
+            last_error,
+            rows_after_refresh,
+            calculated_at
+        FROM ops.v_yango_cabinet_claims_mv_health
+    """
+    rows, error = execute_query_safe(engine, query, "Health check Yango Cabinet Claims MV")
+    
+    if rows is None:
+        warning_msg = f"Vista ops.v_yango_cabinet_claims_mv_health no disponible: {error}"
+        return None, [warning_msg]
+    
+    if not rows:
+        return None, ["No se encontró health check para Yango Cabinet Claims MV"]
+    
+    row = rows[0]
+    return {
+        "mv_name": row[0],
+        "last_ok_refresh_finished_at": row[1].isoformat() if row[1] else None,
+        "hours_since_ok_refresh": float(row[2]) if row[2] is not None else None,
+        "status_bucket": row[3],
+        "last_status": row[4],
+        "last_error": row[5],
+        "rows_after_refresh": int(row[6]) if row[6] is not None else None,
+        "calculated_at": row[7].isoformat() if row[7] else None
+    }, []
+
+
 def classify_status(checks: list, global_health: dict, infra_warnings: list) -> tuple:
     """
     Clasifica el estado: CRITICAL, WARNING, o OK.
@@ -628,7 +669,8 @@ def generate_markdown_report(
     global_health: dict,
     unregistered_used: list,
     critical_impacts: dict,
-    infra_warnings: list
+    infra_warnings: list,
+    yango_mv_health: dict = None
 ) -> str:
     """Genera reporte en Markdown."""
     report = []
@@ -770,6 +812,20 @@ def generate_markdown_report(
             report.append(f"- `{obj['schema_name']}.{obj['object_name']}`\n")
         report.append("\n")
     
+    # Yango Cabinet Claims MV Health
+    if yango_mv_health:
+        report.append("## Yango Cabinet Claims MV Health\n\n")
+        report.append("| Métrica | Valor |\n")
+        report.append("|---------|-------|\n")
+        report.append(f"| Status Bucket | `{yango_mv_health.get('status_bucket', 'N/A')}` |\n")
+        report.append(f"| Horas desde OK | `{yango_mv_health.get('hours_since_ok_refresh', 'N/A')}` |\n")
+        report.append(f"| Último Status | `{yango_mv_health.get('last_status', 'N/A')}` |\n")
+        if yango_mv_health.get('last_error'):
+            report.append(f"| Último Error | `{yango_mv_health.get('last_error', 'N/A')[:100]}...` |\n")
+        if yango_mv_health.get('rows_after_refresh'):
+            report.append(f"| Filas después Refresh | `{yango_mv_health.get('rows_after_refresh', 'N/A'):,}` |\n")
+        report.append("\n---\n")
+    
     if not failed_checks and not unregistered_used and not coverage_stats['unregistered_objects']:
         report.append("✅ **Sistema saludable.** No se requieren acciones inmediatas.\n")
     
@@ -800,7 +856,8 @@ def generate_json_report(
     global_health: dict,
     unregistered_used: list,
     critical_impacts: dict,
-    infra_warnings: list
+    infra_warnings: list,
+    yango_mv_health: dict = None
 ) -> dict:
     """Genera reporte en JSON."""
     return {
@@ -823,7 +880,8 @@ def generate_json_report(
         "missing_objects": coverage_stats["missing_objects"],
         "unregistered_used_objects": unregistered_used,
         "critical_impacts": critical_impacts,
-        "infra_warnings": infra_warnings
+        "infra_warnings": infra_warnings,
+        "yango_cabinet_claims_mv_health": yango_mv_health
     }
 
 
@@ -891,6 +949,30 @@ def main():
         critical_impacts, infra_warnings = get_critical_impacts(engine)
         all_infra_warnings.extend(infra_warnings)
         
+        # Health check específico para Yango Cabinet Claims MV
+        print("\n### F. Yango Cabinet Claims MV Health")
+        yango_mv_health, infra_warnings = get_yango_cabinet_claims_mv_health(engine)
+        all_infra_warnings.extend(infra_warnings)
+        
+        # Agregar warning si hours_since_ok_refresh > 24
+        if yango_mv_health and yango_mv_health.get("hours_since_ok_refresh") is not None:
+            hours = yango_mv_health["hours_since_ok_refresh"]
+            if hours > 24:
+                warning_msg = (
+                    f"Yango Cabinet Claims MV atrasada: {hours:.1f} horas desde último refresh exitoso. "
+                    f"Status: {yango_mv_health.get('status_bucket', 'UNKNOWN')}"
+                )
+                print_warning(warning_msg)
+                # Agregar como check de warning si no existe ya
+                checks.append({
+                    "check_key": "yango_cabinet_claims_mv_stale",
+                    "severity": "warning" if hours < 48 else "error",
+                    "status": "WARN" if hours < 48 else "ERROR",
+                    "message": warning_msg,
+                    "drilldown_url": None,
+                    "last_evaluated_at": datetime.now().isoformat()
+                })
+        
         # Clasificar estado (infra_warnings no hacen CRITICAL, solo WARNING)
         summary_status, exit_code = classify_status(checks, global_health, all_infra_warnings)
         
@@ -900,7 +982,8 @@ def main():
         # Generar Markdown
         md_report = generate_markdown_report(
             timestamp, summary_status, coverage_stats, checks,
-            global_health, unregistered_used, critical_impacts, all_infra_warnings
+            global_health, unregistered_used, critical_impacts, all_infra_warnings,
+            yango_mv_health
         )
         
         # Generar reportes en docs/backend/
@@ -916,7 +999,8 @@ def main():
         # Generar JSON
         json_report = generate_json_report(
             timestamp, summary_status, coverage_stats, checks,
-            global_health, unregistered_used, critical_impacts, all_infra_warnings
+            global_health, unregistered_used, critical_impacts, all_infra_warnings,
+            yango_mv_health
         )
         
         json_file = docs_dir / "OPS_HEALTH_AUDIT_REPORT.json"
