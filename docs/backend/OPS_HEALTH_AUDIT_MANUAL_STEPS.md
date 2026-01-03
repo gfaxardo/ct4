@@ -482,3 +482,4 @@ echo $LASTEXITCODE
 - [Arquitectura del Sistema](OPS_HEALTH_SYSTEM_ARCHITECTURE.md)
 - [Guía de Ejecución](OPS_HEALTH_EXECUTION_GUIDE.md)
 
+

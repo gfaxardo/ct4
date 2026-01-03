@@ -160,3 +160,4 @@ SELECT * FROM public.module_ct_cabinet_leads
 -- Detecta: public.module_ct_cabinet_leads (script)
 ```
 
+
