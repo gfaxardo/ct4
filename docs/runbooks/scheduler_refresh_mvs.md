@@ -16,6 +16,71 @@ Mantener actualizada la vista materializada `ops.mv_yango_cabinet_claims_for_col
   - `ops.mv_yango_receivable_payable_detail`
   - `ops.mv_claims_payment_status_cabinet`
 
+## Prerequisito para CONCURRENTLY (Yango Cabinet Claims)
+
+Para habilitar `REFRESH MATERIALIZED VIEW CONCURRENTLY` en `ops.mv_yango_cabinet_claims_for_collection`, se requiere un índice único en el grano canónico.
+
+### Paso 1: Verificar que NO hay duplicados
+
+Ejecutar Query 2 de `docs/ops/yango_cabinet_claims_mv_duplicates.sql`:
+
+```bash
+psql -d database -f docs/ops/yango_cabinet_claims_mv_duplicates.sql
+```
+
+O ejecutar solo Query 2:
+
+```sql
+SELECT 
+    driver_id,
+    milestone_value,
+    COUNT(*) AS count_duplicates
+FROM ops.mv_yango_cabinet_claims_for_collection
+GROUP BY driver_id, milestone_value
+HAVING COUNT(*) > 1
+ORDER BY count_duplicates DESC
+LIMIT 200;
+```
+
+**Resultado esperado:** 0 filas. Si hay filas, resolver duplicados antes de continuar.
+
+### Paso 2: Crear índice único
+
+**IMPORTANTE:** Este comando NO puede ejecutarse dentro de una transacción (por ser `CONCURRENTLY`).
+
+```bash
+psql -d database -f backend/sql/ops/mv_yango_cabinet_claims_unique_index.sql
+```
+
+O ejecutar directamente:
+
+```bash
+psql -d database -c "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_mv_yango_cabinet_claims_for_collection_grain ON ops.mv_yango_cabinet_claims_for_collection (driver_id, milestone_value);"
+```
+
+### Paso 3: Verificar que el índice existe
+
+```sql
+SELECT 
+    schemaname,
+    indexname,
+    indexdef
+FROM pg_indexes
+WHERE schemaname = 'ops'
+  AND tablename = 'mv_yango_cabinet_claims_for_collection'
+  AND indexname = 'ux_mv_yango_cabinet_claims_for_collection_grain';
+```
+
+**Resultado esperado:** 1 fila con el índice definido.
+
+### Notas
+
+- El índice se crea con `CONCURRENTLY` para no bloquear la MV durante la creación
+- Una vez creado, el script `refresh_yango_cabinet_claims_mv.py` puede usar `REFRESH CONCURRENTLY`
+- Si el índice ya existe, el comando es idempotente (no falla)
+
+---
+
 ## Refresh Manual
 
 ### Opción 1: Script Específico (Recomendado)
