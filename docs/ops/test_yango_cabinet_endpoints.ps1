@@ -11,7 +11,8 @@
 # ============================================================================
 
 param(
-    [string]$BaseUrl = "http://localhost:8000"
+    [string]$BaseUrl = "http://localhost:8000",
+    [switch]$FailFast = $false
 )
 
 $ErrorActionPreference = "Continue"
@@ -126,14 +127,30 @@ try {
         $json = $response.Content | ConvertFrom-Json
         Write-Host "  ✓ Status: $statusCode (OK)" -ForegroundColor Green
         
-        # Validar que exista status_bucket y hours_since_ok_refresh
-        if ($json.status_bucket) {
-            Write-Host "  ✓ status_bucket: $($json.status_bucket)" -ForegroundColor Green
-        } else {
+        # Validar que exista status_bucket
+        if (-not $json.status_bucket) {
             Write-Host "  ✗ status_bucket no presente en response" -ForegroundColor Red
             $script:testsFailed++
+            if ($FailFast) {
+                Write-Host "  ⛔ FAIL-FAST: Deteniendo ejecución" -ForegroundColor Red
+                exit 1
+            }
+        } else {
+            # Validar que status_bucket esté en valores válidos
+            $validStatusBuckets = @("OK", "WARN", "CRIT", "NO_REFRESH")
+            if ($validStatusBuckets -contains $json.status_bucket) {
+                Write-Host "  ✓ status_bucket: $($json.status_bucket) (válido)" -ForegroundColor Green
+            } else {
+                Write-Host "  ✗ status_bucket: '$($json.status_bucket)' no es válido (esperado: $($validStatusBuckets -join ', '))" -ForegroundColor Red
+                $script:testsFailed++
+                if ($FailFast) {
+                    Write-Host "  ⛔ FAIL-FAST: Deteniendo ejecución" -ForegroundColor Red
+                    exit 1
+                }
+            }
         }
         
+        # Validar hours_since_ok_refresh (opcional, puede ser null)
         if ($null -ne $json.hours_since_ok_refresh) {
             Write-Host "  ✓ hours_since_ok_refresh: $($json.hours_since_ok_refresh)" -ForegroundColor Green
         } else {
@@ -144,6 +161,10 @@ try {
     } else {
         Write-Host "  ✗ Status: $statusCode (esperado: 200)" -ForegroundColor Red
         $script:testsFailed++
+        if ($FailFast) {
+            Write-Host "  ⛔ FAIL-FAST: Deteniendo ejecución" -ForegroundColor Red
+            exit 1
+        }
     }
 } catch {
     $statusCode = $_.Exception.Response.StatusCode.value__
@@ -156,6 +177,10 @@ try {
         Write-Host "  ✗ Error: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "    Status: $statusCode" -ForegroundColor Red
         $script:testsFailed++
+        if ($FailFast) {
+            Write-Host "  ⛔ FAIL-FAST: Deteniendo ejecución" -ForegroundColor Red
+            exit 1
+        }
     }
 }
 
