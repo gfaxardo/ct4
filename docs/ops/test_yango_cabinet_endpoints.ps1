@@ -12,10 +12,10 @@
 
 param(
     [string]$BaseUrl = "http://localhost:8000",
-    [switch]$FailFast = $false
+    [switch]$FailFast = $true
 )
 
-$ErrorActionPreference = "Continue"
+$ErrorActionPreference = if ($FailFast) { "Stop" } else { "Continue" }
 
 Write-Host "`n=== Validación de Endpoints Yango Cabinet Claims ===" -ForegroundColor Cyan
 Write-Host "Base URL: $BaseUrl`n" -ForegroundColor Gray
@@ -119,6 +119,10 @@ try {
 
 # B4: GET /api/v1/yango/cabinet/mv-health (opcional)
 Write-Host "`n--- B4: MV Health Check (opcional) ---" -ForegroundColor Cyan
+
+# Valores válidos para status_bucket (definido una sola vez)
+$validStatusBuckets = @("OK", "WARN", "CRIT", "NO_REFRESH")
+
 try {
     $response = Invoke-WebRequest -Uri "$BaseUrl/api/v1/yango/cabinet/mv-health" -Method GET -UseBasicParsing -ErrorAction Stop
     $statusCode = $response.StatusCode
@@ -127,7 +131,7 @@ try {
         $json = $response.Content | ConvertFrom-Json
         Write-Host "  ✓ Status: $statusCode (OK)" -ForegroundColor Green
         
-        # Validar que exista status_bucket
+        # Validar status_bucket: existencia y valores válidos (consolidado)
         if (-not $json.status_bucket) {
             Write-Host "  ✗ status_bucket no presente en response" -ForegroundColor Red
             $script:testsFailed++
@@ -135,19 +139,15 @@ try {
                 Write-Host "  ⛔ FAIL-FAST: Deteniendo ejecución" -ForegroundColor Red
                 exit 1
             }
-        } else {
-            # Validar que status_bucket esté en valores válidos
-            $validStatusBuckets = @("OK", "WARN", "CRIT", "NO_REFRESH")
-            if ($validStatusBuckets -contains $json.status_bucket) {
-                Write-Host "  ✓ status_bucket: $($json.status_bucket) (válido)" -ForegroundColor Green
-            } else {
-                Write-Host "  ✗ status_bucket: '$($json.status_bucket)' no es válido (esperado: $($validStatusBuckets -join ', '))" -ForegroundColor Red
-                $script:testsFailed++
-                if ($FailFast) {
-                    Write-Host "  ⛔ FAIL-FAST: Deteniendo ejecución" -ForegroundColor Red
-                    exit 1
-                }
+        } elseif ($validStatusBuckets -notcontains $json.status_bucket) {
+            Write-Host "  ✗ status_bucket: '$($json.status_bucket)' no es válido (esperado: $($validStatusBuckets -join ', '))" -ForegroundColor Red
+            $script:testsFailed++
+            if ($FailFast) {
+                Write-Host "  ⛔ FAIL-FAST: Deteniendo ejecución" -ForegroundColor Red
+                exit 1
             }
+        } else {
+            Write-Host "  ✓ status_bucket: $($json.status_bucket) (válido)" -ForegroundColor Green
         }
         
         # Validar hours_since_ok_refresh (opcional, puede ser null)
