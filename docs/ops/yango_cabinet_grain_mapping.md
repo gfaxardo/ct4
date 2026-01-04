@@ -280,3 +280,4 @@ HAVING COUNT(*) > 1;
 -- Puede retornar filas (esto es esperado)
 ```
 
+

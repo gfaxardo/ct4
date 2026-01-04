@@ -508,3 +508,4 @@ LEFT JOIN identity_trace it ON it.person_key = cf.person_key;
 -- 7. QUERY 4.5: Evidencia completa para auditoría (trazabilidad completa)
 -- ============================================================================
 
+

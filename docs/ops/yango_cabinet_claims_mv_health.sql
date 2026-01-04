@@ -84,3 +84,4 @@ last_status, last_error, rows_after_refresh.';
 -- SELECT * FROM ops.v_yango_cabinet_claims_mv_health;
 -- ============================================================================
 
+

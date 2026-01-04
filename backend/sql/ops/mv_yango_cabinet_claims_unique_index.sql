@@ -47,3 +47,4 @@ Requiere que no haya duplicados por este grano.';
 --   AND indexname = 'ux_mv_yango_cabinet_claims_for_collection_grain';
 -- ============================================================================
 
+

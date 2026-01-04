@@ -6,19 +6,20 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getOpsDriverMatrix, ApiError } from '@/lib/api';
 import type { DriverMatrixRow, OpsDriverMatrixResponse } from '@/lib/types';
 import DataTable from '@/components/DataTable';
 import Badge from '@/components/Badge';
 import Pagination from '@/components/Pagination';
+import CompactMilestoneCell from '@/components/payments/CompactMilestoneCell';
 import MilestoneCell from '@/components/payments/MilestoneCell';
 import PaymentsLegend from '@/components/payments/PaymentsLegend';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
-export default function DriverMatrixPage() {
+function DriverMatrixPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -26,17 +27,33 @@ export default function DriverMatrixPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<OpsDriverMatrixResponse['meta'] | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   
+  // Helper para validar origin_tag: solo acepta 'cabinet' o 'fleet_migration'
+  const getValidOriginTag = (value: string | null): string => {
+    if (value === 'cabinet' || value === 'fleet_migration') return value;
+    return '';
+  };
+
   // Filtros desde URL o estado inicial
-  const [filters, setFilters] = useState({
-    origin_tag: searchParams.get('origin_tag') || '',
-    only_pending: searchParams.get('only_pending') === 'true',
-    order: (searchParams.get('order') as 'week_start_desc' | 'week_start_asc' | 'lead_date_desc' | 'lead_date_asc') || 'week_start_desc',
-    search: searchParams.get('search') || '',
+  const [filters, setFilters] = useState(() => {
+    const originTagParam = searchParams.get('origin_tag');
+    const orderParam = searchParams.get('order') as
+      | 'week_start_desc'
+      | 'week_start_asc'
+      | 'lead_date_desc'
+      | 'lead_date_asc'
+      | null;
+    return {
+      origin_tag: getValidOriginTag(originTagParam),
+      only_pending: searchParams.get('only_pending') === 'true',
+      order: orderParam || 'week_start_desc',
+      search: searchParams.get('search') || '',
+    };
   });
   
-  const [limit, setLimit] = useState(parseInt(searchParams.get('limit') || '200'));
-  const [offset, setOffset] = useState(parseInt(searchParams.get('offset') || '0'));
+  const [limit, setLimit] = useState(() => parseInt(searchParams.get('limit') || '200'));
+  const [offset, setOffset] = useState(() => parseInt(searchParams.get('offset') || '0'));
 
   // Debounce para search
   const [searchDebounced, setSearchDebounced] = useState(filters.search);
@@ -215,34 +232,126 @@ export default function DriverMatrixPage() {
     navigator.clipboard.writeText(driverId);
   };
 
-  const columns = [
-    {
-      key: 'driver',
-      header: 'Driver',
-      render: (row: DriverMatrixRow) => (
-        <div>
-          <div className="font-bold">{row.driver_name || '—'}</div>
+  // Generar key único para cada fila (driver_id + week_start o person_key + week_start)
+  const getRowKey = (row: DriverMatrixRow): string => {
+    const id = row.driver_id || row.person_key || 'unknown';
+    const week = row.week_start || 'no-week';
+    return `${id}-${week}`;
+  };
+
+  // Toggle expandir fila
+  const toggleRowExpand = (row: DriverMatrixRow) => {
+    const key = getRowKey(row);
+    setExpandedRows((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  // Componente para columna Driver compacta
+  const DriverCell = ({ row }: { row: DriverMatrixRow }) => {
+    const [showTooltip, setShowTooltip] = useState(false);
+    const [showInconsistencyTooltip, setShowInconsistencyTooltip] = useState(false);
+    const hasInconsistency = row.m5_without_m1_flag || row.m25_without_m5_flag;
+    
+    return (
+      <div className="relative">
+        <div className="flex items-center gap-1">
+          <div className="font-semibold text-sm whitespace-nowrap">{row.driver_name || '—'}</div>
           {row.driver_id && (
-            <div 
-              className="text-xs text-gray-500 cursor-pointer hover:text-blue-600"
-              onClick={() => copyDriverId(row.driver_id!)}
-              title="Click para copiar"
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                copyDriverId(row.driver_id!);
+              }}
+              className="ml-1 text-xs text-gray-400 hover:text-blue-600"
+              title="Copiar ID"
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
             >
-              {row.driver_id.length > 20 ? `${row.driver_id.substring(0, 20)}...` : row.driver_id}
+              📋
+            </button>
+          )}
+          {hasInconsistency && (
+            <div
+              className="relative"
+              onMouseEnter={() => setShowInconsistencyTooltip(true)}
+              onMouseLeave={() => setShowInconsistencyTooltip(false)}
+            >
+              <Badge variant="warning" className="text-xs py-0 px-1">
+                ⚠ Inconsistencia
+              </Badge>
+              {showInconsistencyTooltip && (
+                <div className="absolute z-50 bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg whitespace-pre-line max-w-xs">
+                  {row.milestone_inconsistency_notes || 
+                   (row.m5_without_m1_flag ? 'M5 sin M1' : '') + 
+                   (row.m25_without_m5_flag ? (row.m5_without_m1_flag ? ', M25 sin M5' : 'M25 sin M5') : '')}
+                  {'\n\n'}
+                  Claim/status existe para milestone superior pero falta evidencia del milestone anterior en claims; revisar fuente.
+                  <div className="absolute top-full left-4 -mt-1">
+                    <div className="border-4 border-transparent border-t-gray-900"></div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
-      ),
+        {showTooltip && row.driver_id && (
+          <div className="absolute z-50 bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg whitespace-pre max-w-xs">
+            {row.driver_id}
+            <div className="absolute top-full left-4 -mt-1">
+              <div className="border-4 border-transparent border-t-gray-900"></div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const columns = [
+    {
+      key: 'expand',
+      header: '',
+      className: 'py-2 w-10',
+      render: (row: DriverMatrixRow) => {
+        const key = getRowKey(row);
+        const isExpanded = expandedRows[key] || false;
+        return (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleRowExpand(row);
+            }}
+            aria-label={isExpanded ? 'Contraer detalles' : 'Expandir detalles'}
+            aria-expanded={isExpanded}
+            className="p-1 hover:bg-gray-100 rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <span
+              className={`inline-block text-gray-600 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+            >
+              ▶
+            </span>
+          </button>
+        );
+      },
+    },
+    {
+      key: 'driver',
+      header: 'Driver',
+      className: 'py-2',
+      render: (row: DriverMatrixRow) => <DriverCell row={row} />,
     },
     {
       key: 'week_start',
       header: 'Week Start',
+      className: 'py-2',
       render: (row: DriverMatrixRow) =>
         row.week_start ? new Date(row.week_start).toLocaleDateString('es-ES') : '—',
     },
     {
       key: 'origin_tag',
       header: 'Origin',
+      className: 'py-2',
       render: (row: DriverMatrixRow) =>
         row.origin_tag ? (
           <Badge variant={row.origin_tag === 'cabinet' ? 'info' : 'default'}>
@@ -255,59 +364,59 @@ export default function DriverMatrixPage() {
     {
       key: 'm1',
       header: 'M1',
+      className: 'py-2',
       render: (row: DriverMatrixRow) => (
-        <MilestoneCell
+        <CompactMilestoneCell
           achieved_flag={row.m1_achieved_flag}
           achieved_date={row.m1_achieved_date}
           expected_amount_yango={row.m1_expected_amount_yango}
           yango_payment_status={row.m1_yango_payment_status}
           window_status={row.m1_window_status}
           overdue_days={row.m1_overdue_days}
+          label="M1"
         />
       ),
     },
     {
       key: 'm5',
       header: 'M5',
+      className: 'py-2',
       render: (row: DriverMatrixRow) => (
-        <MilestoneCell
+        <CompactMilestoneCell
           achieved_flag={row.m5_achieved_flag}
           achieved_date={row.m5_achieved_date}
           expected_amount_yango={row.m5_expected_amount_yango}
           yango_payment_status={row.m5_yango_payment_status}
           window_status={row.m5_window_status}
           overdue_days={row.m5_overdue_days}
+          label="M5"
         />
       ),
     },
     {
       key: 'm25',
       header: 'M25',
+      className: 'py-2',
       render: (row: DriverMatrixRow) => (
-        <MilestoneCell
+        <CompactMilestoneCell
           achieved_flag={row.m25_achieved_flag}
           achieved_date={row.m25_achieved_date}
           expected_amount_yango={row.m25_expected_amount_yango}
           yango_payment_status={row.m25_yango_payment_status}
           window_status={row.m25_window_status}
           overdue_days={row.m25_overdue_days}
+          label="M25"
         />
       ),
     },
     {
       key: 'connected',
       header: 'Conectado',
+      className: 'py-2',
       render: (row: DriverMatrixRow) => (
-        <div>
+        <div className="text-sm">
           {row.connected_flag ? (
-            <div>
-              <span className="text-green-600">✓</span>
-              {row.connected_date && (
-                <div className="text-xs text-gray-500">
-                  {new Date(row.connected_date).toLocaleDateString('es-ES')}
-                </div>
-              )}
-            </div>
+            <span className="text-green-600">✓</span>
           ) : (
             <span className="text-gray-400">No</span>
           )}
@@ -317,12 +426,13 @@ export default function DriverMatrixPage() {
     {
       key: 'scout',
       header: 'Scout',
+      className: 'py-2',
       render: (row: DriverMatrixRow) => {
         if (row.scout_due_flag === null && row.scout_paid_flag === null && row.scout_amount === null) {
-          return '—';
+          return <span className="text-gray-400">—</span>;
         }
         return (
-          <div className="text-sm">
+          <div className="text-xs whitespace-nowrap">
             {row.scout_due_flag && <div>Due: ✓</div>}
             {row.scout_paid_flag && <div>Paid: ✓</div>}
             {row.scout_amount !== null && (
@@ -437,12 +547,123 @@ export default function DriverMatrixPage() {
         </div>
       )}
 
-      <DataTable
-        data={data}
-        columns={columns}
-        loading={loading}
-        emptyMessage="No hay drivers que coincidan con los filtros"
-      />
+      {/* Tabla personalizada con soporte para filas expandidas */}
+      {loading ? (
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <p className="text-gray-500">Cargando...</p>
+        </div>
+      ) : data.length === 0 ? (
+        <div className="bg-white rounded-lg shadow p-8 text-center">
+          <p className="text-gray-500">No hay drivers que coincidan con los filtros</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {columns.map((col, idx) => (
+                    <th
+                      key={idx}
+                      className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${col.className || ''}`}
+                    >
+                      {col.header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {data.map((row, rowIdx) => {
+                  const rowKey = getRowKey(row);
+                  const isExpanded = expandedRows[rowKey] || false;
+                  return (
+                    <>
+                      <tr key={rowIdx} className="hover:bg-gray-50">
+                        {columns.map((col, colIdx) => (
+                          <td
+                            key={colIdx}
+                            className={`px-6 py-2 whitespace-nowrap text-sm text-gray-900 ${col.className || ''}`}
+                          >
+                            {col.render ? col.render(row) : '—'}
+                          </td>
+                        ))}
+                      </tr>
+                      {isExpanded && (
+                        <tr key={`${rowIdx}-expanded`} className="bg-gray-50">
+                          <td colSpan={columns.length} className="px-6 py-4">
+                            <div className="grid grid-cols-3 gap-4">
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-2">M1</h4>
+                                <MilestoneCell
+                                  achieved_flag={row.m1_achieved_flag}
+                                  achieved_date={row.m1_achieved_date}
+                                  expected_amount_yango={row.m1_expected_amount_yango}
+                                  yango_payment_status={row.m1_yango_payment_status}
+                                  window_status={row.m1_window_status}
+                                  overdue_days={row.m1_overdue_days}
+                                />
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-2">M5</h4>
+                                <MilestoneCell
+                                  achieved_flag={row.m5_achieved_flag}
+                                  achieved_date={row.m5_achieved_date}
+                                  expected_amount_yango={row.m5_expected_amount_yango}
+                                  yango_payment_status={row.m5_yango_payment_status}
+                                  window_status={row.m5_window_status}
+                                  overdue_days={row.m5_overdue_days}
+                                />
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-2">M25</h4>
+                                <MilestoneCell
+                                  achieved_flag={row.m25_achieved_flag}
+                                  achieved_date={row.m25_achieved_date}
+                                  expected_amount_yango={row.m25_expected_amount_yango}
+                                  yango_payment_status={row.m25_yango_payment_status}
+                                  window_status={row.m25_window_status}
+                                  overdue_days={row.m25_overdue_days}
+                                />
+                              </div>
+                            </div>
+                            {/* Información adicional del driver */}
+                            <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <span className="font-medium text-gray-700">Driver ID:</span>{' '}
+                                <span className="text-gray-600">{row.driver_id || '—'}</span>
+                              </div>
+                              <div>
+                                <span className="font-medium text-gray-700">Person Key:</span>{' '}
+                                <span className="text-gray-600">{row.person_key || '—'}</span>
+                              </div>
+                              {row.lead_date && (
+                                <div>
+                                  <span className="font-medium text-gray-700">Lead Date:</span>{' '}
+                                  <span className="text-gray-600">
+                                    {new Date(row.lead_date).toLocaleDateString('es-ES')}
+                                  </span>
+                                </div>
+                              )}
+                              {row.connected_date && (
+                                <div>
+                                  <span className="font-medium text-gray-700">Connected Date:</span>{' '}
+                                  <span className="text-gray-600">
+                                    {new Date(row.connected_date).toLocaleDateString('es-ES')}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Paginación */}
       {!loading && meta && data.length > 0 && (
@@ -480,6 +701,14 @@ export default function DriverMatrixPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function DriverMatrixPage() {
+  return (
+    <Suspense fallback={<div className="px-4 py-6">Cargando...</div>}>
+      <DriverMatrixPageContent />
+    </Suspense>
   );
 }
 

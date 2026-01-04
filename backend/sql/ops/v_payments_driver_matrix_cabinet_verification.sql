@@ -231,3 +231,29 @@ WHERE table_schema = 'ops'
   AND table_name = 'v_payments_driver_matrix_cabinet'
 ORDER BY ordinal_position;
 
+-- 13. Verificación de flags de inconsistencia de milestones
+SELECT 
+    '=== VERIFICACIÓN: FLAGS DE INCONSISTENCIA ===' AS seccion,
+    COUNT(*) AS total_drivers,
+    COUNT(*) FILTER (WHERE m5_without_m1_flag = true) AS count_m5_sin_m1,
+    COUNT(*) FILTER (WHERE m25_without_m5_flag = true) AS count_m25_sin_m5,
+    COUNT(*) FILTER (WHERE milestone_inconsistency_notes IS NOT NULL) AS count_con_notas,
+    COUNT(*) FILTER (WHERE m5_without_m1_flag = true AND m25_without_m5_flag = true) AS count_ambas_inconsistencias
+FROM ops.v_payments_driver_matrix_cabinet;
+
+-- 14. Sample de drivers con inconsistencias
+SELECT 
+    '=== SAMPLE: DRIVERS CON INCONSISTENCIAS ===' AS seccion,
+    driver_id,
+    driver_name,
+    m5_without_m1_flag,
+    m25_without_m5_flag,
+    milestone_inconsistency_notes,
+    m1_achieved_flag,
+    m5_achieved_flag,
+    m25_achieved_flag
+FROM ops.v_payments_driver_matrix_cabinet
+WHERE m5_without_m1_flag = true OR m25_without_m5_flag = true
+ORDER BY milestone_inconsistency_notes, driver_name
+LIMIT 20;
+

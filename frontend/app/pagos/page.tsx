@@ -289,6 +289,7 @@ export default function PagosPage() {
           onPageChange={(newOffset) => setOffset(newOffset)}
         />
       )}
+      </div>
     </div>
   );
 }

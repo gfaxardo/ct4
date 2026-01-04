@@ -313,3 +313,4 @@ FROM ops.v_yango_cabinet_claims_exigimos;
 -- 7. QUERY 3.8 proporciona un resumen ejecutivo consolidado
 -- ============================================================================
 
+

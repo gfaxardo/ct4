@@ -335,3 +335,4 @@ Antes de sugerir comandos, buscar en el repo:
 4. Frontend routes: `grep` para `/pagos/yango-cabinet-claims` en `frontend`
 5. DATABASE_URL: leer `backend/app/config.py` para default
 
+

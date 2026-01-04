@@ -1,24 +1,32 @@
 -- ============================================================================
 -- Vista: ops.v_payments_driver_matrix_cabinet
 -- ============================================================================
--- PROPÓSITO DE NEGOCIO:
+-- PROPÓSITO:
 -- Vista de PRESENTACIÓN (no recalcula reglas) que muestra 1 fila por driver
 -- con columnas por milestones M1/M5/M25 y estados Yango/Scout. Diseñada para
 -- visualización en dashboards y reportes operativos.
 -- ============================================================================
--- REGLAS DE NEGOCIO:
--- 1. Grano: driver_id (y person_key si aplica) - 1 fila por driver
--- 2. Milestones: M1 (milestone_value=1), M5 (milestone_value=5), M25 (milestone_value=25)
--- 3. Fuente base: ops.v_claims_payment_status_cabinet (garantiza 1 fila por claim)
--- 4. NO recalcula reglas: usa datos de vistas existentes directamente
--- 5. Pivotea milestones en columnas usando agregación condicional
+-- GRANO:
+-- 1 fila por driver_id (agregación por GROUP BY bc.driver_id)
 -- ============================================================================
--- DEPENDENCIAS:
+-- FUENTES (Dependencias):
 -- - ops.v_claims_payment_status_cabinet: claims base con milestones
 -- - ops.v_yango_cabinet_claims_for_collection: yango_payment_status
 -- - ops.v_yango_payments_claims_cabinet_14d: window_status
 -- - public.drivers: driver_name
--- - ops.v_payment_calculation: origin_tag (si existe)
+-- - ops.v_payment_calculation: origin_tag
+-- ============================================================================
+-- COLUMNAS CLAVE:
+-- - driver_id, person_key, driver_name, lead_date, week_start, origin_tag
+-- - Milestones: m1_*, m5_*, m25_* (achieved_flag, achieved_date, expected_amount_yango,
+--   yango_payment_status, window_status, overdue_days)
+-- - Scout: scout_due_flag, scout_paid_flag, scout_amount
+-- - Flags de inconsistencia: m5_without_m1_flag, m25_without_m5_flag, milestone_inconsistency_notes
+-- ============================================================================
+-- NOTA IMPORTANTE:
+-- Milestones superiores pueden existir sin evidencia del milestone anterior en claims.
+-- Esto es esperado y se marca con flags de inconsistencia (m5_without_m1_flag, etc.).
+-- No se inventan datos: si M1 no existe en claims, m1_* será NULL aunque M5 exista.
 -- ============================================================================
 
 CREATE OR REPLACE VIEW ops.v_payments_driver_matrix_cabinet AS
@@ -65,8 +73,7 @@ window_status_data AS (
     WHERE w.milestone_value IN (1, 5, 25)
 ),
 -- Obtener origin_tag y connected_date
--- Usa v_payment_calculation como fuente principal (más común)
--- Si v_payment_calculation_updated existe, se puede actualizar después
+-- Usa v_payment_calculation como fuente principal
 origin_and_connected_data AS (
     SELECT DISTINCT ON (driver_id, person_key)
         pc.driver_id,
@@ -91,44 +98,67 @@ driver_info AS (
 driver_milestones AS (
     SELECT 
         bc.driver_id,
-        MAX(bc.person_key) AS person_key,
+        -- person_key: seleccionar el del milestone más reciente (mejor que MAX arbitrario)
+        (array_agg(bc.person_key ORDER BY bc.lead_date DESC NULLS LAST))[1] AS person_key,
         -- Información base del driver
         MAX(di.driver_name) AS driver_name,
         MIN(bc.lead_date) AS lead_date,  -- Primera lead_date entre todos los milestones
         MAX(ocd.origin_tag) AS origin_tag,
         -- connected_flag y connected_date
         -- TODO: Implementar cuando exista fuente confiable de first_connection_date
-        -- Por ahora, usar NULL ya que connected_date viene NULL desde origin_and_connected_data
         false AS connected_flag,
         NULL::date AS connected_date,
         -- week_start: lunes de la semana de lead_date
         DATE_TRUNC('week', MIN(bc.lead_date))::date AS week_start,
         -- Milestone M1 (milestone_value = 1)
-        MAX(CASE WHEN bc.milestone_value = 1 THEN true ELSE false END) AS m1_achieved_flag,
+        -- Usar BOOL_OR para flags booleanos (más eficiente y semánticamente correcto)
+        BOOL_OR(bc.milestone_value = 1) AS m1_achieved_flag,
         MAX(CASE WHEN bc.milestone_value = 1 THEN bc.lead_date END) AS m1_achieved_date,
         MAX(CASE WHEN bc.milestone_value = 1 THEN bc.expected_amount END) AS m1_expected_amount_yango,
         MAX(CASE WHEN bc.milestone_value = 1 THEN ys.yango_payment_status END) AS m1_yango_payment_status,
         MAX(CASE WHEN bc.milestone_value = 1 THEN ws.window_status END) AS m1_window_status,
         MAX(CASE WHEN bc.milestone_value = 1 THEN bc.days_overdue END) AS m1_overdue_days,
         -- Milestone M5 (milestone_value = 5)
-        MAX(CASE WHEN bc.milestone_value = 5 THEN true ELSE false END) AS m5_achieved_flag,
+        BOOL_OR(bc.milestone_value = 5) AS m5_achieved_flag,
         MAX(CASE WHEN bc.milestone_value = 5 THEN bc.lead_date END) AS m5_achieved_date,
         MAX(CASE WHEN bc.milestone_value = 5 THEN bc.expected_amount END) AS m5_expected_amount_yango,
         MAX(CASE WHEN bc.milestone_value = 5 THEN ys.yango_payment_status END) AS m5_yango_payment_status,
         MAX(CASE WHEN bc.milestone_value = 5 THEN ws.window_status END) AS m5_window_status,
         MAX(CASE WHEN bc.milestone_value = 5 THEN bc.days_overdue END) AS m5_overdue_days,
         -- Milestone M25 (milestone_value = 25)
-        MAX(CASE WHEN bc.milestone_value = 25 THEN true ELSE false END) AS m25_achieved_flag,
+        BOOL_OR(bc.milestone_value = 25) AS m25_achieved_flag,
         MAX(CASE WHEN bc.milestone_value = 25 THEN bc.lead_date END) AS m25_achieved_date,
         MAX(CASE WHEN bc.milestone_value = 25 THEN bc.expected_amount END) AS m25_expected_amount_yango,
         MAX(CASE WHEN bc.milestone_value = 25 THEN ys.yango_payment_status END) AS m25_yango_payment_status,
         MAX(CASE WHEN bc.milestone_value = 25 THEN ws.window_status END) AS m25_window_status,
         MAX(CASE WHEN bc.milestone_value = 25 THEN bc.days_overdue END) AS m25_overdue_days,
         -- TODO: Scout - dejar NULLs por ahora
-        -- scout_due_flag, scout_paid_flag, scout_amount
+        -- Fuente potencial: ops.scout_payment_rules + ops.v_scout_liquidation_paid_items
         NULL::boolean AS scout_due_flag,
         NULL::boolean AS scout_paid_flag,
-        NULL::numeric(12,2) AS scout_amount
+        NULL::numeric(12,2) AS scout_amount,
+        -- Flags de inconsistencia de milestones
+        -- M5 sin M1: M5 tiene achieved_flag pero M1 no tiene achieved_flag
+        (BOOL_OR(bc.milestone_value = 5) = true
+         AND COALESCE(BOOL_OR(bc.milestone_value = 1), false) = false) AS m5_without_m1_flag,
+        -- M25 sin M5: M25 tiene achieved_flag pero M5 no tiene achieved_flag
+        (BOOL_OR(bc.milestone_value = 25) = true
+         AND COALESCE(BOOL_OR(bc.milestone_value = 5), false) = false) AS m25_without_m5_flag,
+        -- Notas de inconsistencia (texto corto)
+        CASE 
+            WHEN (BOOL_OR(bc.milestone_value = 5) = true
+                  AND COALESCE(BOOL_OR(bc.milestone_value = 1), false) = false)
+                 AND (BOOL_OR(bc.milestone_value = 25) = true
+                      AND COALESCE(BOOL_OR(bc.milestone_value = 5), false) = false)
+            THEN 'M5 sin M1, M25 sin M5'
+            WHEN (BOOL_OR(bc.milestone_value = 5) = true
+                  AND COALESCE(BOOL_OR(bc.milestone_value = 1), false) = false)
+            THEN 'M5 sin M1'
+            WHEN (BOOL_OR(bc.milestone_value = 25) = true
+                  AND COALESCE(BOOL_OR(bc.milestone_value = 5), false) = false)
+            THEN 'M25 sin M5'
+            ELSE NULL
+        END AS milestone_inconsistency_notes
     FROM base_claims bc
     LEFT JOIN yango_status ys 
         ON ys.driver_id = bc.driver_id 
@@ -150,7 +180,6 @@ SELECT
     lead_date,
     week_start,
     origin_tag,
-    -- connected_flag y connected_date desde v_payment_calculation_updated
     connected_flag,
     connected_date,
     -- Milestone M1
@@ -174,25 +203,27 @@ SELECT
     m25_yango_payment_status,
     m25_window_status,
     m25_overdue_days,
-    -- TODO: Scout - campos NULLs por ahora
-    -- Fuente potencial: ops.scout_payment_rules + ops.v_scout_liquidation_paid_items
-    -- Si no existe, dejar NULL y documentar con TODO
+    -- Scout
     scout_due_flag,
     scout_paid_flag,
-    scout_amount
+    scout_amount,
+    -- Flags de inconsistencia de milestones
+    m5_without_m1_flag,
+    m25_without_m5_flag,
+    milestone_inconsistency_notes
 FROM driver_milestones;
 
 -- ============================================================================
 -- Comentarios de la Vista
 -- ============================================================================
 COMMENT ON VIEW ops.v_payments_driver_matrix_cabinet IS 
-'Vista de PRESENTACIÓN (no recalcula reglas) que muestra 1 fila por driver con columnas por milestones M1/M5/M25 y estados Yango/Scout. Diseñada para visualización en dashboards y reportes operativos. Grano: driver_id (y person_key si aplica).';
+'Vista de PRESENTACIÓN (no recalcula reglas) que muestra 1 fila por driver con columnas por milestones M1/M5/M25 y estados Yango/Scout. Diseñada para visualización en dashboards y reportes operativos. Grano: driver_id (1 fila por driver_id).';
 
 COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.driver_id IS 
 'ID del conductor. Grano principal de la vista (1 fila por driver_id).';
 
 COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.person_key IS 
-'Person key del conductor (identidad canónica). Puede ser NULL si no existe.';
+'Person key del conductor (identidad canónica). Seleccionado del milestone más reciente. Puede ser NULL si no existe.';
 
 COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.driver_name IS 
 'Nombre del conductor desde public.drivers.full_name. Puede ser NULL si no existe en la tabla drivers.';
@@ -279,141 +310,12 @@ COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.scout_paid_flag IS
 COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.scout_amount IS 
 'TODO: Monto de pagos scout para el driver. Fuente potencial: ops.scout_payment_rules + ops.v_scout_liquidation_paid_items. Si no existe, dejar NULL y documentar con TODO.';
 
--- ============================================================================
--- QUERIES DE VERIFICACIÓN
--- ============================================================================
+-- Flags de inconsistencia de milestones
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.m5_without_m1_flag IS 
+'Flag indicando inconsistencia: M5 tiene achieved_flag=true pero M1 no tiene achieved_flag=true. Indica que existe claim/status para M5 pero falta evidencia del milestone anterior (M1) en claims base. Esto es esperado y no es un bug.';
 
--- 1. Verificación básica: COUNT y sample de 20 filas
-/*
-SELECT 
-    '=== VERIFICACIÓN BÁSICA ===' AS seccion,
-    COUNT(*) AS total_drivers,
-    COUNT(*) FILTER (WHERE m1_achieved_flag = true) AS drivers_with_m1,
-    COUNT(*) FILTER (WHERE m5_achieved_flag = true) AS drivers_with_m5,
-    COUNT(*) FILTER (WHERE m25_achieved_flag = true) AS drivers_with_m25,
-    COUNT(*) FILTER (WHERE connected_flag = true) AS drivers_connected,
-    COUNT(*) FILTER (WHERE origin_tag IS NOT NULL) AS drivers_with_origin_tag
-FROM ops.v_payments_driver_matrix_cabinet;
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.m25_without_m5_flag IS 
+'Flag indicando inconsistencia: M25 tiene achieved_flag=true pero M5 no tiene achieved_flag=true. Indica que existe claim/status para M25 pero falta evidencia del milestone anterior (M5) en claims base. Esto es esperado y no es un bug.';
 
--- 2. Sample de 20 filas
-SELECT 
-    '=== SAMPLE 20 FILAS ===' AS seccion,
-    driver_id,
-    person_key,
-    driver_name,
-    lead_date,
-    week_start,
-    origin_tag,
-    connected_flag,
-    connected_date,
-    m1_achieved_flag,
-    m1_yango_payment_status,
-    m5_achieved_flag,
-    m5_yango_payment_status,
-    m25_achieved_flag,
-    m25_yango_payment_status
-FROM ops.v_payments_driver_matrix_cabinet
-ORDER BY lead_date DESC
-LIMIT 20;
-
--- 3. Sanity checks: verificar que no hay duplicados por driver_id
-SELECT 
-    '=== SANITY CHECK: DUPLICADOS ===' AS seccion,
-    driver_id,
-    COUNT(*) AS count_rows
-FROM ops.v_payments_driver_matrix_cabinet
-GROUP BY driver_id
-HAVING COUNT(*) > 1;
-
--- 4. Sanity checks: verificar distribución de milestones
-SELECT 
-    '=== SANITY CHECK: DISTRIBUCIÓN MILESTONES ===' AS seccion,
-    COUNT(*) AS total_drivers,
-    COUNT(*) FILTER (WHERE m1_achieved_flag = true) AS count_m1,
-    COUNT(*) FILTER (WHERE m5_achieved_flag = true) AS count_m5,
-    COUNT(*) FILTER (WHERE m25_achieved_flag = true) AS count_m25,
-    COUNT(*) FILTER (WHERE m1_achieved_flag = true AND m5_achieved_flag = true) AS count_m1_and_m5,
-    COUNT(*) FILTER (WHERE m1_achieved_flag = true AND m5_achieved_flag = true AND m25_achieved_flag = true) AS count_all_milestones
-FROM ops.v_payments_driver_matrix_cabinet;
-
--- 5. Sanity checks: verificar distribución de yango_payment_status
-SELECT 
-    '=== SANITY CHECK: DISTRIBUCIÓN YANGO PAYMENT STATUS ===' AS seccion,
-    'M1' AS milestone,
-    m1_yango_payment_status AS payment_status,
-    COUNT(*) AS count_rows
-FROM ops.v_payments_driver_matrix_cabinet
-WHERE m1_achieved_flag = true
-GROUP BY m1_yango_payment_status
-UNION ALL
-SELECT 
-    'M5' AS milestone,
-    m5_yango_payment_status AS payment_status,
-    COUNT(*) AS count_rows
-FROM ops.v_payments_driver_matrix_cabinet
-WHERE m5_achieved_flag = true
-GROUP BY m5_yango_payment_status
-UNION ALL
-SELECT 
-    'M25' AS milestone,
-    m25_yango_payment_status AS payment_status,
-    COUNT(*) AS count_rows
-FROM ops.v_payments_driver_matrix_cabinet
-WHERE m25_achieved_flag = true
-GROUP BY m25_yango_payment_status
-ORDER BY milestone, payment_status;
-
--- 6. Sanity checks: verificar distribución de window_status
-SELECT 
-    '=== SANITY CHECK: DISTRIBUCIÓN WINDOW STATUS ===' AS seccion,
-    'M1' AS milestone,
-    m1_window_status AS window_status,
-    COUNT(*) AS count_rows
-FROM ops.v_payments_driver_matrix_cabinet
-WHERE m1_achieved_flag = true
-GROUP BY m1_window_status
-UNION ALL
-SELECT 
-    'M5' AS milestone,
-    m5_window_status AS window_status,
-    COUNT(*) AS count_rows
-FROM ops.v_payments_driver_matrix_cabinet
-WHERE m5_achieved_flag = true
-GROUP BY m5_window_status
-UNION ALL
-SELECT 
-    'M25' AS milestone,
-    m25_window_status AS window_status,
-    COUNT(*) AS count_rows
-FROM ops.v_payments_driver_matrix_cabinet
-WHERE m25_achieved_flag = true
-GROUP BY m25_window_status
-ORDER BY milestone, window_status;
-
--- 7. Sanity checks: verificar expected_amounts
-SELECT 
-    '=== SANITY CHECK: EXPECTED AMOUNTS ===' AS seccion,
-    'M1' AS milestone,
-    COUNT(*) AS count_rows,
-    COUNT(*) FILTER (WHERE m1_expected_amount_yango = 25) AS count_correct_amount,
-    COUNT(*) FILTER (WHERE m1_expected_amount_yango != 25 AND m1_expected_amount_yango IS NOT NULL) AS count_incorrect_amount
-FROM ops.v_payments_driver_matrix_cabinet
-WHERE m1_achieved_flag = true
-UNION ALL
-SELECT 
-    'M5' AS milestone,
-    COUNT(*) AS count_rows,
-    COUNT(*) FILTER (WHERE m5_expected_amount_yango = 35) AS count_correct_amount,
-    COUNT(*) FILTER (WHERE m5_expected_amount_yango != 35 AND m5_expected_amount_yango IS NOT NULL) AS count_incorrect_amount
-FROM ops.v_payments_driver_matrix_cabinet
-WHERE m5_achieved_flag = true
-UNION ALL
-SELECT 
-    'M25' AS milestone,
-    COUNT(*) AS count_rows,
-    COUNT(*) FILTER (WHERE m25_expected_amount_yango = 100) AS count_correct_amount,
-    COUNT(*) FILTER (WHERE m25_expected_amount_yango != 100 AND m25_expected_amount_yango IS NOT NULL) AS count_incorrect_amount
-FROM ops.v_payments_driver_matrix_cabinet
-WHERE m25_achieved_flag = true;
-*/
-
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.milestone_inconsistency_notes IS 
+'Notas de texto corto describiendo las inconsistencias detectadas. Valores posibles: "M5 sin M1", "M25 sin M5", "M5 sin M1, M25 sin M5", o NULL si no hay inconsistencias.';

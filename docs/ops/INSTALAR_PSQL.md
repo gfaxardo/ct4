@@ -93,3 +93,4 @@ Para evitar escribirla cada vez, puedes crear un archivo `.pgpass` en tu directo
 - Contenido: `168.119.226.236:5432:yego_integral:yego_user:37>MNA&-35+`
 - Permisos: Solo lectura para el usuario (en Windows, clic derecho > Propiedades > Seguridad)
 
+

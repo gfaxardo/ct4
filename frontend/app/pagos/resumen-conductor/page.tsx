@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getDriverMatrix, exportDriverMatrix, ApiError } from '@/lib/api';
 import type { DriverMatrixResponse, DriverMatrixRow } from '@/lib/types';
@@ -18,7 +18,7 @@ import MilestoneCell from '@/components/payments/MilestoneCell';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
-export default function ResumenConductorPage() {
+function ResumenConductorPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -414,6 +414,14 @@ export default function ResumenConductorPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ResumenConductorPage() {
+  return (
+    <Suspense fallback={<div className="px-4 py-6">Cargando...</div>}>
+      <ResumenConductorPageContent />
+    </Suspense>
   );
 }
 

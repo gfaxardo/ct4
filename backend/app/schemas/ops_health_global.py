@@ -19,3 +19,4 @@ class HealthGlobalResponse(BaseModel):
         from_attributes = True
 
 
+

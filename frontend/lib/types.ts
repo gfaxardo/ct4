@@ -635,6 +635,10 @@ export interface DriverMatrixRow {
   scout_due_flag: boolean | null;
   scout_paid_flag: boolean | null;
   scout_amount: number | null;
+  // Flags de inconsistencia de milestones
+  m5_without_m1_flag: boolean | null;
+  m25_without_m5_flag: boolean | null;
+  milestone_inconsistency_notes: string | null;
 }
 
 export interface OpsDriverMatrixMeta {
@@ -647,15 +651,6 @@ export interface OpsDriverMatrixMeta {
 export interface OpsDriverMatrixResponse {
   meta: OpsDriverMatrixMeta;
   data: DriverMatrixRow[];
-}
-  m25_expected_amount_yango: number | null;
-  m25_yango_payment_status: string | null;
-  m25_window_status: string | null;
-  m25_overdue_days: number | null;
-  // Scout
-  scout_due_flag: boolean | null;
-  scout_paid_flag: boolean | null;
-  scout_amount: number | null;
 }
 
 export interface DriverMatrixTotals {

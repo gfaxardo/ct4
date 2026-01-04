@@ -51,3 +51,4 @@ COMMENT ON COLUMN ops.v_health_global.calculated_at IS
 'Timestamp de cálculo del estado global.';
 
 
+

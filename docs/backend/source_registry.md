@@ -308,3 +308,4 @@ psql -h 168.119.226.236 -p 5432 -U yego_user -d yego_integral \
 5. **Timestamps**: `discovered_at` solo se setea la primera vez; `last_verified_at` siempre se actualiza
 
 
+
