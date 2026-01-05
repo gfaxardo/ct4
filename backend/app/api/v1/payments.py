@@ -197,6 +197,8 @@ def get_driver_matrix(
     db: Session = Depends(get_db),
     week_from: Optional[date] = Query(None, description="Filtra por week_start >= week_from"),
     week_to: Optional[date] = Query(None, description="Filtra por week_start <= week_to"),
+    origin_tag: Optional[str] = Query(None, description="Filtra por origin_tag: 'cabinet', 'fleet_migration', 'unknown' o 'All'"),
+    funnel_status: Optional[str] = Query(None, description="Filtra por funnel_status: 'registered_incomplete', 'registered_complete', 'connected_no_trips', 'reached_m1', 'reached_m5', 'reached_m25'"),
     search: Optional[str] = Query(None, description="Busca por driver_id, person_key, driver_name"),
     only_pending: Optional[bool] = Query(None, description="Filtra drivers con algún milestone pendiente"),
     page: int = Query(1, ge=1, description="Número de página"),
@@ -207,6 +209,7 @@ def get_driver_matrix(
     
     Filtros:
     - week_from/week_to: Filtrar por semana (week_start)
+    - origin_tag: Filtrar por origin_tag ('cabinet', 'fleet_migration' o 'unknown')
     - search: Buscar por driver_id, person_key o driver_name
     - only_pending: Si true, solo drivers con algún milestone pendiente (no PAID o con overdue_days > 0)
     - page/limit: Paginación
@@ -227,6 +230,33 @@ def get_driver_matrix(
     if week_to:
         where_conditions.append("week_start <= :week_to")
         params["week_to"] = week_to
+    
+    if origin_tag:
+        # Validar que sea uno de los valores permitidos
+        # 'All' o vacío => no filtra
+        if origin_tag.lower() == 'all' or origin_tag == '':
+            # No agregar filtro
+            pass
+        elif origin_tag in ('cabinet', 'fleet_migration', 'unknown'):
+            where_conditions.append("origin_tag = :origin_tag")
+            params["origin_tag"] = origin_tag
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"origin_tag debe ser 'cabinet', 'fleet_migration', 'unknown' o 'All', recibido: {origin_tag}"
+            )
+    
+    if funnel_status:
+        # Validar que sea uno de los valores permitidos
+        valid_funnel_statuses = ('registered_incomplete', 'registered_complete', 'connected_no_trips', 'reached_m1', 'reached_m5', 'reached_m25')
+        if funnel_status in valid_funnel_statuses:
+            where_conditions.append("funnel_status = :funnel_status")
+            params["funnel_status"] = funnel_status
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"funnel_status debe ser uno de {valid_funnel_statuses}, recibido: {funnel_status}"
+            )
     
     if search:
         # Buscar en driver_id, person_key, driver_name
@@ -279,35 +309,46 @@ def get_driver_matrix(
         LIMIT :limit OFFSET :offset
     """
     
-    # Query para obtener totals
+    # Query para obtener totals separados por capas:
+    # - KPIs de Claims (C3/C4): donde existe claim (expected_amount_yango no es null)
+    # - KPIs de Actividad (C1): basados en achieved_flag (trips)
     totals_sql = f"""
         SELECT 
             COUNT(*) AS drivers,
+            -- KPIs de Claims (C3/C4): Solo donde existe claim
             COALESCE(SUM(
-                COALESCE(m1_expected_amount_yango, 0) +
-                COALESCE(m5_expected_amount_yango, 0) +
-                COALESCE(m25_expected_amount_yango, 0)
+                CASE WHEN m1_expected_amount_yango IS NOT NULL THEN COALESCE(m1_expected_amount_yango, 0) ELSE 0 END +
+                CASE WHEN m5_expected_amount_yango IS NOT NULL THEN COALESCE(m5_expected_amount_yango, 0) ELSE 0 END +
+                CASE WHEN m25_expected_amount_yango IS NOT NULL THEN COALESCE(m25_expected_amount_yango, 0) ELSE 0 END
             ), 0) AS expected_yango_sum,
             COALESCE(SUM(
-                CASE WHEN m1_yango_payment_status = 'PAID' THEN COALESCE(m1_expected_amount_yango, 0) ELSE 0 END +
-                CASE WHEN m5_yango_payment_status = 'PAID' THEN COALESCE(m5_expected_amount_yango, 0) ELSE 0 END +
-                CASE WHEN m25_yango_payment_status = 'PAID' THEN COALESCE(m25_expected_amount_yango, 0) ELSE 0 END
+                CASE WHEN m1_yango_payment_status IN ('PAID', 'PAID_MISAPPLIED') AND m1_expected_amount_yango IS NOT NULL THEN COALESCE(m1_expected_amount_yango, 0) ELSE 0 END +
+                CASE WHEN m5_yango_payment_status IN ('PAID', 'PAID_MISAPPLIED') AND m5_expected_amount_yango IS NOT NULL THEN COALESCE(m5_expected_amount_yango, 0) ELSE 0 END +
+                CASE WHEN m25_yango_payment_status IN ('PAID', 'PAID_MISAPPLIED') AND m25_expected_amount_yango IS NOT NULL THEN COALESCE(m25_expected_amount_yango, 0) ELSE 0 END
             ), 0) AS paid_sum,
             COALESCE(SUM(
-                CASE WHEN m1_yango_payment_status != 'PAID' AND m1_achieved_flag = true THEN COALESCE(m1_expected_amount_yango, 0) ELSE 0 END +
-                CASE WHEN m5_yango_payment_status != 'PAID' AND m5_achieved_flag = true THEN COALESCE(m5_expected_amount_yango, 0) ELSE 0 END +
-                CASE WHEN m25_yango_payment_status != 'PAID' AND m25_achieved_flag = true THEN COALESCE(m25_expected_amount_yango, 0) ELSE 0 END
+                CASE WHEN m1_yango_payment_status IS NOT NULL AND m1_yango_payment_status NOT IN ('PAID', 'PAID_MISAPPLIED') AND m1_expected_amount_yango IS NOT NULL THEN COALESCE(m1_expected_amount_yango, 0) ELSE 0 END +
+                CASE WHEN m5_yango_payment_status IS NOT NULL AND m5_yango_payment_status NOT IN ('PAID', 'PAID_MISAPPLIED') AND m5_expected_amount_yango IS NOT NULL THEN COALESCE(m5_expected_amount_yango, 0) ELSE 0 END +
+                CASE WHEN m25_yango_payment_status IS NOT NULL AND m25_yango_payment_status NOT IN ('PAID', 'PAID_MISAPPLIED') AND m25_expected_amount_yango IS NOT NULL THEN COALESCE(m25_expected_amount_yango, 0) ELSE 0 END
             ), 0) AS receivable_sum,
             COUNT(*) FILTER (
-                WHERE m1_window_status = 'expired' 
-                OR m5_window_status = 'expired' 
-                OR m25_window_status = 'expired'
+                WHERE (m1_window_status = 'expired' AND m1_expected_amount_yango IS NOT NULL)
+                OR (m5_window_status = 'expired' AND m5_expected_amount_yango IS NOT NULL)
+                OR (m25_window_status = 'expired' AND m25_expected_amount_yango IS NOT NULL)
             ) AS expired_count,
             COUNT(*) FILTER (
-                WHERE m1_window_status = 'in_window' 
-                OR m5_window_status = 'in_window' 
-                OR m25_window_status = 'in_window'
-            ) AS in_window_count
+                WHERE (m1_window_status = 'in_window' AND m1_expected_amount_yango IS NOT NULL)
+                OR (m5_window_status = 'in_window' AND m5_expected_amount_yango IS NOT NULL)
+                OR (m25_window_status = 'in_window' AND m25_expected_amount_yango IS NOT NULL)
+            ) AS in_window_count,
+            -- KPIs de Actividad (C1): Basados en achieved_flag (trips)
+            COUNT(DISTINCT CASE WHEN m1_achieved_flag = true THEN driver_id END) AS achieved_m1_count,
+            COUNT(DISTINCT CASE WHEN m5_achieved_flag = true THEN driver_id END) AS achieved_m5_count,
+            COUNT(DISTINCT CASE WHEN m25_achieved_flag = true THEN driver_id END) AS achieved_m25_count,
+            -- Achieved sin Claim: achieved_flag = true pero payment_status es null
+            COUNT(DISTINCT CASE WHEN m1_achieved_flag = true AND m1_yango_payment_status IS NULL THEN driver_id END) AS achieved_m1_without_claim_count,
+            COUNT(DISTINCT CASE WHEN m5_achieved_flag = true AND m5_yango_payment_status IS NULL THEN driver_id END) AS achieved_m5_without_claim_count,
+            COUNT(DISTINCT CASE WHEN m25_achieved_flag = true AND m25_yango_payment_status IS NULL THEN driver_id END) AS achieved_m25_without_claim_count
         FROM ops.v_payments_driver_matrix_cabinet
         {where_clause}
     """
@@ -342,7 +383,14 @@ def get_driver_matrix(
             paid_sum=Decimal(str(totals_result.paid_sum)) if totals_result else Decimal('0'),
             receivable_sum=Decimal(str(totals_result.receivable_sum)) if totals_result else Decimal('0'),
             expired_count=totals_result.expired_count if totals_result else 0,
-            in_window_count=totals_result.in_window_count if totals_result else 0
+            in_window_count=totals_result.in_window_count if totals_result else 0,
+            # KPIs de Actividad (C1)
+            achieved_m1_count=totals_result.achieved_m1_count if totals_result else 0,
+            achieved_m5_count=totals_result.achieved_m5_count if totals_result else 0,
+            achieved_m25_count=totals_result.achieved_m25_count if totals_result else 0,
+            achieved_m1_without_claim_count=totals_result.achieved_m1_without_claim_count if totals_result else 0,
+            achieved_m5_without_claim_count=totals_result.achieved_m5_without_claim_count if totals_result else 0,
+            achieved_m25_without_claim_count=totals_result.achieved_m25_without_claim_count if totals_result else 0
         )
         
         meta = DriverMatrixMeta(

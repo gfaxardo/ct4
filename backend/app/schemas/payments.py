@@ -282,6 +282,8 @@ class DriverMatrixRow(BaseModel):
     lead_date: Optional[date] = None
     week_start: Optional[date] = None
     origin_tag: Optional[str] = None
+    funnel_status: Optional[str] = None
+    highest_milestone: Optional[int] = None
     connected_flag: Optional[bool] = None
     connected_date: Optional[date] = None
     # Milestone M1
@@ -319,12 +321,20 @@ class DriverMatrixRow(BaseModel):
 
 
 class DriverMatrixTotals(BaseModel):
+    # KPIs de Claims (C3/C4): Basados en claims/pagos
     drivers: int
-    expected_yango_sum: Decimal
-    paid_sum: Decimal
-    receivable_sum: Decimal
-    expired_count: int
-    in_window_count: int
+    expected_yango_sum: Decimal  # Suma de expected_amount_yango donde existe claim
+    paid_sum: Decimal  # Suma donde status=PAID/PAID_MISAPPLIED
+    receivable_sum: Decimal  # Expected - Paid
+    expired_count: int  # Conteo por window_status='expired' de claims
+    in_window_count: int  # Conteo por window_status='in_window' de claims
+    # KPIs de Actividad (C1): Basados en milestones achieved (trips)
+    achieved_m1_count: int = 0  # Conteo de drivers con m1_achieved_flag = true
+    achieved_m5_count: int = 0  # Conteo de drivers con m5_achieved_flag = true
+    achieved_m25_count: int = 0  # Conteo de drivers con m25_achieved_flag = true
+    achieved_m1_without_claim_count: int = 0  # Conteo de drivers con m1_achieved_flag = true y m1_yango_payment_status = null
+    achieved_m5_without_claim_count: int = 0  # Conteo de drivers con m5_achieved_flag = true y m5_yango_payment_status = null
+    achieved_m25_without_claim_count: int = 0  # Conteo de drivers con m25_achieved_flag = true y m25_yango_payment_status = null
 
 
 class DriverMatrixMeta(BaseModel):

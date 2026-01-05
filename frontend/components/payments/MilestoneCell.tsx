@@ -40,12 +40,12 @@ export default function MilestoneCell({
 
   return (
     <div className="p-2 border border-gray-200 rounded-lg bg-gray-50 min-w-[200px]">
-      {/* Achieved flag + date */}
+      {/* Achieved flag + date - BASADO SOLO EN achieved_flag */}
       <div className="mb-2">
-        {achieved_flag ? (
+        {achieved_flag === true ? (
           <div className="flex items-center gap-1 text-sm">
             <span>✅</span>
-            <span className="font-medium">Alcanzado</span>
+            <span className="font-medium text-green-600">Alcanzado</span>
             {achieved_date && (
               <span className="text-xs text-gray-500">
                 {new Date(achieved_date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}
@@ -57,11 +57,19 @@ export default function MilestoneCell({
         )}
       </div>
 
-      {/* Payment status badge */}
+      {/* Payment status badge - Mostrar solo si existe, independiente de achieved_flag */}
       {yango_payment_status && (
         <div className="mb-1">
           <Badge variant={getPaymentStatusVariant(yango_payment_status)}>
             {yango_payment_status}
+          </Badge>
+        </div>
+      )}
+      {/* Si achieved=true pero payment_status es null, mostrar badge informativo */}
+      {achieved_flag === true && !yango_payment_status && (
+        <div className="mb-1">
+          <Badge variant="info" className="text-xs">
+            Sin claim
           </Badge>
         </div>
       )}

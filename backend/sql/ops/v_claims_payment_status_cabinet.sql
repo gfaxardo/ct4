@@ -33,6 +33,7 @@ CREATE OR REPLACE VIEW ops.v_claims_payment_status_cabinet AS
 WITH base_claims_raw AS (
     -- Fuente core: ops.v_payment_calculation (vista canónica C2)
     -- Filtra solo claims de Yango (partner) para cabinet con milestones 1, 5, 25
+    -- REGLA CANÓNICA: Solo generar claim si existe milestone determinístico
     SELECT 
         pc.driver_id,
         pc.person_key,
@@ -47,10 +48,14 @@ WITH base_claims_raw AS (
             ELSE NULL::numeric(12,2)
         END AS expected_amount
     FROM ops.v_payment_calculation pc
+    INNER JOIN ops.v_cabinet_milestones_achieved_from_trips m
+        ON m.driver_id = pc.driver_id
+        AND m.milestone_value = pc.milestone_trips
+        AND m.achieved_flag = true
     WHERE pc.origin_tag = 'cabinet'
         AND pc.rule_scope = 'partner'  -- Solo Yango (partner), no scouts
         AND pc.milestone_trips IN (1, 5, 25)
-        AND pc.milestone_achieved = true  -- Solo milestones alcanzados
+        AND pc.milestone_achieved = true  -- Solo milestones alcanzados (dentro de ventana)
         AND pc.driver_id IS NOT NULL
 ),
 base_claims_dedup AS (

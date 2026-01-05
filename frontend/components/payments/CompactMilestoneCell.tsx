@@ -28,9 +28,10 @@ export default function CompactMilestoneCell({
 }: CompactMilestoneCellProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
-  // Si no hay datos, mostrar solo "—"
+  // Si achieved_flag es explícitamente false o null Y no hay ningún otro dato, mostrar "—"
+  // PERO si achieved_flag es true, SIEMPRE mostrar el checkmark, incluso si los demás campos son null
   if (
-    achieved_flag === null &&
+    achieved_flag !== true &&
     achieved_date === null &&
     expected_amount_yango === null &&
     yango_payment_status === null &&
@@ -83,10 +84,10 @@ export default function CompactMilestoneCell({
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
-      {/* Icono de alcanzado */}
+      {/* Icono de alcanzado - BASADO SOLO EN achieved_flag */}
       <div className="flex-shrink-0">
-        {achieved_flag ? (
-          <span className="text-green-600 text-xs">✔</span>
+        {achieved_flag === true ? (
+          <span className="text-green-600 text-xs font-bold" title="✅ Alcanzado">✅</span>
         ) : (
           <span className="text-gray-400 text-xs">—</span>
         )}

@@ -29,15 +29,24 @@ function DriverMatrixPageContent() {
   const [meta, setMeta] = useState<OpsDriverMatrixResponse['meta'] | null>(null);
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   
-  // Helper para validar origin_tag: solo acepta 'cabinet' o 'fleet_migration'
+  // Helper para validar origin_tag: acepta 'cabinet', 'fleet_migration', 'unknown' o 'All' (vacío)
   const getValidOriginTag = (value: string | null): string => {
-    if (value === 'cabinet' || value === 'fleet_migration') return value;
+    if (value === 'cabinet' || value === 'fleet_migration' || value === 'unknown') return value;
+    if (value === 'All' || value === '') return '';
+    return '';
+  };
+
+  // Helper para validar funnel_status
+  const getValidFunnelStatus = (value: string | null): string => {
+    const validStatuses = ['registered_incomplete', 'registered_complete', 'connected_no_trips', 'reached_m1', 'reached_m5', 'reached_m25'];
+    if (value && validStatuses.includes(value)) return value;
     return '';
   };
 
   // Filtros desde URL o estado inicial
   const [filters, setFilters] = useState(() => {
     const originTagParam = searchParams.get('origin_tag');
+    const funnelStatusParam = searchParams.get('funnel_status');
     const orderParam = searchParams.get('order') as
       | 'week_start_desc'
       | 'week_start_asc'
@@ -46,10 +55,17 @@ function DriverMatrixPageContent() {
       | null;
     return {
       origin_tag: getValidOriginTag(originTagParam),
+      funnel_status: getValidFunnelStatus(funnelStatusParam),
       only_pending: searchParams.get('only_pending') === 'true',
       order: orderParam || 'week_start_desc',
       search: searchParams.get('search') || '',
     };
+  });
+  
+  // Tab activo (Tabla o KPIs)
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = searchParams.get('tab');
+    return tabParam === 'kpis' ? 'kpis' : 'tabla';
   });
   
   const [limit, setLimit] = useState(() => parseInt(searchParams.get('limit') || '200'));
@@ -66,14 +82,16 @@ function DriverMatrixPageContent() {
   }, [filters.search]);
 
   // Actualizar URL cuando cambian filtros
-  const updateURL = useCallback((newFilters: typeof filters, newLimit: number, newOffset: number) => {
+  const updateURL = useCallback((newFilters: typeof filters, newLimit: number, newOffset: number, newTab?: string) => {
     const params = new URLSearchParams();
     if (newFilters.origin_tag) params.set('origin_tag', newFilters.origin_tag);
+    if (newFilters.funnel_status) params.set('funnel_status', newFilters.funnel_status);
     if (newFilters.only_pending) params.set('only_pending', 'true');
     if (newFilters.order !== 'week_start_desc') params.set('order', newFilters.order);
     if (newFilters.search) params.set('search', newFilters.search);
     if (newLimit !== 200) params.set('limit', newLimit.toString());
     if (newOffset !== 0) params.set('offset', newOffset.toString());
+    if (newTab && newTab !== 'tabla') params.set('tab', newTab);
     
     const query = params.toString();
     router.push(`/pagos/driver-matrix${query ? `?${query}` : ''}`, { scroll: false });
@@ -87,6 +105,7 @@ function DriverMatrixPageContent() {
 
         const response = await getOpsDriverMatrix({
           origin_tag: filters.origin_tag || undefined,
+          funnel_status: filters.funnel_status || undefined,
           only_pending: filters.only_pending || undefined,
           order: filters.order,
           limit,
@@ -132,12 +151,18 @@ function DriverMatrixPageContent() {
     const newFilters = { ...filters, [key]: value };
     setFilters(newFilters);
     setOffset(0); // Reset offset cuando cambian filtros
-    updateURL(newFilters, limit, 0);
+    updateURL(newFilters, limit, 0, activeTab);
+  };
+  
+  const handleTabChange = (tab: 'tabla' | 'kpis') => {
+    setActiveTab(tab);
+    updateURL(filters, limit, offset, tab);
   };
 
   const handleResetFilters = () => {
     const newFilters = {
       origin_tag: '',
+      funnel_status: '',
       only_pending: false,
       order: 'week_start_desc' as const,
       search: '',
@@ -354,12 +379,41 @@ function DriverMatrixPageContent() {
       className: 'py-2',
       render: (row: DriverMatrixRow) =>
         row.origin_tag ? (
-          <Badge variant={row.origin_tag === 'cabinet' ? 'info' : 'default'}>
+          <Badge variant={row.origin_tag === 'cabinet' ? 'info' : row.origin_tag === 'unknown' ? 'warning' : 'default'}>
             {row.origin_tag}
           </Badge>
         ) : (
-          '—'
+          <Badge variant="warning">unknown</Badge>
         ),
+    },
+    {
+      key: 'funnel_status',
+      header: 'Estado',
+      className: 'py-2',
+      render: (row: DriverMatrixRow) => {
+        if (!row.funnel_status) return '—';
+        const statusLabels: Record<string, string> = {
+          'registered_incomplete': 'Reg. Incompleto',
+          'registered_complete': 'Reg. Completo',
+          'connected_no_trips': 'Conectado',
+          'reached_m1': 'M1',
+          'reached_m5': 'M5',
+          'reached_m25': 'M25',
+        };
+        const statusColors: Record<string, 'default' | 'info' | 'success' | 'warning' | 'danger'> = {
+          'registered_incomplete': 'warning',
+          'registered_complete': 'info',
+          'connected_no_trips': 'default',
+          'reached_m1': 'success',
+          'reached_m5': 'success',
+          'reached_m25': 'success',
+        };
+        return (
+          <Badge variant={statusColors[row.funnel_status] || 'default'}>
+            {statusLabels[row.funnel_status] || row.funnel_status}
+          </Badge>
+        );
+      },
     },
     {
       key: 'm1',
@@ -486,6 +540,7 @@ function DriverMatrixPageContent() {
               <option value="">All</option>
               <option value="cabinet">cabinet</option>
               <option value="fleet_migration">fleet_migration</option>
+              <option value="unknown">unknown</option>
             </select>
           </div>
 
@@ -538,17 +593,76 @@ function DriverMatrixPageContent() {
         </div>
       </div>
 
-      {/* Info total */}
-      {meta && (
-        <div className="mb-4 text-sm text-gray-600">
-          Total: <span className="font-semibold">{meta.total}</span> drivers | 
-          Mostrando: <span className="font-semibold">{meta.returned}</span> | 
-          Página: <span className="font-semibold">{Math.floor(offset / limit) + 1}</span>
+      {/* Tabs */}
+      <div className="bg-white rounded-lg shadow mb-6">
+        <div className="border-b border-gray-200">
+          <nav className="flex -mb-px">
+            <button
+              onClick={() => handleTabChange('tabla')}
+              className={`px-6 py-3 text-sm font-medium ${
+                activeTab === 'tabla'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Tabla
+            </button>
+            <button
+              onClick={() => handleTabChange('kpis')}
+              className={`px-6 py-3 text-sm font-medium ${
+                activeTab === 'kpis'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              KPIs
+            </button>
+          </nav>
         </div>
-      )}
+      </div>
 
-      {/* Tabla personalizada con soporte para filas expandidas */}
-      {loading ? (
+      {/* Tabs */}
+      <div className="bg-white rounded-lg shadow mb-6">
+        <div className="border-b border-gray-200">
+          <nav className="flex -mb-px">
+            <button
+              onClick={() => handleTabChange('tabla')}
+              className={`px-6 py-3 text-sm font-medium ${
+                activeTab === 'tabla'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Tabla
+            </button>
+            <button
+              onClick={() => handleTabChange('kpis')}
+              className={`px-6 py-3 text-sm font-medium ${
+                activeTab === 'kpis'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              KPIs
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      {/* Contenido según tab activo */}
+      {activeTab === 'tabla' ? (
+        <>
+          {/* Info total */}
+          {meta && (
+            <div className="mb-4 text-sm text-gray-600">
+              Total: <span className="font-semibold">{meta.total}</span> drivers | 
+              Mostrando: <span className="font-semibold">{meta.returned}</span> | 
+              Página: <span className="font-semibold">{Math.floor(offset / limit) + 1}</span>
+            </div>
+          )}
+
+          {/* Tabla personalizada con soporte para filas expandidas */}
+          {loading ? (
         <div className="bg-white rounded-lg shadow p-8 text-center">
           <p className="text-gray-500">Cargando...</p>
         </div>
@@ -665,39 +779,75 @@ function DriverMatrixPageContent() {
         </div>
       )}
 
-      {/* Paginación */}
-      {!loading && meta && data.length > 0 && (
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-700">Page size:</label>
-              <select
-                value={limit}
-                onChange={(e) => {
-                  const newLimit = parseInt(e.target.value);
-                  setLimit(newLimit);
-                  setOffset(0);
-                  updateURL(filters, newLimit, 0);
+          {/* Paginación - Solo en tab Tabla */}
+          {!loading && meta && data.length > 0 && (
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-700">Page size:</label>
+                  <select
+                    value={limit}
+                    onChange={(e) => {
+                      const newLimit = parseInt(e.target.value);
+                      setLimit(newLimit);
+                      setOffset(0);
+                      updateURL(filters, newLimit, 0, activeTab);
+                    }}
+                    className="px-3 py-1 border border-gray-300 rounded-md"
+                  >
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
+              </div>
+              <Pagination
+                total={meta.total}
+                limit={limit}
+                offset={offset}
+                onPageChange={(newOffset) => {
+                  setOffset(newOffset);
+                  updateURL(filters, limit, newOffset, activeTab);
                 }}
-                className="px-3 py-1 border border-gray-300 rounded-md"
-              >
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-                <option value="200">200</option>
-              </select>
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        /* Tab KPIs */
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-xl font-bold mb-4">KPIs de Conversión</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-blue-800 mb-2">Funnel (C1)</h3>
+              <div className="space-y-2 text-sm">
+                <div>Reg. Incompleto: <span className="font-semibold">{data.filter(r => r.funnel_status === 'registered_incomplete').length}</span></div>
+                <div>Reg. Completo: <span className="font-semibold">{data.filter(r => r.funnel_status === 'registered_complete').length}</span></div>
+                <div>Conectado: <span className="font-semibold">{data.filter(r => r.funnel_status === 'connected_no_trips').length}</span></div>
+                <div>M1: <span className="font-semibold">{data.filter(r => r.funnel_status === 'reached_m1').length}</span></div>
+                <div>M5: <span className="font-semibold">{data.filter(r => r.funnel_status === 'reached_m5').length}</span></div>
+                <div>M25: <span className="font-semibold">{data.filter(r => r.funnel_status === 'reached_m25').length}</span></div>
+              </div>
+            </div>
+            <div className="bg-green-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-green-800 mb-2">Claims (C3/C4)</h3>
+              <div className="space-y-2 text-sm">
+                <div>Expected Yango: <span className="font-semibold">${((data.reduce((sum, r) => sum + (r.m1_expected_amount_yango || 0) + (r.m5_expected_amount_yango || 0) + (r.m25_expected_amount_yango || 0), 0)) / 100).toFixed(2)}</span></div>
+                <div>Paid: <span className="font-semibold">${((data.filter(r => r.m1_yango_payment_status === 'PAID' || r.m5_yango_payment_status === 'PAID' || r.m25_yango_payment_status === 'PAID').reduce((sum, r) => sum + (r.m1_expected_amount_yango || 0) + (r.m5_expected_amount_yango || 0) + (r.m25_expected_amount_yango || 0), 0)) / 100).toFixed(2)}</span></div>
+                <div>Receivable: <span className="font-semibold">${((data.filter(r => r.m1_yango_payment_status && r.m1_yango_payment_status !== 'PAID' || r.m5_yango_payment_status && r.m5_yango_payment_status !== 'PAID' || r.m25_yango_payment_status && r.m25_yango_payment_status !== 'PAID').reduce((sum, r) => sum + (r.m1_expected_amount_yango || 0) + (r.m5_expected_amount_yango || 0) + (r.m25_expected_amount_yango || 0), 0)) / 100).toFixed(2)}</span></div>
+              </div>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-purple-800 mb-2">Achieved sin Claim</h3>
+              <div className="space-y-2 text-sm">
+                <div>M1 sin claim: <span className="font-semibold">{data.filter(r => r.m1_achieved_flag && !r.m1_yango_payment_status).length}</span></div>
+                <div>M5 sin claim: <span className="font-semibold">{data.filter(r => r.m5_achieved_flag && !r.m5_yango_payment_status).length}</span></div>
+                <div>M25 sin claim: <span className="font-semibold">{data.filter(r => r.m25_achieved_flag && !r.m25_yango_payment_status).length}</span></div>
+              </div>
             </div>
           </div>
-          <Pagination
-            total={meta.total}
-            limit={limit}
-            offset={offset}
-            onPageChange={(newOffset) => {
-              setOffset(newOffset);
-              updateURL(filters, limit, newOffset);
-            }}
-          />
         </div>
       )}
     </div>

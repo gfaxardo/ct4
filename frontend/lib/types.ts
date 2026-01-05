@@ -695,12 +695,20 @@ export interface OpsDriverMatrixResponse {
 }
 
 export interface DriverMatrixTotals {
+  // KPIs de Claims (C3/C4): Basados en claims/pagos
   drivers: number;
-  expected_yango_sum: number;
-  paid_sum: number;
-  receivable_sum: number;
-  expired_count: number;
-  in_window_count: number;
+  expected_yango_sum: number;  // Suma de expected_amount_yango donde existe claim
+  paid_sum: number;  // Suma donde status=PAID/PAID_MISAPPLIED
+  receivable_sum: number;  // Expected - Paid
+  expired_count: number;  // Conteo por window_status='expired' de claims
+  in_window_count: number;  // Conteo por window_status='in_window' de claims
+  // KPIs de Actividad (C1): Basados en milestones achieved (trips)
+  achieved_m1_count?: number;  // Conteo de drivers con m1_achieved_flag = true
+  achieved_m5_count?: number;  // Conteo de drivers con m5_achieved_flag = true
+  achieved_m25_count?: number;  // Conteo de drivers con m25_achieved_flag = true
+  achieved_m1_without_claim_count?: number;  // Conteo de drivers con m1_achieved_flag = true y m1_yango_payment_status = null
+  achieved_m5_without_claim_count?: number;  // Conteo de drivers con m5_achieved_flag = true y m5_yango_payment_status = null
+  achieved_m25_without_claim_count?: number;  // Conteo de drivers con m25_achieved_flag = true y m25_yango_payment_status = null
 }
 
 export interface DriverMatrixMeta {

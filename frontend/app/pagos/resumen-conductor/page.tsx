@@ -259,36 +259,85 @@ function ResumenConductorPageContent() {
         </div>
       )}
 
-      {/* Dashboard Cards */}
+      {/* Dashboard Cards - Separados por capas */}
       {data && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
-          <StatCard
-            title="Drivers"
-            value={data.totals.drivers}
-          />
-          <StatCard
-            title="Expected Yango"
-            value={`S/ ${(Number(data.totals.expected_yango_sum) || 0).toFixed(2)}`}
-          />
-          <StatCard
-            title="Paid"
-            value={`S/ ${(Number(data.totals.paid_sum) || 0).toFixed(2)}`}
-          />
-          <StatCard
-            title="Receivable"
-            value={`S/ ${(Number(data.totals.receivable_sum) || 0).toFixed(2)}`}
-          />
-          <StatCard
-            title="Expired"
-            value={data.totals.expired_count}
-            subtitle="claims vencidos"
-          />
-          <StatCard
-            title="In Window"
-            value={data.totals.in_window_count}
-            subtitle="claims en ventana"
-          />
-        </div>
+        <>
+          {/* KPIs de Claims (C3/C4) */}
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-700 mb-3">📊 KPIs de Claims (C3/C4)</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+              <StatCard
+                title="Drivers"
+                value={data.totals.drivers}
+              />
+              <StatCard
+                title="Expected Yango"
+                value={`S/ ${(Number(data.totals.expected_yango_sum) || 0).toFixed(2)}`}
+                subtitle="donde existe claim"
+              />
+              <StatCard
+                title="Paid"
+                value={`S/ ${(Number(data.totals.paid_sum) || 0).toFixed(2)}`}
+                subtitle="PAID/PAID_MISAPPLIED"
+              />
+              <StatCard
+                title="Receivable"
+                value={`S/ ${(Number(data.totals.receivable_sum) || 0).toFixed(2)}`}
+                subtitle="Expected - Paid"
+              />
+              <StatCard
+                title="Expired"
+                value={data.totals.expired_count}
+                subtitle="claims vencidos"
+              />
+              <StatCard
+                title="In Window"
+                value={data.totals.in_window_count}
+                subtitle="claims en ventana"
+              />
+            </div>
+          </div>
+
+          {/* KPIs de Actividad (C1) */}
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-700 mb-3">🚗 KPIs de Actividad (C1 - Trips)</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+              <StatCard
+                title="Achieved M1"
+                value={data.totals.achieved_m1_count || 0}
+                subtitle="drivers con M1 achieved"
+              />
+              <StatCard
+                title="Achieved M5"
+                value={data.totals.achieved_m5_count || 0}
+                subtitle="drivers con M5 achieved"
+              />
+              <StatCard
+                title="Achieved M25"
+                value={data.totals.achieved_m25_count || 0}
+                subtitle="drivers con M25 achieved"
+              />
+              <StatCard
+                title="M1 sin Claim"
+                value={data.totals.achieved_m1_without_claim_count || 0}
+                subtitle="achieved sin claim"
+                variant="warning"
+              />
+              <StatCard
+                title="M5 sin Claim"
+                value={data.totals.achieved_m5_without_claim_count || 0}
+                subtitle="achieved sin claim"
+                variant="warning"
+              />
+              <StatCard
+                title="M25 sin Claim"
+                value={data.totals.achieved_m25_without_claim_count || 0}
+                subtitle="achieved sin claim"
+                variant="warning"
+              />
+            </div>
+          </div>
+        </>
       )}
 
       {/* Filtros */}

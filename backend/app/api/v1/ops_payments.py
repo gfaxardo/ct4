@@ -33,7 +33,8 @@ def get_driver_matrix(
     db: Session = Depends(get_db),
     week_start_from: Optional[date] = Query(None, description="Filtra por week_start >= week_start_from (inclusive)"),
     week_start_to: Optional[date] = Query(None, description="Filtra por week_start <= week_start_to (inclusive)"),
-    origin_tag: Optional[str] = Query(None, description="Filtra por origin_tag: 'cabinet' o 'fleet_migration'"),
+    origin_tag: Optional[str] = Query(None, description="Filtra por origin_tag: 'cabinet', 'fleet_migration', 'unknown' o 'All'"),
+    funnel_status: Optional[str] = Query(None, description="Filtra por funnel_status: 'registered_incomplete', 'registered_complete', 'connected_no_trips', 'reached_m1', 'reached_m5', 'reached_m25'"),
     only_pending: bool = Query(False, description="Si true, solo drivers con al menos 1 milestone pendiente"),
     limit: int = Query(200, ge=1, le=1000, description="Límite de resultados (máx 1000)"),
     offset: int = Query(0, ge=0, description="Offset para paginación"),
@@ -81,13 +82,30 @@ def get_driver_matrix(
         
         if origin_tag:
             # Validar que sea uno de los valores permitidos
-            if origin_tag not in ('cabinet', 'fleet_migration'):
+            # 'All' o vacío => no filtra
+            if origin_tag.lower() == 'all' or origin_tag == '':
+                # No agregar filtro
+                pass
+            elif origin_tag in ('cabinet', 'fleet_migration', 'unknown'):
+                where_conditions.append("origin_tag = :origin_tag")
+                params["origin_tag"] = origin_tag
+            else:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"origin_tag debe ser 'cabinet' o 'fleet_migration', recibido: {origin_tag}"
+                    detail=f"origin_tag debe ser 'cabinet', 'fleet_migration', 'unknown' o 'All', recibido: {origin_tag}"
                 )
-            where_conditions.append("origin_tag = :origin_tag")
-            params["origin_tag"] = origin_tag
+        
+        if funnel_status:
+            # Validar que sea uno de los valores permitidos
+            valid_funnel_statuses = ('registered_incomplete', 'registered_complete', 'connected_no_trips', 'reached_m1', 'reached_m5', 'reached_m25')
+            if funnel_status in valid_funnel_statuses:
+                where_conditions.append("funnel_status = :funnel_status")
+                params["funnel_status"] = funnel_status
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"funnel_status debe ser uno de {valid_funnel_statuses}, recibido: {funnel_status}"
+                )
         
         if only_pending:
             # Incluir fila si existe al menos 1 milestone achieved cuyo yango_payment_status != 'PAID'

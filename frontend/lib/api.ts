@@ -535,7 +535,8 @@ import type {
 export async function getOpsDriverMatrix(params?: {
   week_start_from?: string;
   week_start_to?: string;
-  origin_tag?: 'cabinet' | 'fleet_migration' | string;
+  origin_tag?: 'cabinet' | 'fleet_migration' | 'unknown' | string;
+  funnel_status?: 'registered_incomplete' | 'registered_complete' | 'connected_no_trips' | 'reached_m1' | 'reached_m5' | 'reached_m25' | string;
   only_pending?: boolean;
   limit?: number;
   offset?: number;
@@ -545,8 +546,11 @@ export async function getOpsDriverMatrix(params?: {
   if (params?.week_start_from) searchParams.set('week_start_from', params.week_start_from);
   if (params?.week_start_to) searchParams.set('week_start_to', params.week_start_to);
   // Validar origin_tag antes de agregarlo
-  if (params?.origin_tag && (params.origin_tag === 'cabinet' || params.origin_tag === 'fleet_migration')) {
+  if (params?.origin_tag && (params.origin_tag === 'cabinet' || params.origin_tag === 'fleet_migration' || params.origin_tag === 'unknown')) {
     searchParams.set('origin_tag', params.origin_tag);
+  }
+  if (params?.funnel_status) {
+    searchParams.set('funnel_status', params.funnel_status);
   }
   if (params?.only_pending !== undefined) searchParams.set('only_pending', params.only_pending.toString());
   if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
