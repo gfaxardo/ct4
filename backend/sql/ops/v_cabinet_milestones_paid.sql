@@ -141,3 +141,4 @@ COMMENT ON COLUMN ops.v_cabinet_milestones_paid.driver_name_normalized IS
 COMMENT ON COLUMN ops.v_cabinet_milestones_paid.latest_snapshot_at IS 
 'Timestamp de la última snapshot del ledger para este pago.';
 
+

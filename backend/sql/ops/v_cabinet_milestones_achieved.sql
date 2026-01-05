@@ -133,3 +133,4 @@ COMMENT ON COLUMN ops.v_cabinet_milestones_achieved.rule_valid_from IS
 COMMENT ON COLUMN ops.v_cabinet_milestones_achieved.rule_valid_to IS 
 'Fecha hasta la cual la regla es válida (NULL si no tiene fecha de fin).';
 
+

@@ -94,3 +94,4 @@ Para evitar escribirla cada vez, puedes crear un archivo `.pgpass` en tu directo
 - Permisos: Solo lectura para el usuario (en Windows, clic derecho > Propiedades > Seguridad)
 
 
+

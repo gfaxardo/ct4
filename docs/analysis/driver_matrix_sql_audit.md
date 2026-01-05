@@ -332,3 +332,4 @@ MAX(bc.person_key) AS person_key
 - Puede usarse con cualquier versión de la vista
 - Mantener como complemento
 
+

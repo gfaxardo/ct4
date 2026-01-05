@@ -246,3 +246,4 @@ FROM (
     HAVING COUNT(*) > 2  -- Más de 2 claims (al menos M1 y M5, pero puede haber más)
 ) multi_claims;
 
+

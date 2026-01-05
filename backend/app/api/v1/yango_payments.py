@@ -37,7 +37,9 @@ from app.schemas.payments import (
     LeadCabinetInfo,
     PaymentInfo,
     ReconciliationInfo,
-    YangoCabinetMvHealthRow
+    YangoCabinetMvHealthRow,
+    CabinetReconciliationRow,
+    CabinetReconciliationResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -1272,4 +1274,165 @@ def get_cabinet_mv_health(
         raise HTTPException(
             status_code=500,
             detail=f"Error al consultar health check de MV: {str(e)}"
+        )
+
+
+@router.get("/payments/cabinet/reconciliation", response_model=CabinetReconciliationResponse)
+def get_cabinet_reconciliation(
+    db: Session = Depends(get_db),
+    driver_id: Optional[str] = Query(None, description="Filtra por driver_id (exact match)"),
+    reconciliation_status: Optional[str] = Query(None, description="Filtra por reconciliation_status (OK, ACHIEVED_NOT_PAID, PAID_WITHOUT_ACHIEVEMENT, NOT_APPLICABLE)"),
+    milestone_value: Optional[int] = Query(None, description="Filtra por milestone_value (1, 5, 25)"),
+    date_from: Optional[date] = Query(None, description="Fecha inicio (filtra por pay_date si existe, si no por achieved_date)"),
+    date_to: Optional[date] = Query(None, description="Fecha fin (filtra por pay_date si existe, si no por achieved_date)"),
+    limit: int = Query(100, ge=1, le=10000, description="Límite de resultados"),
+    offset: int = Query(0, ge=0, description="Offset para paginación")
+):
+    """
+    Obtiene datos de reconciliación canónica de milestones Cabinet.
+    
+    Fuente: ops.v_cabinet_milestones_reconciled (vista canónica FASE 1)
+    
+    Criterio de filtrado por fechas (date_from/date_to):
+    - Si pay_date existe (NOT NULL): filtra por pay_date
+    - Si pay_date es NULL: filtra por achieved_date
+    - Usa COALESCE(pay_date, achieved_date) para determinar la fecha de referencia
+    
+    READ-ONLY: Solo SELECT, no modifica datos ni recalcula reglas.
+    """
+    where_conditions = []
+    params = {}
+    
+    if driver_id:
+        where_conditions.append("driver_id = :driver_id")
+        params["driver_id"] = driver_id
+    
+    if reconciliation_status:
+        where_conditions.append("reconciliation_status = :reconciliation_status")
+        params["reconciliation_status"] = reconciliation_status
+    
+    if milestone_value:
+        where_conditions.append("milestone_value = :milestone_value")
+        params["milestone_value"] = milestone_value
+    
+    if date_from:
+        # Filtro por fecha: COALESCE(pay_date, achieved_date) >= date_from
+        where_conditions.append("COALESCE(pay_date, achieved_date) >= :date_from")
+        params["date_from"] = date_from
+    
+    if date_to:
+        # Filtro por fecha: COALESCE(pay_date, achieved_date) <= date_to
+        where_conditions.append("COALESCE(pay_date, achieved_date) <= :date_to")
+        params["date_to"] = date_to
+    
+    where_clause = ""
+    if where_conditions:
+        where_clause = "WHERE " + " AND ".join(where_conditions)
+    
+    # Query para contar total
+    count_sql = f"""
+        SELECT COUNT(*) AS total
+        FROM ops.v_cabinet_milestones_reconciled
+        {where_clause}
+    """
+    
+    # Query para obtener datos
+    sql = f"""
+        SELECT 
+            driver_id,
+            milestone_value,
+            achieved_flag,
+            achieved_person_key,
+            achieved_lead_date,
+            achieved_date,
+            achieved_trips_in_window,
+            window_days,
+            expected_amount,
+            achieved_currency,
+            rule_id,
+            paid_flag,
+            paid_person_key,
+            pay_date,
+            payment_key,
+            identity_status,
+            match_rule,
+            match_confidence,
+            latest_snapshot_at,
+            reconciliation_status
+        FROM ops.v_cabinet_milestones_reconciled
+        {where_clause}
+        ORDER BY driver_id, milestone_value
+        LIMIT :limit OFFSET :offset
+    """
+    
+    params["limit"] = limit
+    params["offset"] = offset
+    
+    try:
+        # Obtener total
+        count_result = db.execute(text(count_sql), params).fetchone()
+        total = count_result.total if count_result else 0
+        
+        # Obtener datos
+        result = db.execute(text(sql), params)
+        rows_data = result.mappings().all()
+        
+        # Convertir UUID a string para person_key (si existe) y datetime
+        rows = []
+        for row in rows_data:
+            row_dict = dict(row)
+            # Convertir UUIDs a strings
+            for key in ['achieved_person_key', 'paid_person_key']:
+                if key in row_dict and row_dict[key] is not None:
+                    row_dict[key] = str(row_dict[key])
+            # Convertir datetime a date si es necesario (latest_snapshot_at se mantiene como datetime)
+            rows.append(CabinetReconciliationRow(**row_dict))
+        
+        filters = {
+            "driver_id": driver_id,
+            "reconciliation_status": reconciliation_status,
+            "milestone_value": milestone_value,
+            "date_from": str(date_from) if date_from else None,
+            "date_to": str(date_to) if date_to else None,
+            "limit": limit,
+            "offset": offset
+        }
+        
+        return CabinetReconciliationResponse(
+            status="ok",
+            count=len(rows),
+            total=total,
+            filters={k: v for k, v in filters.items() if v is not None},
+            rows=rows
+        )
+    except OperationalError as e:
+        # Error de conexión a BD
+        logger.exception(f"Error de conexion a BD en cabinet reconciliation: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="DB no disponible / revisa DATABASE_URL"
+        )
+    except ProgrammingError as e:
+        # Error de SQL (vista no existe, etc.)
+        error_code = getattr(e.orig, 'pgcode', None) if hasattr(e, 'orig') else None
+        error_message = str(e.orig) if hasattr(e, 'orig') else str(e)
+        
+        # SQLSTATE 42P01 = undefined_table
+        if error_code == '42P01' or 'does not exist' in error_message.lower() or 'v_cabinet_milestones_reconciled' in error_message:
+            logger.exception(f"Vista no existe en cabinet reconciliation: {e}")
+            raise HTTPException(
+                status_code=404,
+                detail="Falta vista ops.v_cabinet_milestones_reconciled. Aplica backend/sql/ops/v_cabinet_milestones_reconciled.sql"
+            )
+        # Otro error de PostgreSQL
+        logger.exception(f"Error SQL en cabinet reconciliation: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error SQL: {error_message[:200]}"  # Limitar longitud, sin exponer credenciales
+        )
+    except Exception as e:
+        logger.exception(f"Error inesperado en cabinet reconciliation: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar reconciliación: {str(e)[:200]}"
         )

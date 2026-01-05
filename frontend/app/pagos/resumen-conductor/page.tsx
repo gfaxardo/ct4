@@ -268,15 +268,15 @@ function ResumenConductorPageContent() {
           />
           <StatCard
             title="Expected Yango"
-            value={`S/ ${data.totals.expected_yango_sum.toFixed(2)}`}
+            value={`S/ ${(Number(data.totals.expected_yango_sum) || 0).toFixed(2)}`}
           />
           <StatCard
             title="Paid"
-            value={`S/ ${data.totals.paid_sum.toFixed(2)}`}
+            value={`S/ ${(Number(data.totals.paid_sum) || 0).toFixed(2)}`}
           />
           <StatCard
             title="Receivable"
-            value={`S/ ${data.totals.receivable_sum.toFixed(2)}`}
+            value={`S/ ${(Number(data.totals.receivable_sum) || 0).toFixed(2)}`}
           />
           <StatCard
             title="Expired"

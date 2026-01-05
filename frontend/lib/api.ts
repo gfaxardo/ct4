@@ -465,6 +465,7 @@ export async function getYangoDriverDetail(driverId: string): Promise<YangoDrive
 import type {
   YangoCabinetClaimsResponse,
   YangoCabinetClaimDrilldownResponse,
+  CabinetReconciliationResponse,
 } from './types';
 
 export async function getYangoCabinetClaimsToCollect(params?: {
@@ -499,6 +500,28 @@ export async function getYangoCabinetClaimDrilldown(
   return fetchApi<YangoCabinetClaimDrilldownResponse>(
     `/api/v1/yango/cabinet/claims/${driverId}/${milestoneValue}/drilldown${query ? `?${query}` : ''}`
   );
+}
+
+export async function getCabinetReconciliation(params?: {
+  driver_id?: string;
+  reconciliation_status?: string;
+  milestone_value?: number;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<CabinetReconciliationResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.driver_id) searchParams.set('driver_id', params.driver_id);
+  if (params?.reconciliation_status) searchParams.set('reconciliation_status', params.reconciliation_status);
+  if (params?.milestone_value !== undefined) searchParams.set('milestone_value', params.milestone_value.toString());
+  if (params?.date_from) searchParams.set('date_from', params.date_from);
+  if (params?.date_to) searchParams.set('date_to', params.date_to);
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<CabinetReconciliationResponse>(`/api/v1/yango/payments/cabinet/reconciliation${query ? `?${query}` : ''}`);
 }
 
 // ============================================================================

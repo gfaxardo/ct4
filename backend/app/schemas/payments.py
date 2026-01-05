@@ -350,3 +350,44 @@ class OpsDriverMatrixMeta(BaseModel):
 class OpsDriverMatrixResponse(BaseModel):
     meta: OpsDriverMatrixMeta
     data: List[DriverMatrixRow]
+
+
+# Cabinet Milestones Reconciliation Schemas
+class CabinetReconciliationRow(BaseModel):
+    driver_id: Optional[str] = None
+    milestone_value: Optional[int] = None
+    
+    # ACHIEVED fields
+    achieved_flag: Optional[bool] = None
+    achieved_person_key: Optional[str] = None
+    achieved_lead_date: Optional[date] = None
+    achieved_date: Optional[date] = None
+    achieved_trips_in_window: Optional[int] = None
+    window_days: Optional[int] = None
+    expected_amount: Optional[Decimal] = None
+    achieved_currency: Optional[str] = None
+    rule_id: Optional[int] = None
+    
+    # PAID fields
+    paid_flag: Optional[bool] = None
+    paid_person_key: Optional[str] = None
+    pay_date: Optional[date] = None
+    payment_key: Optional[str] = None
+    identity_status: Optional[str] = None
+    match_rule: Optional[str] = None
+    match_confidence: Optional[str] = None
+    latest_snapshot_at: Optional[datetime] = None
+    
+    # Reconciliation
+    reconciliation_status: Optional[str] = None  # OK, ACHIEVED_NOT_PAID, PAID_WITHOUT_ACHIEVEMENT, NOT_APPLICABLE
+
+    class Config:
+        from_attributes = True
+
+
+class CabinetReconciliationResponse(BaseModel):
+    status: str
+    count: int
+    total: int
+    filters: Dict[str, Any]
+    rows: List[CabinetReconciliationRow]

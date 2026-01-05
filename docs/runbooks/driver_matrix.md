@@ -200,3 +200,4 @@ La vista incluye flags para identificar estos casos:
 - **Análisis de versiones:** `docs/analysis/driver_matrix_sql_audit.md`
 - **Endpoint backend:** `backend/app/api/v1/ops_payments.py` (función `get_driver_matrix`)
 
+

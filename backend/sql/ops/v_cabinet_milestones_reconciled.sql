@@ -192,3 +192,4 @@ COMMENT ON COLUMN ops.v_cabinet_milestones_reconciled.latest_snapshot_at IS
 COMMENT ON COLUMN ops.v_cabinet_milestones_reconciled.reconciliation_status IS 
 'Estado de reconciliación (mutuamente excluyente): OK (alcanzado y pagado), ACHIEVED_NOT_PAID (alcanzado pero no pagado), PAID_WITHOUT_ACHIEVEMENT (pagado pero no alcanzado), NOT_APPLICABLE (ni alcanzado ni pagado - no debería aparecer en producción).';
 
+

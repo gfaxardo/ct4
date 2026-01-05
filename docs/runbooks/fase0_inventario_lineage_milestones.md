@@ -375,3 +375,4 @@ LEFT JOIN public.drivers d ON d.driver_id = c.driver_id
 
 **Fin del Inventario FASE 0**
 
+

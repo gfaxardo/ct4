@@ -598,6 +598,47 @@ export interface YangoCabinetClaimDrilldownResponse {
 }
 
 // ============================================================================
+// Cabinet Milestones Reconciliation Types
+// ============================================================================
+
+export interface CabinetReconciliationRow {
+  driver_id: string | null;
+  milestone_value: number | null;
+  
+  // ACHIEVED fields
+  achieved_flag: boolean | null;
+  achieved_person_key: string | null;
+  achieved_lead_date: string | null;
+  achieved_date: string | null;
+  achieved_trips_in_window: number | null;
+  window_days: number | null;
+  expected_amount: number | null;
+  achieved_currency: string | null;
+  rule_id: number | null;
+  
+  // PAID fields
+  paid_flag: boolean | null;
+  paid_person_key: string | null;
+  pay_date: string | null;
+  payment_key: string | null;
+  identity_status: string | null;
+  match_rule: string | null;
+  match_confidence: string | null;
+  latest_snapshot_at: string | null;
+  
+  // Reconciliation
+  reconciliation_status: string | null; // OK, ACHIEVED_NOT_PAID, PAID_WITHOUT_ACHIEVEMENT, NOT_APPLICABLE
+}
+
+export interface CabinetReconciliationResponse {
+  status: string;
+  count: number;
+  total: number;
+  filters: Record<string, any>;
+  rows: CabinetReconciliationRow[];
+}
+
+// ============================================================================
 // Driver Matrix Types (Ops)
 // ============================================================================
 

@@ -336,3 +336,4 @@ Antes de sugerir comandos, buscar en el repo:
 5. DATABASE_URL: leer `backend/app/config.py` para default
 
 
+
