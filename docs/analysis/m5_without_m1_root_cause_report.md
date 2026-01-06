@@ -192,3 +192,6 @@ SELECT pg_get_viewdef('ops.v_partner_payments_report_ui', true);
 **Próximos pasos (opcional):** Si se requiere entender por qué M1 no se genera, analizar `ops.v_partner_payments_report_ui` y las reglas de negocio que definen la generación de milestones.
 
 
+
+
+

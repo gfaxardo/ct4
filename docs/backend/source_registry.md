@@ -310,3 +310,6 @@ psql -h 168.119.226.236 -p 5432 -U yego_user -d yego_integral \
 
 
 
+
+
+

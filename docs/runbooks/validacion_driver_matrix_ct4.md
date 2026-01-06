@@ -286,3 +286,6 @@ WHERE driver_id IN (
 - **Vista Legacy:** `backend/sql/ops/v_payments_driver_matrix_cabinet.sql`
 - **Auditoría:** `backend/sql/ops/audit_driver_matrix_achieved_queries.sql`
 
+
+
+

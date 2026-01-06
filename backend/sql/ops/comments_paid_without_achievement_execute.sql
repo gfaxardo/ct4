@@ -45,3 +45,6 @@ BEGIN
     RAISE NOTICE 'COMMENT ON ejecutado correctamente sobre VIEW ops.v_cabinet_milestones_reconciled';
 END $$;
 
+
+
+

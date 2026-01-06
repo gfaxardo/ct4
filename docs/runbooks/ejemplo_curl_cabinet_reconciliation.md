@@ -109,3 +109,6 @@ curl -X GET "http://localhost:8000/api/v1/yango/payments/cabinet/reconciliation?
 - **Paginación:** `limit` (default: 100, max: 10000), `offset` (default: 0)
 - **READ-ONLY:** Solo SELECT, no modifica datos ni recalcula reglas
 
+
+
+

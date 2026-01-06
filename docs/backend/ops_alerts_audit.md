@@ -421,3 +421,6 @@ El campo `details` contiene información específica según el tipo de alerta:
 
 
 
+
+
+

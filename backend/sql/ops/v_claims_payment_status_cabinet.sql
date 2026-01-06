@@ -28,6 +28,12 @@
 -- RAZÓN: Driver Matrix debe depender solo de vistas canónicas, no de vistas UI/report.
 -- MANTIENE: Deduplicación con DISTINCT ON (driver_id, milestone_value) y reglas de expected_amount.
 -- ============================================================================
+-- VALIDACIÓN DE ACHIEVED (2026-01-XX):
+-- NOTA: Esta vista filtra por milestone_achieved=true en ops.v_payment_calculation.
+-- Para validar achieved de claims, usar ops.v_cabinet_milestones_achieved_from_payment_calc
+-- (source-of-truth basado en v_payment_calculation) en lugar de 
+-- ops.v_cabinet_milestones_achieved_from_trips.
+-- ============================================================================
 
 CREATE OR REPLACE VIEW ops.v_claims_payment_status_cabinet AS
 WITH base_claims_raw AS (

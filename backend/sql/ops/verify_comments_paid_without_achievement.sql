@@ -34,3 +34,6 @@ WHERE attrelid = 'ops.v_cabinet_milestones_reconciled'::regclass
 -- - Si ambos son NOT NULL: Comentarios correctamente persistidos
 -- ============================================================================
 
+
+
+

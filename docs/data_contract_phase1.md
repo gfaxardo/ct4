@@ -140,3 +140,6 @@ Cuando un campo lógico no tiene columna correspondiente:
 
 
 
+
+
+

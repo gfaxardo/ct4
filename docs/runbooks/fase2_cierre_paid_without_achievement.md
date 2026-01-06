@@ -229,3 +229,6 @@ archivo: backend/sql/ops/comments_paid_without_achievement.sql
 Equipo de Arquitectura de Datos CT4  
 Fecha: 2025-01-XX
 
+
+
+

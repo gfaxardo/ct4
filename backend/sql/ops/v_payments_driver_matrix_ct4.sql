@@ -270,3 +270,6 @@ COMMENT ON COLUMN ops.v_payments_driver_matrix_ct4.achieved_source IS
 COMMENT ON COLUMN ops.v_payments_driver_matrix_ct4.legacy_inconsistency_flag IS 
 'Flag indicando si el driver tenía inconsistencias en legacy (v_payments_driver_matrix_cabinet): M5 sin M1 o M25 sin M5. TRUE si legacy tenía inconsistencia, FALSE o NULL si no.';
 
+
+
+

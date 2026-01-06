@@ -199,3 +199,6 @@ curl "http://localhost:8000/api/v1/yango/payments/cabinet/reconciliation?limit=1
 
 **CONCLUSIÓN**: El código está completo y estructurado correctamente. La verificación end-to-end requiere ejecución manual del servidor y navegación en el navegador.
 
+
+
+
