@@ -211,6 +211,11 @@ function DriverMatrixPageContent() {
       'scout_due_flag',
       'scout_paid_flag',
       'scout_amount',
+      // Columnas operativas de sanity check
+      'connection_within_14d_flag',
+      'connection_date_within_14d',
+      'trips_completed_14d_from_lead',
+      'first_trip_date_within_14d',
     ];
 
     // Convertir datos a CSV
@@ -767,6 +772,46 @@ function DriverMatrixPageContent() {
                                 </div>
                               )}
                             </div>
+                            {/* Información operativa de sanity check (ventana de 14 días) */}
+                            {(row.trips_completed_14d_from_lead !== null || row.connection_within_14d_flag !== null) && (
+                              <div className="mt-4 pt-4 border-t border-gray-200">
+                                <h5 className="text-sm font-semibold text-gray-700 mb-2">Métricas Operativas (14 días)</h5>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  {row.connection_within_14d_flag !== null && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Conexión en ventana:</span>{' '}
+                                      <span className={row.connection_within_14d_flag ? 'text-green-600' : 'text-gray-600'}>
+                                        {row.connection_within_14d_flag ? '✓ Sí' : '✗ No'}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {row.connection_date_within_14d && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Fecha conexión (14d):</span>{' '}
+                                      <span className="text-gray-600">
+                                        {new Date(row.connection_date_within_14d).toLocaleDateString('es-ES')}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {row.trips_completed_14d_from_lead !== null && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Viajes en 14 días:</span>{' '}
+                                      <span className="text-gray-600 font-semibold">
+                                        {row.trips_completed_14d_from_lead}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {row.first_trip_date_within_14d && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Primer viaje (14d):</span>{' '}
+                                      <span className="text-gray-600">
+                                        {new Date(row.first_trip_date_within_14d).toLocaleDateString('es-ES')}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       )}

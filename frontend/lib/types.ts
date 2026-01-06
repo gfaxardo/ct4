@@ -680,6 +680,11 @@ export interface DriverMatrixRow {
   m5_without_m1_flag: boolean | null;
   m25_without_m5_flag: boolean | null;
   milestone_inconsistency_notes: string | null;
+  // Columnas operativas de sanity check (ventana de 14 días)
+  connection_within_14d_flag: boolean | null;
+  connection_date_within_14d: string | null;
+  trips_completed_14d_from_lead: number | null;
+  first_trip_date_within_14d: string | null;
 }
 
 export interface OpsDriverMatrixMeta {

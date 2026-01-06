@@ -27,10 +27,11 @@
 -- ============================================================================
 -- NOTA IMPORTANTE:
 -- Los flags achieved (m1_achieved_flag, m5_achieved_flag, m25_achieved_flag) y achieved_date
--- provienen de ops.v_cabinet_milestones_achieved_from_trips (determinísticos basados en viajes reales).
--- Los flags achieved son CUMULATIVOS: si un driver alguna vez alcanzó un milestone por trips,
--- el flag será true independientemente de la semana o del estado de pago.
--- achieved_date es la primera fecha real (MIN achieved_date) en que se alcanzó el milestone.
+-- provienen de ops.v_cabinet_milestones_achieved_from_payment_calc (source-of-truth canónico).
+-- CORRECCIÓN (2026-01-XX): Cambiado de v_cabinet_milestones_achieved_from_trips a 
+-- v_cabinet_milestones_achieved_from_payment_calc para garantizar consistencia con claims.
+-- Los flags achieved reflejan milestones dentro de ventana de 14 días (alineado con claims).
+-- achieved_date es la primera fecha en que se alcanzó el milestone dentro de ventana.
 -- La información de pagos/claims (expected_amount, payment_status, window_status, overdue_days)
 -- proviene de ops.v_claims_payment_status_cabinet (reglas de negocio y ventanas de pago).
 -- ============================================================================
@@ -38,13 +39,15 @@
 CREATE OR REPLACE VIEW ops.v_payments_driver_matrix_cabinet AS
 WITH deterministic_milestones_events AS (
     -- Milestones como eventos puros (sin agregación)
-    -- Fuente determinística: milestones achieved basados únicamente en viajes reales
+    -- Fuente canónica: milestones achieved desde v_cabinet_milestones_achieved_from_payment_calc
+    -- (source-of-truth basado en v_payment_calculation, con validación de ventana)
+    -- CORRECCIÓN: Usar fuente canónica para garantizar consistencia con claims
     SELECT 
         m.driver_id,
         m.milestone_value,
         m.achieved_flag,
         m.achieved_date
-    FROM ops.v_cabinet_milestones_achieved_from_trips m
+    FROM ops.v_cabinet_milestones_achieved_from_payment_calc m
     WHERE m.milestone_value IN (1, 5, 25)
 ),
 base_claims AS (
@@ -159,24 +162,23 @@ claims_agg AS (
 -- Agregar por driver_id pivotando milestones (1 FILA POR DRIVER)
 driver_milestones AS (
     SELECT 
-        COALESCE(ca.driver_id, dma.driver_id, ocd.driver_id, fs.driver_id) AS driver_id,
+        COALESCE(MAX(ca.driver_id), MAX(dma.driver_id), MAX(ocd.driver_id), MAX(fs.driver_id)) AS driver_id,
         -- Información base del driver
         ca.person_key,
         MAX(di.driver_name) AS driver_name,
         ca.lead_date,
         -- origin_tag: prioridad: cabinet > fleet_migration > unknown
-        -- Asegurar que nunca sea NULL (usar funnel_status como fallback)
+        -- Asegurar que nunca sea NULL
         COALESCE(
             MAX(CASE WHEN ocd.origin_tag = 'cabinet' THEN 'cabinet' END),
             MAX(CASE WHEN ocd.origin_tag = 'fleet_migration' THEN 'fleet_migration' END),
-            MAX(fs.origin_tag),
             'unknown'
         ) AS origin_tag,
         -- Funnel status y highest_milestone desde v_cabinet_funnel_status
         MAX(fs.funnel_status) AS funnel_status,
         MAX(fs.highest_milestone) AS highest_milestone,
         -- connected_flag y connected_date desde funnel_status
-        MAX(fs.connected_flag) AS connected_flag,
+        BOOL_OR(fs.connected_flag) AS connected_flag,
         MAX(fs.connected_date) AS connected_date,
         -- week_start: última semana relevante (máxima entre claims y milestones achieved)
         -- week_start: última semana relevante (máxima entre claims y milestones achieved)
@@ -250,7 +252,12 @@ driver_milestones AS (
                   AND COALESCE(dma.m5_achieved_flag, false) = false)
             THEN 'M25 sin M5'
             ELSE NULL
-        END AS milestone_inconsistency_notes
+        END AS milestone_inconsistency_notes,
+        -- Columnas operativas desde v_cabinet_ops_14d_sanity
+        ops_sanity.connection_within_14d_flag,
+        ops_sanity.connection_date_within_14d,
+        ops_sanity.trips_completed_14d_from_lead,
+        ops_sanity.first_trip_date_within_14d
     FROM deterministic_milestones_agg dma
     FULL OUTER JOIN claims_agg ca
         ON ca.driver_id = dma.driver_id
@@ -267,6 +274,8 @@ driver_milestones AS (
         ON di.driver_id = COALESCE(ca.driver_id, dma.driver_id)
     LEFT JOIN funnel_status_data fs
         ON fs.driver_id = COALESCE(ca.driver_id, dma.driver_id)
+    LEFT JOIN ops.v_cabinet_ops_14d_sanity ops_sanity
+        ON ops_sanity.driver_id = COALESCE(ca.driver_id, dma.driver_id)
     GROUP BY 
         COALESCE(ca.driver_id, dma.driver_id, ocd.driver_id),
         ca.person_key,
@@ -282,7 +291,12 @@ driver_milestones AS (
         ca.m25_expected_amount_yango,
         ca.m1_overdue_days,
         ca.m5_overdue_days,
-        ca.m25_overdue_days
+        ca.m25_overdue_days,
+        -- Columnas operativas desde v_cabinet_ops_14d_sanity
+        ops_sanity.connection_within_14d_flag,
+        ops_sanity.connection_date_within_14d,
+        ops_sanity.trips_completed_14d_from_lead,
+        ops_sanity.first_trip_date_within_14d
 )
 SELECT 
     driver_id,
@@ -295,6 +309,11 @@ SELECT
     highest_milestone,
     connected_flag,
     connected_date,
+    -- Columnas operativas de sanity check (ventana de 14 días)
+    connection_within_14d_flag,
+    connection_date_within_14d,
+    trips_completed_14d_from_lead,
+    first_trip_date_within_14d,
     -- Milestone M1
     m1_achieved_flag,
     m1_achieved_date,
@@ -422,6 +441,19 @@ COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.scout_paid_flag IS
 
 COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.scout_amount IS 
 'TODO: Monto de pagos scout para el driver. Fuente potencial: ops.scout_payment_rules + ops.v_scout_liquidation_paid_items. Si no existe, dejar NULL y documentar con TODO.';
+
+-- Columnas operativas de sanity check (ventana de 14 días)
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.connection_within_14d_flag IS 
+'Flag indicando si la conexión ocurrió dentro de la ventana de 14 días desde lead_date. Fuente: ops.v_cabinet_ops_14d_sanity. Usado para validar coherencia operativa.';
+
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.connection_date_within_14d IS 
+'Primera fecha de conexión dentro de la ventana de 14 días. NULL si la conexión ocurrió fuera de ventana o no hubo conexión. Fuente: ops.v_cabinet_ops_14d_sanity.';
+
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.trips_completed_14d_from_lead IS 
+'Total de viajes completados (count_orders_completed) dentro de la ventana de 14 días desde lead_date. Fuente: public.summary_daily vía ops.v_cabinet_ops_14d_sanity. Usado para validar coherencia entre achieved flags y viajes reales.';
+
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.first_trip_date_within_14d IS 
+'Primera fecha con viaje completado dentro de la ventana de 14 días. NULL si no hubo viajes dentro de ventana. Fuente: ops.v_cabinet_ops_14d_sanity.';
 
 -- Flags de inconsistencia de milestones
 COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.m5_without_m1_flag IS 

@@ -315,6 +315,11 @@ class DriverMatrixRow(BaseModel):
     m5_without_m1_flag: Optional[bool] = None
     m25_without_m5_flag: Optional[bool] = None
     milestone_inconsistency_notes: Optional[str] = None
+    # Columnas operativas de sanity check (ventana de 14 días)
+    connection_within_14d_flag: Optional[bool] = None
+    connection_date_within_14d: Optional[date] = None
+    trips_completed_14d_from_lead: Optional[int] = None
+    first_trip_date_within_14d: Optional[date] = None
 
     class Config:
         from_attributes = True

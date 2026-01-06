@@ -93,7 +93,7 @@ all_drivers AS (
 SELECT 
     ad.driver_id,
     di.person_key,
-    COALESCE(do.origin_tag, 'unknown') AS origin_tag,
+    COALESCE(dor.origin_tag, 'unknown') AS origin_tag,
     -- Funnel status (prioridad top-down)
     CASE 
         -- 1. registered_incomplete: existe registro pero NO hay identidad
@@ -121,7 +121,7 @@ SELECT
     dm.m25_date
 FROM all_drivers ad
 LEFT JOIN driver_identity di ON di.driver_id = ad.driver_id
-LEFT JOIN driver_origin do ON do.driver_id = ad.driver_id
+LEFT JOIN driver_origin dor ON dor.driver_id = ad.driver_id
 LEFT JOIN driver_connection dc ON dc.driver_id = ad.driver_id
 LEFT JOIN driver_milestones dm ON dm.driver_id = ad.driver_id;
 
