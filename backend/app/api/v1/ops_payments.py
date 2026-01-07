@@ -611,3 +611,310 @@ def get_cabinet_financial_14d(
             detail=f"Error interno: {str(e)}"
         )
 
+
+@router.get("/cabinet-financial-14d/export")
+def export_cabinet_financial_14d_csv(
+    db: Session = Depends(get_db),
+    only_with_debt: bool = Query(False, description="Si true, solo drivers con deuda pendiente"),
+    min_debt: Optional[float] = Query(None, ge=0, description="Filtra por deuda mínima"),
+    reached_milestone: Optional[str] = Query(None, description="Filtra por milestone: 'm1', 'm5', 'm25'"),
+    use_materialized: bool = Query(True, description="Usar vista materializada")
+):
+    """
+    Exporta datos de Cabinet Financial 14d a CSV.
+    
+    Aplica los mismos filtros que el endpoint GET /cabinet-financial-14d
+    pero exporta todos los resultados (sin límite de paginación).
+    
+    Hard cap: 200,000 filas máximo.
+    """
+    try:
+        # Seleccionar vista (materializada o normal)
+        if use_materialized:
+            check_mv = db.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_matviews 
+                    WHERE schemaname = 'ops' 
+                    AND matviewname = 'mv_cabinet_financial_14d'
+                )
+            """))
+            mv_exists = check_mv.scalar()
+            view_name = "ops.mv_cabinet_financial_14d" if mv_exists else "ops.v_cabinet_financial_14d"
+        else:
+            view_name = "ops.v_cabinet_financial_14d"
+        
+        # Construir WHERE dinámico (mismo que get_cabinet_financial_14d)
+        where_conditions = []
+        params = {}
+        
+        if only_with_debt:
+            where_conditions.append("amount_due_yango > 0")
+        
+        if min_debt is not None:
+            where_conditions.append("amount_due_yango >= :min_debt")
+            params["min_debt"] = min_debt
+        
+        if reached_milestone:
+            milestone_lower = reached_milestone.lower()
+            if milestone_lower == 'm1':
+                where_conditions.append("reached_m1_14d = true AND reached_m5_14d = false")
+            elif milestone_lower == 'm5':
+                where_conditions.append("reached_m5_14d = true AND reached_m25_14d = false")
+            elif milestone_lower == 'm25':
+                where_conditions.append("reached_m25_14d = true")
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"reached_milestone debe ser 'm1', 'm5' o 'm25', recibido: {reached_milestone}"
+                )
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Verificar conteo antes de exportar (hard cap defensivo)
+        count_sql = f"""
+            SELECT COUNT(*) AS total
+            FROM {view_name}
+            WHERE {where_clause}
+        """
+        count_result = db.execute(text(count_sql), params).fetchone()
+        total = count_result.total if count_result else 0
+        
+        if total > 200000:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Export excede límite de 200,000 filas. Total filtrado: {total}. Aplique filtros más restrictivos."
+            )
+        
+        # Query para exportar (todas las columnas con nombres amigables)
+        sql = f"""
+        SELECT 
+            driver_id AS "Driver ID",
+            driver_name AS "Conductor",
+            lead_date AS "Lead Date",
+            iso_week AS "Semana ISO",
+            connected_flag AS "Conectado",
+            connected_date AS "Fecha Conexion",
+            total_trips_14d AS "Viajes 14D",
+            reached_m1_14d AS "M1 Alcanzado",
+            reached_m5_14d AS "M5 Alcanzado",
+            reached_m25_14d AS "M25 Alcanzado",
+            expected_amount_m1 AS "Esperado M1 (S/)",
+            expected_amount_m5 AS "Esperado M5 (S/)",
+            expected_amount_m25 AS "Esperado M25 (S/)",
+            expected_total_yango AS "Esperado Total (S/)",
+            claim_m1_exists AS "Claim M1 Existe",
+            claim_m1_paid AS "Claim M1 Pagado",
+            claim_m5_exists AS "Claim M5 Existe",
+            claim_m5_paid AS "Claim M5 Pagado",
+            claim_m25_exists AS "Claim M25 Existe",
+            claim_m25_paid AS "Claim M25 Pagado",
+            paid_amount_m1 AS "Pagado M1 (S/)",
+            paid_amount_m5 AS "Pagado M5 (S/)",
+            paid_amount_m25 AS "Pagado M25 (S/)",
+            total_paid_yango AS "Pagado Total (S/)",
+            amount_due_yango AS "Deuda (S/)"
+        FROM {view_name}
+        WHERE {where_clause}
+        ORDER BY lead_date DESC NULLS LAST, driver_id
+        """
+        
+        # Obtener datos
+        result = db.execute(text(sql), params)
+        rows_data = result.mappings().all()
+        
+        # Generar CSV en memoria
+        output = io.StringIO()
+        
+        if rows_data:
+            fieldnames = list(rows_data[0].keys())
+            writer = csv.DictWriter(output, fieldnames=fieldnames, quoting=csv.QUOTE_MINIMAL)
+            writer.writeheader()
+            
+            for row in rows_data:
+                # Convertir valores None a string vacío y prevenir CSV injection
+                row_dict = {}
+                for k, v in dict(row).items():
+                    if v is None:
+                        row_dict[k] = ''
+                    elif isinstance(v, bool):
+                        row_dict[k] = 'Sí' if v else 'No'
+                    elif isinstance(v, str) and v and v[0] in ('=', '+', '-', '@'):
+                        # Prefijar con ' para prevenir ejecución de fórmulas en Excel
+                        row_dict[k] = "'" + v
+                    else:
+                        row_dict[k] = v
+                writer.writerow(row_dict)
+        else:
+            # CSV vacío con headers
+            fieldnames = [
+                "Driver ID", "Conductor", "Lead Date", "Semana ISO", "Conectado",
+                "Fecha Conexion", "Viajes 14D", "M1 Alcanzado", "M5 Alcanzado", "M25 Alcanzado",
+                "Esperado M1 (S/)", "Esperado M5 (S/)", "Esperado M25 (S/)", "Esperado Total (S/)",
+                "Claim M1 Existe", "Claim M1 Pagado", "Claim M5 Existe", "Claim M5 Pagado",
+                "Claim M25 Existe", "Claim M25 Pagado", "Pagado M1 (S/)", "Pagado M5 (S/)",
+                "Pagado M25 (S/)", "Pagado Total (S/)", "Deuda (S/)"
+            ]
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+        
+        csv_content = output.getvalue()
+        output.close()
+        
+        # Generar nombre de archivo con timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        filename = f"cabinet_financial_14d_{timestamp}.csv"
+        
+        # Codificar CSV a bytes UTF-8 con BOM
+        csv_bytes = csv_content.encode('utf-8')
+        bom_bytes = b'\xef\xbb\xbf'
+        csv_content_with_bom = bom_bytes + csv_bytes
+        
+        # Retornar CSV como respuesta
+        return Response(
+            content=csv_content_with_bom,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "text/csv; charset=utf-8"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except OperationalError as e:
+        logger.exception(f"Error de conexion a BD en export cabinet financial CSV: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="DB no disponible / revisa DATABASE_URL"
+        )
+    except ProgrammingError as e:
+        error_code = getattr(e.orig, 'pgcode', None) if hasattr(e, 'orig') else None
+        error_message = str(e.orig) if hasattr(e, 'orig') else str(e)
+        
+        if error_code == '42P01' or 'does not exist' in error_message.lower():
+            logger.exception(f"Vista no existe en export cabinet financial CSV: {e}")
+            raise HTTPException(
+                status_code=404,
+                detail="Falta vista ops.v_cabinet_financial_14d. Aplica backend/sql/ops/v_cabinet_financial_14d.sql"
+            )
+        logger.exception(f"Error SQL en export cabinet financial CSV: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error SQL: {error_message[:200]}"
+        )
+    except Exception as e:
+        logger.exception(f"Error inesperado en export cabinet financial CSV: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al exportar datos a CSV: {str(e)[:200]}"
+
+
+@router.get("/cabinet-financial-14d/funnel-gap")
+def get_funnel_gap_metrics(
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene métricas del primer gap del embudo: leads sin identidad ni pago.
+    
+    BASE DEL EMBUDO: module_ct_cabinet_leads (todos los leads registrados)
+    
+    Retorna:
+    - total_leads: Total de leads en module_ct_cabinet_leads (BASE)
+    - leads_with_identity: Leads que tienen identity_links (pasaron ingesta)
+    - leads_with_claims: Leads que tienen claims generados (pasaron todo el embudo)
+    - leads_without_identity: Leads sin identity_links (GAP 1 - crítico)
+    - leads_without_claims: Leads sin claims (puede incluir GAP 1, 2, 3)
+    - leads_without_both: Leads sin identidad ni claims (GAP 1 - primer gap crítico)
+    - percentages: Porcentajes de cada métrica
+    
+    IMPORTANTE: Un lead sin identity_links NO aparecerá en:
+    - lead_events (con person_key válido)
+    - v_conversion_metrics
+    - v_cabinet_financial_14d
+    - claims generados
+    """
+    try:
+        # Query para calcular métricas del gap
+        sql = text("""
+            WITH leads_with_identity AS (
+                SELECT DISTINCT
+                    COALESCE(mcl.external_id::text, mcl.id::text) AS lead_source_pk
+                FROM public.module_ct_cabinet_leads mcl
+                INNER JOIN canon.identity_links il
+                    ON il.source_table = 'module_ct_cabinet_leads'
+                    AND il.source_pk = COALESCE(mcl.external_id::text, mcl.id::text)
+            ),
+            leads_with_claims AS (
+                SELECT DISTINCT
+                    COALESCE(mcl.external_id::text, mcl.id::text) AS lead_source_pk
+                FROM public.module_ct_cabinet_leads mcl
+                INNER JOIN canon.identity_links il
+                    ON il.source_table = 'module_ct_cabinet_leads'
+                    AND il.source_pk = COALESCE(mcl.external_id::text, mcl.id::text)
+                INNER JOIN ops.v_claims_payment_status_cabinet c
+                    ON c.person_key = il.person_key
+                    AND c.driver_id IS NOT NULL
+            )
+            SELECT 
+                COUNT(*) AS total_leads,
+                COUNT(DISTINCT li.lead_source_pk) AS leads_with_identity,
+                COUNT(DISTINCT lc.lead_source_pk) AS leads_with_claims,
+                COUNT(*) - COUNT(DISTINCT li.lead_source_pk) AS leads_without_identity,
+                COUNT(*) - COUNT(DISTINCT lc.lead_source_pk) AS leads_without_claims,
+                COUNT(*) - COUNT(DISTINCT COALESCE(li.lead_source_pk, lc.lead_source_pk)) AS leads_without_both
+            FROM public.module_ct_cabinet_leads mcl
+            LEFT JOIN leads_with_identity li
+                ON li.lead_source_pk = COALESCE(mcl.external_id::text, mcl.id::text)
+            LEFT JOIN leads_with_claims lc
+                ON lc.lead_source_pk = COALESCE(mcl.external_id::text, mcl.id::text)
+        """)
+        
+        result = db.execute(sql)
+        row = result.fetchone()
+        
+        if not row:
+            return {
+                "total_leads": 0,
+                "leads_with_identity": 0,
+                "leads_with_claims": 0,
+                "leads_without_identity": 0,
+                "leads_without_claims": 0,
+                "leads_without_both": 0,
+                "percentages": {
+                    "with_identity": 0.0,
+                    "with_claims": 0.0,
+                    "without_identity": 0.0,
+                    "without_claims": 0.0,
+                    "without_both": 0.0
+                }
+            }
+        
+        total = row.total_leads or 0
+        
+        # Calcular porcentajes
+        percentages = {
+            "with_identity": round((row.leads_with_identity / total * 100) if total > 0 else 0, 2),
+            "with_claims": round((row.leads_with_claims / total * 100) if total > 0 else 0, 2),
+            "without_identity": round((row.leads_without_identity / total * 100) if total > 0 else 0, 2),
+            "without_claims": round((row.leads_without_claims / total * 100) if total > 0 else 0, 2),
+            "without_both": round((row.leads_without_both / total * 100) if total > 0 else 0, 2)
+        }
+        
+        return {
+            "total_leads": total,
+            "leads_with_identity": row.leads_with_identity or 0,
+            "leads_with_claims": row.leads_with_claims or 0,
+            "leads_without_identity": row.leads_without_identity or 0,
+            "leads_without_claims": row.leads_without_claims or 0,
+            "leads_without_both": row.leads_without_both or 0,
+            "percentages": percentages
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculando métricas del gap del embudo: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error calculando métricas del gap: {str(e)[:200]}"
+        )
+        )
+

@@ -94,4 +94,3 @@ cd backend\scripts
 - Después de la primera corrida, el modo incremental funciona automáticamente
 - Si hay problemas, revisar logs en Task Scheduler o archivo de log configurado
 
-

@@ -31,4 +31,3 @@ WHERE p.date >= CURRENT_DATE - INTERVAL '30 days'
             AND l.pay_date = p.date
     );
 
-

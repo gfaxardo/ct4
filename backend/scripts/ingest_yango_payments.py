@@ -62,4 +62,3 @@ if __name__ == "__main__":
     rows_inserted = execute_ingest()
     sys.exit(0)
 
-

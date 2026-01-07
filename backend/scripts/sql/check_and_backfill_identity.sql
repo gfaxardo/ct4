@@ -33,4 +33,3 @@ WHERE l.snapshot_at >= CURRENT_DATE
               = l.driver_name_normalized
     );
 
-

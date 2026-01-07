@@ -75,4 +75,3 @@ WHERE rc.pay_date >= '2025-12-18'
             AND l.state_hash = rc.state_hash
     );
 
-

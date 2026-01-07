@@ -25,4 +25,3 @@ SELECT
 FROM ops.mv_cabinet_financial_14d;
 
 
-

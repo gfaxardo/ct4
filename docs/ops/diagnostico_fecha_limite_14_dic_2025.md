@@ -95,4 +95,3 @@ WHERE payload_json->>'origin_tag' = 'cabinet'
 
 La optimización realizada (usar `v_payment_calculation` directamente en lugar de `v_claims_payment_status_cabinet`) mejora el rendimiento, pero **no resuelve el problema de datos faltantes** si `lead_events` no tiene datos más recientes.
 
-

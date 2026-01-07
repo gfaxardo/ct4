@@ -67,4 +67,3 @@ if __name__ == "__main__":
     exit_code = populate_events()
     sys.exit(exit_code)
 
-

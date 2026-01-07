@@ -7,4 +7,3 @@ SELECT
 FROM ops.v_data_health_status
 LIMIT 5;
 
-

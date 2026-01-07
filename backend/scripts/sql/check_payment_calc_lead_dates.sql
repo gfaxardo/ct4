@@ -9,4 +9,3 @@ WHERE origin_tag = 'cabinet'
     AND driver_id IS NOT NULL
     AND lead_date IS NOT NULL;
 
-

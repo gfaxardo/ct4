@@ -25,4 +25,3 @@ FROM ops.yango_payment_status_ledger
 WHERE pay_date >= '2025-12-15'
     AND (driver_id IS NOT NULL OR person_key IS NOT NULL);
 
-

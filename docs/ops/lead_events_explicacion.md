@@ -164,4 +164,3 @@ Si `lead_events` solo tiene datos hasta el 14/12/2025, significa que:
 - **¿Cómo se alimenta?** Mediante procesos de ingesta y atribución que insertan eventos desde tablas RAW
 - **¿Cuándo se actualiza?** Cuando se ejecutan procesos de ingesta o atribución para leads nuevos
 
-

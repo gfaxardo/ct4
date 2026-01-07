@@ -85,4 +85,3 @@ El proceso de `populate_events` requiere que existan `identity_links` primero. P
 1. Primero: `run_ingestion()` - Crea `identity_links`
 2. Segundo: `populate_events_from_scouting()` - Crea `lead_events` usando los `identity_links`
 
-

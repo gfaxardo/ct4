@@ -32,4 +32,3 @@ FROM ops.v_data_health_status
 WHERE source_name IN ('lead_events', 'ingestion_runs')
 ORDER BY source_name;
 
-

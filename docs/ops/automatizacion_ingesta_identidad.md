@@ -137,4 +137,3 @@ Después de implementar:
    SELECT MAX(event_date) FROM observational.lead_events;
    ```
 
-

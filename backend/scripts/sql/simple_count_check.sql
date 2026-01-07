@@ -24,4 +24,3 @@ SELECT
 FROM ops.yango_payment_ledger
 WHERE pay_date >= '2025-12-18';
 
-

@@ -18,4 +18,3 @@ WHERE table_schema = 'ops'
     AND table_name = 'v_data_sources_catalog'
 ORDER BY ordinal_position;
 
-

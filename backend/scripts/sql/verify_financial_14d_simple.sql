@@ -5,4 +5,3 @@ SELECT
     COUNT(*) as total_drivers
 FROM ops.v_cabinet_financial_14d;
 
-

@@ -6,10 +6,10 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { uploadCabinetLeadsCSV, ApiError } from '@/lib/api';
-import type { CabinetLeadsUploadResponse } from '@/lib/api';
+import { uploadCabinetLeadsCSV, getCabinetLeadsDiagnostics, ApiError } from '@/lib/api';
+import type { CabinetLeadsUploadResponse, CabinetLeadsDiagnostics } from '@/lib/api';
 
 export default function CabinetLeadsUploadPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -17,7 +17,26 @@ export default function CabinetLeadsUploadPage() {
   const [result, setResult] = useState<CabinetLeadsUploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [autoProcess, setAutoProcess] = useState(true);
+  const [skipAlreadyProcessed, setSkipAlreadyProcessed] = useState(true);
+  const [diagnostics, setDiagnostics] = useState<CabinetLeadsDiagnostics | null>(null);
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState(true);
   const router = useRouter();
+
+  useEffect(() => {
+    loadDiagnostics();
+  }, []);
+
+  const loadDiagnostics = async () => {
+    try {
+      setLoadingDiagnostics(true);
+      const diag = await getCabinetLeadsDiagnostics();
+      setDiagnostics(diag);
+    } catch (err: any) {
+      console.error('Error cargando diagnóstico:', err);
+    } finally {
+      setLoadingDiagnostics(false);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -38,8 +57,10 @@ export default function CabinetLeadsUploadPage() {
     setResult(null);
 
     try {
-      const data = await uploadCabinetLeadsCSV(file, autoProcess);
+      const data = await uploadCabinetLeadsCSV(file, autoProcess, skipAlreadyProcessed);
       setResult(data);
+      // Recargar diagnóstico después del upload
+      await loadDiagnostics();
 
       // Si el procesamiento automático está habilitado, redirigir después de un delay
       if (autoProcess && data.stats.total_inserted > 0) {
@@ -61,6 +82,62 @@ export default function CabinetLeadsUploadPage() {
   return (
     <div className="container mx-auto p-6 max-w-4xl">
       <h1 className="text-3xl font-bold mb-6">Cargar Leads Cabinet (CSV)</h1>
+
+      {/* Panel de Diagnóstico */}
+      {loadingDiagnostics ? (
+        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+          <p className="text-sm text-gray-600">Cargando diagnóstico...</p>
+        </div>
+      ) : diagnostics && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+          <h2 className="font-semibold text-blue-900 mb-3">📊 Estado del Sistema</h2>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="font-medium">Tabla existe:</span>{' '}
+              <span className={diagnostics.table_exists ? 'text-green-700' : 'text-red-700'}>
+                {diagnostics.table_exists ? '✅ Sí' : '❌ No'}
+              </span>
+            </div>
+            <div>
+              <span className="font-medium">Registros en tabla:</span>{' '}
+              <span className="text-gray-700">{diagnostics.table_row_count.toLocaleString()}</span>
+            </div>
+            {diagnostics.max_lead_date_in_table && (
+              <div>
+                <span className="font-medium">Última fecha en tabla:</span>{' '}
+                <span className="text-gray-700">{diagnostics.max_lead_date_in_table}</span>
+              </div>
+            )}
+            {diagnostics.max_event_date_in_lead_events && (
+              <div>
+                <span className="font-medium">Última fecha procesada (lead_events):</span>{' '}
+                <span className="text-green-700">{diagnostics.max_event_date_in_lead_events}</span>
+              </div>
+            )}
+            {diagnostics.max_snapshot_date_in_identity_links && (
+              <div>
+                <span className="font-medium">Última fecha procesada (identity_links):</span>{' '}
+                <span className="text-green-700">{diagnostics.max_snapshot_date_in_identity_links}</span>
+              </div>
+            )}
+            {diagnostics.recommended_start_date && (
+              <div className="col-span-2 bg-yellow-50 border border-yellow-200 rounded p-3 mt-2">
+                <span className="font-semibold text-yellow-900">💡 Recomendación:</span>{' '}
+                <span className="text-yellow-800">
+                  Subir datos desde el <strong>{diagnostics.recommended_start_date}</strong> en adelante
+                  {skipAlreadyProcessed && ' (se aplicará automáticamente si "Saltar ya procesados" está activado)'}
+                </span>
+              </div>
+            )}
+            {diagnostics.processed_external_ids_count > 0 && (
+              <div className="col-span-2">
+                <span className="font-medium">External IDs ya procesados:</span>{' '}
+                <span className="text-gray-700">{diagnostics.processed_external_ids_count.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow p-6 space-y-6">
         {/* Selector de archivo */}
@@ -85,6 +162,21 @@ export default function CabinetLeadsUploadPage() {
               Archivo seleccionado: {file.name} ({(file.size / 1024).toFixed(2)} KB)
             </p>
           )}
+        </div>
+
+        {/* Opción de saltar datos ya procesados */}
+        <div className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            id="skipAlreadyProcessed"
+            checked={skipAlreadyProcessed}
+            onChange={(e) => setSkipAlreadyProcessed(e.target.checked)}
+            className="w-4 h-4 text-blue-600 rounded"
+            disabled={uploading}
+          />
+          <label htmlFor="skipAlreadyProcessed" className="text-sm font-medium">
+            Saltar datos ya procesados (solo procesar registros nuevos basado en fechas ya procesadas)
+          </label>
         </div>
 
         {/* Opción de procesamiento automático */}
@@ -118,6 +210,16 @@ export default function CabinetLeadsUploadPage() {
             <div className="text-sm text-green-700 space-y-1">
               <p>Registros insertados: <strong>{result.stats.total_inserted}</strong></p>
               <p>Registros ignorados (duplicados): <strong>{result.stats.total_ignored}</strong></p>
+              {result.stats.skipped_by_date !== undefined && result.stats.skipped_by_date > 0 && (
+                <p className="text-blue-700">
+                  Registros saltados por fecha (ya procesados): <strong>{result.stats.skipped_by_date}</strong>
+                </p>
+              )}
+              {result.stats.date_cutoff_used && (
+                <p className="text-gray-600 text-xs">
+                  Fecha de corte usada: <strong>{result.stats.date_cutoff_used}</strong>
+                </p>
+              )}
               <p>Total procesado: <strong>{result.stats.total_rows}</strong></p>
               {result.stats.errors_count > 0 && (
                 <p className="text-yellow-700">
@@ -172,5 +274,4 @@ export default function CabinetLeadsUploadPage() {
     </div>
   );
 }
-
 

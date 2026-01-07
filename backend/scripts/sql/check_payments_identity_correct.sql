@@ -60,4 +60,3 @@ WHERE pay_date >= CURRENT_DATE - INTERVAL '30 days';
 -- 6. Verificar si los pagos nuevos están en v_claims_payment_status_cabinet
 -- Primero necesitamos ver qué columnas tiene esta vista
 
-

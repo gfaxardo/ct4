@@ -150,4 +150,3 @@ curl -X GET "http://localhost:8000/api/v1/ops/payments/cabinet-financial-14d?lim
    - `reached_milestone` filtra por milestone alcanzado dentro de la ventana de 14 días
 
 
-

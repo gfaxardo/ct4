@@ -55,4 +55,3 @@ COMMENT ON COLUMN public.module_ct_cabinet_leads.external_id IS
 COMMENT ON COLUMN public.module_ct_cabinet_leads.lead_created_at IS 
 'Fecha y hora de creación del lead. Usado como snapshot_date en el sistema de identidad.';
 
-

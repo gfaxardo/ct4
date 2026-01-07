@@ -20,4 +20,3 @@ WHERE table_schema = 'public'
     AND (table_name LIKE '%cabinet%' OR table_name LIKE '%lead%')
 ORDER BY table_name;
 
-

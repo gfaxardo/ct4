@@ -8,4 +8,3 @@ WHERE table_schema = 'ops'
     AND table_name = 'v_data_health_status'
 ORDER BY ordinal_position;
 
-

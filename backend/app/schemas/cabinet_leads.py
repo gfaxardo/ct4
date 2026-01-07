@@ -22,12 +22,13 @@ class CabinetLeadsUploadResponse(BaseModel):
                     "total_inserted": 150,
                     "total_ignored": 10,
                     "total_rows": 160,
+                    "skipped_by_date": 5,
                     "errors_count": 0,
-                    "auto_process": True
+                    "auto_process": True,
+                    "date_cutoff_used": "2025-12-15"
                 },
                 "errors": [],
                 "run_id": 123
             }
         }
-
 

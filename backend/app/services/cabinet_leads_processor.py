@@ -204,4 +204,3 @@ class CabinetLeadsProcessor:
             logger.warning(f"Error verificando índice único para {mv_name}: {e}")
             return False
 
-
