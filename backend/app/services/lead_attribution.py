@@ -366,7 +366,7 @@ class LeadAttributionService:
                     matching_evidence["no_matching_data"] = True
 
                 payload = {
-                    "origin_tag": "scouting",
+                    "origin_tag": "cabinet",  # CORREGIDO: scouting_daily debe ser 'cabinet' para aparecer en v_conversion_metrics (cabinet)
                     "driver_name": row_dict.get("driver_name"),
                     "driver_phone": driver_phone,
                     "driver_license": driver_license,

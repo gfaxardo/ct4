@@ -67,6 +67,7 @@ const navItems: NavItem[] = [
     children: [
       { label: 'Alerts', href: '/ops/alerts', icon: '' },
       { label: 'Health', href: '/ops/health', icon: '' },
+      { label: 'Cargar Leads Cabinet', href: '/cabinet-leads/upload', icon: '' },
     ],
   },
 ];

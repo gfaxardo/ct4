@@ -243,8 +243,28 @@ WITH checks AS (
         CASE
             WHEN COUNT(*) > 0 THEN 
                 format('Objetos en DB que no están en registry (posiblemente usados): %s', 
-                    string_agg(DISTINCT format('%s.%s', c.schema_name, c.object_name), ', ' ORDER BY c.schema_name, c.object_name) 
-                    LIMIT 10)
+                    COALESCE(
+                        (SELECT string_agg(DISTINCT format('%s.%s', sub.schema_name, sub.object_name), ', ' ORDER BY format('%s.%s', sub.schema_name, sub.object_name))
+                         FROM (
+                             SELECT DISTINCT c.schema_name, c.object_name 
+                             FROM (
+                                 SELECT n.nspname AS schema_name, c.relname AS object_name
+                                 FROM pg_class c
+                                 JOIN pg_namespace n ON n.oid = c.relnamespace
+                                 WHERE n.nspname IN ('public', 'ops', 'canon', 'raw', 'observational')
+                                     AND c.relkind IN ('r', 'v', 'm')
+                                     AND NOT c.relname LIKE 'pg_%'
+                                     AND NOT EXISTS (
+                                         SELECT 1 FROM ops.source_registry r
+                                         WHERE r.schema_name = n.nspname AND r.object_name = c.relname
+                                     )
+                             ) c
+                             WHERE c.schema_name IN ('ops', 'canon')
+                                 OR (c.schema_name = 'public' AND c.object_name LIKE 'module_ct_%')
+                             LIMIT 10
+                         ) sub),
+                        'N/A'
+                    ))
             ELSE 'Todos los objetos relevantes están en registry'
         END AS message,
         NOW() AS last_evaluated_at

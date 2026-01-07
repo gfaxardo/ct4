@@ -348,3 +348,4 @@ La vista `ops.v_cabinet_financial_14d` proporciona una **fuente de verdad financ
 
 La vista está diseñada para ser **read-only** y **determinística**, basándose únicamente en datos operativos reales (`summary_daily`) dentro de la ventana financiera de 14 días.
 
+

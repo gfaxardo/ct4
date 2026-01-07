@@ -149,3 +149,4 @@ curl -X GET "http://localhost:8000/api/v1/ops/payments/cabinet-financial-14d?lim
    - `only_with_debt=true` es útil para reportes de cobranza
    - `reached_milestone` filtra por milestone alcanzado dentro de la ventana de 14 días
 
+

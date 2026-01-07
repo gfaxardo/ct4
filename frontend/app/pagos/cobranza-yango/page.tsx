@@ -11,8 +11,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getCabinetFinancial14d,
+  exportCabinetFinancial14dCSV,
+  getFunnelGapMetrics,
   ApiError,
 } from '@/lib/api';
+import type { FunnelGapMetrics } from '@/lib/api';
 import type {
   CabinetFinancialResponse,
   CabinetFinancialRow,
@@ -34,6 +37,9 @@ export default function CobranzaYangoPage() {
   });
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(100);
+  const [exporting, setExporting] = useState(false);
+  const [funnelGap, setFunnelGap] = useState<FunnelGapMetrics | null>(null);
+  const [loadingGap, setLoadingGap] = useState(true);
 
   useEffect(() => {
     async function loadData() {
@@ -70,6 +76,52 @@ export default function CobranzaYangoPage() {
 
     loadData();
   }, [filters, offset, limit]);
+
+  useEffect(() => {
+    async function loadFunnelGap() {
+      try {
+        setLoadingGap(true);
+        const gapData = await getFunnelGapMetrics();
+        setFunnelGap(gapData);
+      } catch (err) {
+        console.error('Error cargando métricas del gap:', err);
+      } finally {
+        setLoadingGap(false);
+      }
+    }
+    loadFunnelGap();
+  }, []);
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      setError(null);
+
+      const blob = await exportCabinetFinancial14dCSV({
+        only_with_debt: filters.only_with_debt,
+        reached_milestone: filters.reached_milestone ? filters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
+        use_materialized: true,
+      });
+
+      // Crear URL temporal y descargar
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cabinet_financial_14d_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(`Error al exportar: ${err.detail || err.message}`);
+      } else {
+        setError('Error desconocido al exportar');
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const filterFields = [
     {
@@ -273,15 +325,89 @@ export default function CobranzaYangoPage() {
   return (
     <div className="px-4 py-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Cobranza Yango - Cabinet Financial 14d</h1>
-        <p className="text-gray-600">
-          Fuente de verdad financiera para CABINET. Ventana de 14 días desde lead_date.
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Cobranza Yango - Cabinet Financial 14d</h1>
+            <p className="text-gray-600">
+              Fuente de verdad financiera para CABINET. Ventana de 14 días desde lead_date.
+            </p>
+          </div>
+          <a
+            href="/docs/RESUMEN_EJECUTIVO_COBRANZA_YANGO.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-4 px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 flex items-center gap-2 text-sm"
+          >
+            <span>📖</span>
+            <span>Ver Resumen Ejecutivo</span>
+          </a>
+        </div>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
           <p className="text-red-800">{error}</p>
+        </div>
+      )}
+
+      {/* Métricas del Gap del Embudo */}
+      {!loadingGap && funnelGap && (
+        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold mb-4 text-yellow-900">
+            ⚠️ Métricas del Embudo: Primer Gap (Leads Sin Identidad ni Pago)
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded shadow">
+              <div className="text-sm text-gray-600 mb-1">Total de Leads</div>
+              <div className="text-2xl font-bold">{funnelGap.total_leads.toLocaleString()}</div>
+            </div>
+            <div className="bg-red-50 p-4 rounded shadow border border-red-200">
+              <div className="text-sm text-red-700 mb-1">Leads Sin Identidad ni Claims</div>
+              <div className="text-2xl font-bold text-red-700">
+                {funnelGap.leads_without_both.toLocaleString()}
+              </div>
+              <div className="text-sm text-red-600 mt-1">
+                ({funnelGap.percentages.without_both}% del total)
+              </div>
+            </div>
+            <div className="bg-green-50 p-4 rounded shadow border border-green-200">
+              <div className="text-sm text-green-700 mb-1">Leads Con Identidad y Claims</div>
+              <div className="text-2xl font-bold text-green-700">
+                {funnelGap.leads_with_claims.toLocaleString()}
+              </div>
+              <div className="text-sm text-green-600 mt-1">
+                ({funnelGap.percentages.with_claims}% del total)
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 text-sm text-gray-700">
+            <p className="mb-2">
+              <strong>Desglose:</strong>
+            </p>
+            <ul className="list-disc list-inside space-y-1 ml-4">
+              <li>
+                <strong>Con identidad:</strong> {funnelGap.leads_with_identity.toLocaleString()} 
+                ({funnelGap.percentages.with_identity}%)
+              </li>
+              <li>
+                <strong>Sin identidad:</strong> {funnelGap.leads_without_identity.toLocaleString()} 
+                ({funnelGap.percentages.without_identity}%)
+              </li>
+              <li>
+                <strong>Con claims:</strong> {funnelGap.leads_with_claims.toLocaleString()} 
+                ({funnelGap.percentages.with_claims}%)
+              </li>
+              <li>
+                <strong>Sin claims:</strong> {funnelGap.leads_without_claims.toLocaleString()} 
+                ({funnelGap.percentages.without_claims}%)
+              </li>
+            </ul>
+            <p className="mt-3 text-xs text-gray-600">
+              💡 <strong>Interpretación:</strong> Los leads "Sin Identidad ni Claims" representan el primer gap del embudo. 
+              Estos son leads que se registraron pero no lograron tener identidad canónica ni generar pago. 
+              Un porcentaje alto puede indicar problemas en el proceso de matching o datos incompletos.
+            </p>
+          </div>
         </div>
       )}
 
@@ -387,18 +513,37 @@ export default function CobranzaYangoPage() {
         </div>
       )}
 
-      <Filters
-        fields={filterFields}
-        values={filters}
-        onChange={(values) => {
-          setFilters(values as typeof filters);
-          setOffset(0);
-        }}
-        onReset={() => {
-          setFilters({ only_with_debt: true, reached_milestone: '' });
-          setOffset(0);
-        }}
-      />
+      <div className="mb-4 flex items-center justify-between">
+        <Filters
+          fields={filterFields}
+          values={filters}
+          onChange={(values) => {
+            setFilters(values as typeof filters);
+            setOffset(0);
+          }}
+          onReset={() => {
+            setFilters({ only_with_debt: true, reached_milestone: '' });
+            setOffset(0);
+          }}
+        />
+        <button
+          onClick={handleExport}
+          disabled={exporting || loading}
+          className="ml-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+        >
+          {exporting ? (
+            <>
+              <span className="animate-spin">⏳</span>
+              <span>Exportando...</span>
+            </>
+          ) : (
+            <>
+              <span>📥</span>
+              <span>Exportar CSV</span>
+            </>
+          )}
+        </button>
+      </div>
 
       <DataTable
         data={data?.data || []}

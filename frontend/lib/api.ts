@@ -52,6 +52,32 @@ async function fetchApi<T>(
   return response.json();
 }
 
+async function fetchApiFormData<T>(
+  path: string,
+  formData: FormData
+): Promise<T> {
+  const url = `${API_BASE_URL}${path}`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+    // No incluir Content-Type header, el browser lo setea automáticamente con boundary
+  });
+
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const errorData = await response.json();
+      detail = errorData.detail || errorData.message;
+    } catch {
+      detail = response.statusText;
+    }
+    throw new ApiError(response.status, response.statusText, detail);
+  }
+
+  return response.json();
+}
+
 // ============================================================================
 // Identity API
 // ============================================================================
@@ -584,6 +610,57 @@ export async function getCabinetFinancial14d(params?: {
   return fetchApi<CabinetFinancialResponse>(`/api/v1/ops/payments/cabinet-financial-14d${query ? `?${query}` : ''}`);
 }
 
+export interface FunnelGapMetrics {
+  total_leads: number;
+  leads_with_identity: number;
+  leads_with_claims: number;
+  leads_without_identity: number;
+  leads_without_claims: number;
+  leads_without_both: number;
+  percentages: {
+    with_identity: number;
+    with_claims: number;
+    without_identity: number;
+    without_claims: number;
+    without_both: number;
+  };
+}
+
+export async function getFunnelGapMetrics(): Promise<FunnelGapMetrics> {
+  return fetchApi<FunnelGapMetrics>('/api/v1/ops/payments/cabinet-financial-14d/funnel-gap');
+}
+
+export async function exportCabinetFinancial14dCSV(params?: {
+  only_with_debt?: boolean;
+  min_debt?: number;
+  reached_milestone?: 'm1' | 'm5' | 'm25';
+  use_materialized?: boolean;
+}): Promise<Blob> {
+  const searchParams = new URLSearchParams();
+  if (params?.only_with_debt !== undefined) searchParams.set('only_with_debt', params.only_with_debt.toString());
+  if (params?.min_debt !== undefined) searchParams.set('min_debt', params.min_debt.toString());
+  if (params?.reached_milestone) searchParams.set('reached_milestone', params.reached_milestone);
+  if (params?.use_materialized !== undefined) searchParams.set('use_materialized', params.use_materialized.toString());
+  
+  const query = searchParams.toString();
+  const url = `${API_BASE_URL}/api/v1/ops/payments/cabinet-financial-14d/export${query ? `?${query}` : ''}`;
+  
+  const response = await fetch(url);
+  
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const errorData = await response.json();
+      detail = errorData.detail || errorData.message;
+    } catch {
+      detail = response.statusText;
+    }
+    throw new ApiError(response.status, response.statusText, detail);
+  }
+  
+  return response.blob();
+}
+
 // ============================================================================
 // Ops API
 // ============================================================================
@@ -666,4 +743,52 @@ export async function getOpsMvHealth(params?: {
   
   const query = searchParams.toString();
   return fetchApi<MvHealthResponse>(`/api/v1/ops/mv-health${query ? `?${query}` : ''}`);
+}
+
+// ============================================================================
+// Cabinet Leads Upload
+// ============================================================================
+
+export interface CabinetLeadsDiagnostics {
+  table_exists: boolean;
+  table_row_count: number;
+  max_lead_date_in_table: string | null;
+  max_event_date_in_lead_events: string | null;
+  max_snapshot_date_in_identity_links: string | null;
+  recommended_start_date: string | null;
+  processed_external_ids_count: number;
+}
+
+export interface CabinetLeadsUploadResponse {
+  status: string;
+  message: string;
+  stats: {
+    total_inserted: number;
+    total_ignored: number;
+    total_rows: number;
+    skipped_by_date?: number;
+    errors_count: number;
+    auto_process: boolean;
+    date_cutoff_used?: string | null;
+  };
+  errors: string[];
+  run_id: number | null;
+}
+
+export async function getCabinetLeadsDiagnostics(): Promise<CabinetLeadsDiagnostics> {
+  return fetchApi<CabinetLeadsDiagnostics>('/api/v1/cabinet-leads/diagnostics');
+}
+
+export async function uploadCabinetLeadsCSV(
+  file: File,
+  autoProcess: boolean = true,
+  skipAlreadyProcessed: boolean = true
+): Promise<CabinetLeadsUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('auto_process', autoProcess.toString());
+  
+  const url = `/api/v1/cabinet-leads/upload-csv?skip_already_processed=${skipAlreadyProcessed}`;
+  
+  return fetchApiFormData<CabinetLeadsUploadResponse>(url, formData);
 }
