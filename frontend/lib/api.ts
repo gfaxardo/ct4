@@ -530,6 +530,7 @@ export async function getCabinetReconciliation(params?: {
 
 import type {
   OpsDriverMatrixResponse,
+  CabinetFinancialResponse,
 } from './types';
 
 export async function getOpsDriverMatrix(params?: {
@@ -559,6 +560,28 @@ export async function getOpsDriverMatrix(params?: {
   
   const query = searchParams.toString();
   return fetchApi<OpsDriverMatrixResponse>(`/api/v1/ops/payments/driver-matrix${query ? `?${query}` : ''}`);
+}
+
+export async function getCabinetFinancial14d(params?: {
+  only_with_debt?: boolean;
+  min_debt?: number;
+  reached_milestone?: 'm1' | 'm5' | 'm25';
+  limit?: number;
+  offset?: number;
+  include_summary?: boolean;
+  use_materialized?: boolean;
+}): Promise<CabinetFinancialResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.only_with_debt !== undefined) searchParams.set('only_with_debt', params.only_with_debt.toString());
+  if (params?.min_debt !== undefined) searchParams.set('min_debt', params.min_debt.toString());
+  if (params?.reached_milestone) searchParams.set('reached_milestone', params.reached_milestone);
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+  if (params?.include_summary !== undefined) searchParams.set('include_summary', params.include_summary.toString());
+  if (params?.use_materialized !== undefined) searchParams.set('use_materialized', params.use_materialized.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<CabinetFinancialResponse>(`/api/v1/ops/payments/cabinet-financial-14d${query ? `?${query}` : ''}`);
 }
 
 // ============================================================================

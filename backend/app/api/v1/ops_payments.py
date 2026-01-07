@@ -16,6 +16,13 @@ from app.schemas.payments import (
     OpsDriverMatrixResponse,
     OpsDriverMatrixMeta
 )
+from app.schemas.cabinet_financial import (
+    CabinetFinancialRow,
+    CabinetFinancialResponse,
+    CabinetFinancialSummary,
+    CabinetFinancialSummaryTotal,
+    CabinetFinancialMeta
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -36,7 +43,7 @@ def get_driver_matrix(
     origin_tag: Optional[str] = Query(None, description="Filtra por origin_tag: 'cabinet', 'fleet_migration', 'unknown' o 'All'"),
     funnel_status: Optional[str] = Query(None, description="Filtra por funnel_status: 'registered_incomplete', 'registered_complete', 'connected_no_trips', 'reached_m1', 'reached_m5', 'reached_m25'"),
     only_pending: bool = Query(False, description="Si true, solo drivers con al menos 1 milestone pendiente"),
-    limit: int = Query(25, ge=1, le=1000, description="Límite de resultados (máx 1000). Default: 25. La vista es lenta, usa filtros restrictivos para evitar timeout."),
+    limit: int = Query(200, ge=1, le=1000, description="Límite de resultados (máx 1000). Default: 200."),
     offset: int = Query(0, ge=0, description="Offset para paginación"),
     order: OrderByOption = Query(OrderByOption.week_start_desc, description="Ordenamiento")
 ):
@@ -118,21 +125,6 @@ def get_driver_matrix(
                     OR (m25_achieved_flag = true AND COALESCE(m25_yango_payment_status, '') != 'PAID')
                 )
             """)
-        
-        # Si no hay filtros, agregar filtros por defecto MUY restrictivos para evitar timeout
-        # La vista es extremadamente lenta y necesita filtros agresivos
-        if not where_conditions:
-            where_conditions.append("origin_tag = 'cabinet'")
-            params["origin_tag_default"] = 'cabinet'
-            # Agregar filtro de fecha MUY reciente (última semana) para reducir dataset al mínimo
-            from datetime import timedelta
-            one_week_ago = date.today() - timedelta(days=7)
-            where_conditions.append("week_start >= :week_start_from_default")
-            params["week_start_from_default"] = one_week_ago
-            # Reducir límite por defecto si no hay filtros
-            if limit > 25:
-                limit = 25
-            logger.info(f"Sin filtros especificados, aplicando filtros por defecto MUY restrictivos: origin_tag='cabinet', week_start>={one_week_ago}, limit={limit}")
         
         where_clause = ""
         if where_conditions:
@@ -296,5 +288,251 @@ def get_driver_matrix(
         raise HTTPException(
             status_code=500,
             detail="internal_server_error"
+        )
+
+
+@router.get("/cabinet-financial-14d", response_model=CabinetFinancialResponse)
+def get_cabinet_financial_14d(
+    db: Session = Depends(get_db),
+    only_with_debt: bool = Query(False, description="Si true, solo drivers con deuda pendiente (amount_due_yango > 0)"),
+    min_debt: Optional[float] = Query(None, ge=0, description="Filtra por deuda mínima (amount_due_yango >= min_debt)"),
+    reached_milestone: Optional[str] = Query(None, description="Filtra por milestone alcanzado: 'm1', 'm5', 'm25'"),
+    limit: int = Query(200, ge=1, le=1000, description="Límite de resultados (máx 1000). Default: 200."),
+    offset: int = Query(0, ge=0, description="Offset para paginación"),
+    include_summary: bool = Query(True, description="Incluir resumen ejecutivo en la respuesta"),
+    use_materialized: bool = Query(True, description="Usar vista materializada para mejor rendimiento")
+):
+    """
+    Obtiene la fuente de verdad financiera para CABINET (ventana de 14 días).
+    
+    Esta vista permite determinar con exactitud qué conductores generan pago de Yango
+    y detectar deudas por milestones no pagados.
+    
+    Filtros:
+    - only_with_debt: Solo drivers con deuda pendiente (amount_due_yango > 0)
+    - min_debt: Filtra por deuda mínima
+    - reached_milestone: Filtra por milestone alcanzado ('m1', 'm5', 'm25')
+    - limit/offset: Paginación
+    - include_summary: Incluir resumen ejecutivo
+    - use_materialized: Usar vista materializada (mejor rendimiento, datos pueden estar desactualizados)
+    
+    Respuesta incluye:
+    - meta: Metadatos de paginación
+    - summary: Resumen ejecutivo (total esperado, pagado, deuda, porcentaje de cobranza)
+    - data: Lista de drivers con información financiera
+    
+    Ejemplo curl:
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/ops/payments/cabinet-financial-14d?only_with_debt=true&limit=50"
+    ```
+    """
+    try:
+        # Seleccionar vista (materializada o normal)
+        view_name = "ops.mv_cabinet_financial_14d" if use_materialized else "ops.v_cabinet_financial_14d"
+        
+        # Construir WHERE dinámico
+        where_conditions = []
+        params = {}
+        
+        if only_with_debt:
+            where_conditions.append("amount_due_yango > 0")
+        
+        if min_debt is not None:
+            where_conditions.append("amount_due_yango >= :min_debt")
+            params["min_debt"] = min_debt
+        
+        if reached_milestone:
+            milestone_lower = reached_milestone.lower()
+            if milestone_lower == 'm1':
+                # M1: alcanzó M1 pero NO alcanzó M5 (solo M1)
+                where_conditions.append("reached_m1_14d = true AND reached_m5_14d = false")
+            elif milestone_lower == 'm5':
+                # M5: alcanzó M5 pero NO alcanzó M25 (solo M5, o M1+M5)
+                where_conditions.append("reached_m5_14d = true AND reached_m25_14d = false")
+            elif milestone_lower == 'm25':
+                # M25: alcanzó M25 (puede haber alcanzado M1 y M5 también)
+                where_conditions.append("reached_m25_14d = true")
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"reached_milestone debe ser 'm1', 'm5' o 'm25', recibido: {reached_milestone}"
+                )
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Query principal
+        query_sql = f"""
+            SELECT 
+                driver_id,
+                driver_name,
+                lead_date,
+                iso_week,
+                connected_flag,
+                connected_date,
+                total_trips_14d,
+                reached_m1_14d,
+                reached_m5_14d,
+                reached_m25_14d,
+                expected_amount_m1,
+                expected_amount_m5,
+                expected_amount_m25,
+                expected_total_yango,
+                claim_m1_exists,
+                claim_m1_paid,
+                claim_m5_exists,
+                claim_m5_paid,
+                claim_m25_exists,
+                claim_m25_paid,
+                paid_amount_m1,
+                paid_amount_m5,
+                paid_amount_m25,
+                total_paid_yango,
+                amount_due_yango
+            FROM {view_name}
+            WHERE {where_clause}
+            ORDER BY lead_date DESC NULLS LAST, driver_id
+            LIMIT :limit OFFSET :offset
+        """
+        
+        params["limit"] = limit
+        params["offset"] = offset
+        
+        # Ejecutar query
+        result = db.execute(text(query_sql), params)
+        rows = result.fetchall()
+        
+        # Convertir a schemas
+        data = [CabinetFinancialRow(
+            driver_id=row.driver_id,
+            driver_name=getattr(row, 'driver_name', None),
+            lead_date=row.lead_date,
+            iso_week=getattr(row, 'iso_week', None),
+            connected_flag=row.connected_flag,
+            connected_date=row.connected_date,
+            total_trips_14d=row.total_trips_14d,
+            reached_m1_14d=row.reached_m1_14d,
+            reached_m5_14d=row.reached_m5_14d,
+            reached_m25_14d=row.reached_m25_14d,
+            expected_amount_m1=row.expected_amount_m1,
+            expected_amount_m5=row.expected_amount_m5,
+            expected_amount_m25=row.expected_amount_m25,
+            expected_total_yango=row.expected_total_yango,
+            claim_m1_exists=row.claim_m1_exists,
+            claim_m1_paid=row.claim_m1_paid,
+            claim_m5_exists=row.claim_m5_exists,
+            claim_m5_paid=row.claim_m5_paid,
+            claim_m25_exists=row.claim_m25_exists,
+            claim_m25_paid=row.claim_m25_paid,
+            paid_amount_m1=row.paid_amount_m1,
+            paid_amount_m5=row.paid_amount_m5,
+            paid_amount_m25=row.paid_amount_m25,
+            total_paid_yango=row.total_paid_yango,
+            amount_due_yango=row.amount_due_yango
+        ) for row in rows]
+        
+        # COUNT para total
+        count_sql = f"SELECT COUNT(*) FROM {view_name} WHERE {where_clause}"
+        count_result = db.execute(text(count_sql), {k: v for k, v in params.items() if k not in ['limit', 'offset']})
+        total = count_result.scalar() or 0
+        
+        # Resumen ejecutivo (si se solicita)
+        summary = None
+        summary_total = None
+        if include_summary:
+            # Resumen con filtros aplicados
+            summary_sql = f"""
+                SELECT 
+                    COUNT(*) AS total_drivers,
+                    COUNT(CASE WHEN expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
+                    COUNT(CASE WHEN amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
+                    COALESCE(SUM(expected_total_yango), 0) AS total_expected_yango,
+                    COALESCE(SUM(total_paid_yango), 0) AS total_paid_yango,
+                    COALESCE(SUM(amount_due_yango), 0) AS total_debt_yango,
+                    CASE 
+                        WHEN SUM(expected_total_yango) > 0 
+                        THEN ROUND((SUM(total_paid_yango) / SUM(expected_total_yango)) * 100, 2)
+                        ELSE 0
+                    END AS collection_percentage,
+                    COUNT(CASE WHEN reached_m1_14d = true THEN 1 END) AS drivers_m1,
+                    COUNT(CASE WHEN reached_m5_14d = true THEN 1 END) AS drivers_m5,
+                    COUNT(CASE WHEN reached_m25_14d = true THEN 1 END) AS drivers_m25
+                FROM {view_name}
+                WHERE {where_clause}
+            """
+            summary_result = db.execute(text(summary_sql), {k: v for k, v in params.items() if k not in ['limit', 'offset']})
+            summary_row = summary_result.fetchone()
+            
+            if summary_row:
+                summary = CabinetFinancialSummary(
+                    total_drivers=summary_row.total_drivers,
+                    drivers_with_expected=summary_row.drivers_with_expected,
+                    drivers_with_debt=summary_row.drivers_with_debt,
+                    total_expected_yango=summary_row.total_expected_yango,
+                    total_paid_yango=summary_row.total_paid_yango,
+                    total_debt_yango=summary_row.total_debt_yango,
+                    collection_percentage=float(summary_row.collection_percentage),
+                    drivers_m1=summary_row.drivers_m1,
+                    drivers_m5=summary_row.drivers_m5,
+                    drivers_m25=summary_row.drivers_m25
+                )
+            
+            # Resumen total sin filtros (siempre calcular para contexto)
+            summary_total_sql = f"""
+                SELECT 
+                    COUNT(*) AS total_drivers,
+                    COUNT(CASE WHEN expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
+                    COUNT(CASE WHEN amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
+                    COALESCE(SUM(expected_total_yango), 0) AS total_expected_yango,
+                    COALESCE(SUM(total_paid_yango), 0) AS total_paid_yango,
+                    COALESCE(SUM(amount_due_yango), 0) AS total_debt_yango,
+                    CASE 
+                        WHEN SUM(expected_total_yango) > 0 
+                        THEN ROUND((SUM(total_paid_yango) / SUM(expected_total_yango)) * 100, 2)
+                        ELSE 0
+                    END AS collection_percentage,
+                    COUNT(CASE WHEN reached_m1_14d = true THEN 1 END) AS drivers_m1,
+                    COUNT(CASE WHEN reached_m5_14d = true THEN 1 END) AS drivers_m5,
+                    COUNT(CASE WHEN reached_m25_14d = true THEN 1 END) AS drivers_m25
+                FROM {view_name}
+            """
+            summary_total_result = db.execute(text(summary_total_sql))
+            summary_total_row = summary_total_result.fetchone()
+            
+            if summary_total_row:
+                summary_total = CabinetFinancialSummaryTotal(
+                    total_drivers=summary_total_row.total_drivers,
+                    drivers_with_expected=summary_total_row.drivers_with_expected,
+                    drivers_with_debt=summary_total_row.drivers_with_debt,
+                    total_expected_yango=summary_total_row.total_expected_yango,
+                    total_paid_yango=summary_total_row.total_paid_yango,
+                    total_debt_yango=summary_total_row.total_debt_yango,
+                    collection_percentage=float(summary_total_row.collection_percentage),
+                    drivers_m1=summary_total_row.drivers_m1,
+                    drivers_m5=summary_total_row.drivers_m5,
+                    drivers_m25=summary_total_row.drivers_m25
+                )
+        
+        # Metadatos
+        meta = CabinetFinancialMeta(
+            limit=limit,
+            offset=offset,
+            returned=len(data),
+            total=total
+        )
+        
+        return CabinetFinancialResponse(
+            meta=meta,
+            summary=summary,
+            summary_total=summary_total,
+            data=data
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en get_cabinet_financial_14d: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno: {str(e)}"
         )
 

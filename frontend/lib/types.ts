@@ -728,6 +728,75 @@ export interface DriverMatrixResponse {
   totals: DriverMatrixTotals;
 }
 
+// Cabinet Financial 14d Types
+export interface CabinetFinancialRow {
+  driver_id: string;
+  driver_name: string | null;
+  lead_date: string | null;
+  iso_week: string | null;
+  connected_flag: boolean;
+  connected_date: string | null;
+  total_trips_14d: number;
+  reached_m1_14d: boolean;
+  reached_m5_14d: boolean;
+  reached_m25_14d: boolean;
+  expected_amount_m1: number;
+  expected_amount_m5: number;
+  expected_amount_m25: number;
+  expected_total_yango: number;
+  claim_m1_exists: boolean;
+  claim_m1_paid: boolean;
+  claim_m5_exists: boolean;
+  claim_m5_paid: boolean;
+  claim_m25_exists: boolean;
+  claim_m25_paid: boolean;
+  paid_amount_m1: number;
+  paid_amount_m5: number;
+  paid_amount_m25: number;
+  total_paid_yango: number;
+  amount_due_yango: number;
+}
+
+export interface CabinetFinancialSummary {
+  total_drivers: number;
+  drivers_with_expected: number;
+  drivers_with_debt: number;
+  total_expected_yango: number;
+  total_paid_yango: number;
+  total_debt_yango: number;
+  collection_percentage: number;
+  drivers_m1: number;
+  drivers_m5: number;
+  drivers_m25: number;
+}
+
+export interface CabinetFinancialSummaryTotal {
+  total_drivers: number;
+  drivers_with_expected: number;
+  drivers_with_debt: number;
+  total_expected_yango: number;
+  total_paid_yango: number;
+  total_debt_yango: number;
+  collection_percentage: number;
+  drivers_m1: number;
+  drivers_m5: number;
+  drivers_m25: number;
+}
+
+export interface CabinetFinancialMeta {
+  limit: number;
+  offset: number;
+  returned: number;
+  total: number;
+}
+
+export interface CabinetFinancialResponse {
+  meta: CabinetFinancialMeta;
+  summary: CabinetFinancialSummary | null;
+  summary_total: CabinetFinancialSummaryTotal | null;
+  data: CabinetFinancialRow[];
+}
+
 export interface YangoDriverDetailResponse {
   status: string;
   driver_id: string;
