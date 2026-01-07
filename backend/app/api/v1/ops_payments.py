@@ -328,7 +328,39 @@ def get_cabinet_financial_14d(
     """
     try:
         # Seleccionar vista (materializada o normal)
-        view_name = "ops.mv_cabinet_financial_14d" if use_materialized else "ops.v_cabinet_financial_14d"
+        # Verificar si la vista materializada existe
+        if use_materialized:
+            check_mv = db.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_matviews 
+                    WHERE schemaname = 'ops' 
+                    AND matviewname = 'mv_cabinet_financial_14d'
+                )
+            """))
+            mv_exists = check_mv.scalar()
+            view_name = "ops.mv_cabinet_financial_14d" if mv_exists else "ops.v_cabinet_financial_14d"
+            
+            # #region agent log
+            import json
+            from datetime import datetime
+            try:
+                log_entry = {
+                    "id": f"log_{int(datetime.now().timestamp() * 1000)}",
+                    "timestamp": int(datetime.now().timestamp() * 1000),
+                    "location": "ops_payments.py:get_cabinet_financial_14d",
+                    "message": "VIEW_SELECTED",
+                    "data": {"view_name": view_name, "mv_exists": mv_exists, "use_materialized": use_materialized},
+                    "sessionId": "debug-session",
+                    "runId": "api-request",
+                    "hypothesisId": "H4"
+                }
+                with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+            except Exception:
+                pass
+            # #endregion
+        else:
+            view_name = "ops.v_cabinet_financial_14d"
         
         # Construir WHERE dinámico
         where_conditions = []
@@ -397,9 +429,52 @@ def get_cabinet_financial_14d(
         params["limit"] = limit
         params["offset"] = offset
         
+        # #region agent log
+        import json
+        from datetime import datetime
+        try:
+            # Verificar max lead_date en la vista
+            max_date_query = f"SELECT MAX(lead_date) AS max_date FROM {view_name}"
+            max_date_result = db.execute(text(max_date_query))
+            max_date = max_date_result.scalar()
+            
+            log_entry = {
+                "id": f"log_{int(datetime.now().timestamp() * 1000)}",
+                "timestamp": int(datetime.now().timestamp() * 1000),
+                "location": "ops_payments.py:get_cabinet_financial_14d",
+                "message": "BEFORE_QUERY",
+                "data": {"view_name": view_name, "max_lead_date": str(max_date) if max_date else None},
+                "sessionId": "debug-session",
+                "runId": "api-request",
+                "hypothesisId": "H4"
+            }
+            with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry) + "\n")
+        except Exception:
+            pass
+        # #endregion
+        
         # Ejecutar query
         result = db.execute(text(query_sql), params)
         rows = result.fetchall()
+        
+        # #region agent log
+        try:
+            log_entry = {
+                "id": f"log_{int(datetime.now().timestamp() * 1000)}",
+                "timestamp": int(datetime.now().timestamp() * 1000),
+                "location": "ops_payments.py:get_cabinet_financial_14d",
+                "message": "AFTER_QUERY",
+                "data": {"rows_returned": len(rows), "view_name": view_name},
+                "sessionId": "debug-session",
+                "runId": "api-request",
+                "hypothesisId": "H4"
+            }
+            with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry) + "\n")
+        except Exception:
+            pass
+        # #endregion
         
         # Convertir a schemas
         data = [CabinetFinancialRow(

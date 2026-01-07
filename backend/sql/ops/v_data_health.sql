@@ -45,7 +45,8 @@
 -- para business_date e ingestion_ts.
 -- ============================================================================
 
-CREATE OR REPLACE VIEW ops.v_data_sources_catalog AS
+DROP VIEW IF EXISTS ops.v_data_sources_catalog CASCADE;
+CREATE VIEW ops.v_data_sources_catalog AS
 SELECT * FROM (VALUES
     -- ACTIVITY: Fuentes de actividad operativa
     ('summary_daily', 'public', 'summary_daily', 'activity',
@@ -73,6 +74,16 @@ SELECT * FROM (VALUES
      'registration_date',
      'created_at::timestamptz'),
     
+    -- AGREGADO: lead_events (tabla crítica para métricas de conversión)
+    ('lead_events', 'observational', 'lead_events', 'ct_ingest',
+     'event_date',
+     'created_at::timestamptz'),
+    
+    -- AGREGADO: ingestion_runs (monitorear ejecuciones de ingesta)
+    ('ingestion_runs', 'ops', 'ingestion_runs', 'master',
+     'COALESCE(scope_date_to, completed_at::date)',
+     'completed_at::timestamptz'),
+    
     -- COMENTADO: module_ct_cabinet_migrations no existe en esta base de datos
     -- ('module_ct_cabinet_migrations', 'public', 'module_ct_cabinet_migrations', 'ct_ingest',
     --  'COALESCE(migration_date, created_at::date)',
@@ -82,10 +93,10 @@ SELECT * FROM (VALUES
      'created_at::date',
      'COALESCE(created_at, updated_at)::timestamptz'),
     
-    -- COMENTADO: public.module_ct_cabinet_payments existe pero tiene estructura diferente (no tiene pay_date)
-    -- ('module_ct_cabinet_payments', 'public', 'module_ct_cabinet_payments', 'ct_ingest',
-    --  'COALESCE(pay_date, payment_date, date, created_at::date)',
-    --  'COALESCE(snapshot_at, created_at, updated_at)::timestamptz'),
+    -- CORREGIDO: public.module_ct_cabinet_payments usa columna 'date' (no 'pay_date')
+    ('module_ct_cabinet_payments', 'public', 'module_ct_cabinet_payments', 'ct_ingest',
+     'COALESCE(date, created_at::date)',
+     'COALESCE(created_at, updated_at)::timestamptz'),
     
     -- MASTER: Tablas maestras (siempre GREEN salvo si no hay datos)
     ('drivers', 'public', 'drivers', 'master',
@@ -124,7 +135,8 @@ COMMENT ON COLUMN ops.v_data_sources_catalog.ingestion_ts_expr IS
 -- 1 fila por fuente con métricas de frescura
 -- ============================================================================
 
-CREATE OR REPLACE VIEW ops.v_data_freshness_status AS
+DROP VIEW IF EXISTS ops.v_data_freshness_status CASCADE;
+CREATE VIEW ops.v_data_freshness_status AS
 WITH source_summary_daily AS (
     SELECT 
         'summary_daily' AS source_name,
@@ -314,30 +326,60 @@ source_module_ct_scout_drivers AS (
     FROM public.module_ct_scout_drivers
     WHERE created_at IS NOT NULL
 ),
--- COMENTADO: public.module_ct_cabinet_payments existe pero tiene estructura diferente (no tiene pay_date)
--- source_module_ct_cabinet_payments AS (
---     -- NOTA: Si la tabla no existe, esta CTE retornará 0 filas
---     SELECT 
---         'module_ct_cabinet_payments' AS source_name,
---         MAX(COALESCE(pay_date, payment_date, date, created_at::date)) AS max_business_date,
---         CURRENT_DATE - MAX(COALESCE(pay_date, payment_date, date, created_at::date)) AS business_days_lag,
---         MAX(COALESCE(snapshot_at, created_at, updated_at))::timestamptz AS max_ingestion_ts,
---         NOW() - MAX(COALESCE(snapshot_at, created_at, updated_at))::timestamptz AS ingestion_lag_interval,
---         COUNT(*) FILTER (
---             WHERE COALESCE(pay_date, payment_date, date, created_at::date) = CURRENT_DATE - INTERVAL '1 day'
---         ) AS rows_business_yesterday,
---         COUNT(*) FILTER (
---             WHERE COALESCE(pay_date, payment_date, date, created_at::date) = CURRENT_DATE
---         ) AS rows_business_today,
---         COUNT(*) FILTER (
---             WHERE COALESCE(snapshot_at, created_at, updated_at)::date = CURRENT_DATE - INTERVAL '1 day'
---         ) AS rows_ingested_yesterday,
---         COUNT(*) FILTER (
---             WHERE COALESCE(snapshot_at, created_at, updated_at)::date = CURRENT_DATE
---         ) AS rows_ingested_today
---     FROM public.module_ct_cabinet_payments
---     WHERE (pay_date IS NOT NULL OR payment_date IS NOT NULL OR date IS NOT NULL OR created_at IS NOT NULL)
--- ),
+source_lead_events AS (
+    -- AGREGADO: Monitorear lead_events (tabla crítica para métricas de conversión)
+    SELECT 
+        'lead_events' AS source_name,
+        MAX(event_date) AS max_business_date,
+        CURRENT_DATE - MAX(event_date) AS business_days_lag,
+        MAX(created_at)::timestamptz AS max_ingestion_ts,
+        NOW() - MAX(created_at)::timestamptz AS ingestion_lag_interval,
+        COUNT(*) FILTER (WHERE event_date = CURRENT_DATE - INTERVAL '1 day') AS rows_business_yesterday,
+        COUNT(*) FILTER (WHERE event_date = CURRENT_DATE) AS rows_business_today,
+        COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE - INTERVAL '1 day') AS rows_ingested_yesterday,
+        COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) AS rows_ingested_today
+    FROM observational.lead_events
+    WHERE event_date IS NOT NULL
+),
+source_ingestion_runs AS (
+    -- AGREGADO: Monitorear ingestion_runs (verificar que se ejecuten ingestas)
+    SELECT 
+        'ingestion_runs' AS source_name,
+        MAX(COALESCE(scope_date_to, completed_at::date)) AS max_business_date,
+        CURRENT_DATE - MAX(COALESCE(scope_date_to, completed_at::date)) AS business_days_lag,
+        MAX(completed_at)::timestamptz AS max_ingestion_ts,
+        NOW() - MAX(completed_at)::timestamptz AS ingestion_lag_interval,
+        COUNT(*) FILTER (WHERE COALESCE(scope_date_to, completed_at::date) = CURRENT_DATE - INTERVAL '1 day' AND status = 'COMPLETED') AS rows_business_yesterday,
+        COUNT(*) FILTER (WHERE COALESCE(scope_date_to, completed_at::date) = CURRENT_DATE AND status = 'COMPLETED') AS rows_business_today,
+        COUNT(*) FILTER (WHERE completed_at::date = CURRENT_DATE - INTERVAL '1 day' AND status = 'COMPLETED') AS rows_ingested_yesterday,
+        COUNT(*) FILTER (WHERE completed_at::date = CURRENT_DATE AND status = 'COMPLETED') AS rows_ingested_today
+    FROM ops.ingestion_runs
+    WHERE completed_at IS NOT NULL
+        AND status = 'COMPLETED'
+),
+-- CORREGIDO: public.module_ct_cabinet_payments usa columna 'date' (no 'pay_date')
+source_module_ct_cabinet_payments AS (
+    SELECT 
+        'module_ct_cabinet_payments' AS source_name,
+        MAX(COALESCE(date, created_at::date)) AS max_business_date,
+        CURRENT_DATE - MAX(COALESCE(date, created_at::date)) AS business_days_lag,
+        MAX(COALESCE(created_at, updated_at))::timestamptz AS max_ingestion_ts,
+        NOW() - MAX(COALESCE(created_at, updated_at))::timestamptz AS ingestion_lag_interval,
+        COUNT(*) FILTER (
+            WHERE COALESCE(date, created_at::date) = CURRENT_DATE - INTERVAL '1 day'
+        ) AS rows_business_yesterday,
+        COUNT(*) FILTER (
+            WHERE COALESCE(date, created_at::date) = CURRENT_DATE
+        ) AS rows_business_today,
+        COUNT(*) FILTER (
+            WHERE COALESCE(created_at, updated_at)::date = CURRENT_DATE - INTERVAL '1 day'
+        ) AS rows_ingested_yesterday,
+        COUNT(*) FILTER (
+            WHERE COALESCE(created_at, updated_at)::date = CURRENT_DATE
+        ) AS rows_ingested_today
+    FROM public.module_ct_cabinet_payments
+    WHERE (date IS NOT NULL OR created_at IS NOT NULL)
+),
 source_drivers AS (
     SELECT 
         'drivers' AS source_name,
@@ -399,8 +441,12 @@ SELECT * FROM source_module_ct_scouting_daily
 -- SELECT * FROM source_module_ct_cabinet_migrations  -- COMENTADO: tabla no existe
 UNION ALL
 SELECT * FROM source_module_ct_scout_drivers
--- UNION ALL
--- SELECT * FROM source_module_ct_cabinet_payments  -- COMENTADO: estructura diferente
+UNION ALL
+SELECT * FROM source_module_ct_cabinet_payments
+UNION ALL
+SELECT * FROM source_lead_events
+UNION ALL
+SELECT * FROM source_ingestion_runs
 UNION ALL
 SELECT * FROM source_drivers
 UNION ALL
@@ -416,7 +462,8 @@ COMMENT ON VIEW ops.v_data_freshness_status IS
 -- 1 fila por (source_name, metric_type, metric_date) con rows_count
 -- ============================================================================
 
-CREATE OR REPLACE VIEW ops.v_data_ingestion_daily AS
+DROP VIEW IF EXISTS ops.v_data_ingestion_daily CASCADE;
+CREATE VIEW ops.v_data_ingestion_daily AS
 WITH source_summary_daily_daily AS (
     SELECT 
         'summary_daily' AS source_name,
@@ -591,27 +638,26 @@ source_module_ct_scout_drivers_daily AS (
     WHERE COALESCE(created_at, updated_at)::date >= CURRENT_DATE - INTERVAL '90 days'
     GROUP BY COALESCE(created_at, updated_at)::date
 ),
--- COMENTADO: public.module_ct_cabinet_payments existe pero tiene estructura diferente (no tiene pay_date)
--- source_module_ct_cabinet_payments_daily AS (
---     -- NOTA: Si la tabla no existe, comentar esta CTE y su línea en UNION ALL
---     SELECT 
---         'module_ct_cabinet_payments' AS source_name,
---         'business' AS metric_type,
---         COALESCE(pay_date, payment_date, date, created_at::date) AS metric_date,
---         COUNT(*) AS rows_count
---     FROM public.module_ct_cabinet_payments
---     WHERE COALESCE(pay_date, payment_date, date, created_at::date) >= CURRENT_DATE - INTERVAL '90 days'
---     GROUP BY COALESCE(pay_date, payment_date, date, created_at::date)
---     UNION ALL
---     SELECT 
---         'module_ct_cabinet_payments' AS source_name,
---         'ingestion' AS metric_type,
---         COALESCE(snapshot_at, created_at, updated_at)::date AS metric_date,
---         COUNT(*) AS rows_count
---     FROM public.module_ct_cabinet_payments
---     WHERE COALESCE(snapshot_at, created_at, updated_at)::date >= CURRENT_DATE - INTERVAL '90 days'
---     GROUP BY COALESCE(snapshot_at, created_at, updated_at)::date
--- ),
+-- CORREGIDO: public.module_ct_cabinet_payments usa columna 'date' (no 'pay_date')
+source_module_ct_cabinet_payments_daily AS (
+    SELECT 
+        'module_ct_cabinet_payments' AS source_name,
+        'business' AS metric_type,
+        COALESCE(date, created_at::date) AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.module_ct_cabinet_payments
+    WHERE COALESCE(date, created_at::date) >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY COALESCE(date, created_at::date)
+    UNION ALL
+    SELECT 
+        'module_ct_cabinet_payments' AS source_name,
+        'ingestion' AS metric_type,
+        COALESCE(created_at, updated_at)::date AS metric_date,
+        COUNT(*) AS rows_count
+    FROM public.module_ct_cabinet_payments
+    WHERE COALESCE(created_at, updated_at)::date >= CURRENT_DATE - INTERVAL '90 days'
+    GROUP BY COALESCE(created_at, updated_at)::date
+),
 source_drivers_daily AS (
     SELECT 
         'drivers' AS source_name,
@@ -669,8 +715,8 @@ SELECT * FROM source_module_ct_scouting_daily_daily
 -- SELECT * FROM source_module_ct_cabinet_migrations_daily  -- COMENTADO: tabla no existe
 UNION ALL
 SELECT * FROM source_module_ct_scout_drivers_daily
--- UNION ALL
--- SELECT * FROM source_module_ct_cabinet_payments_daily  -- COMENTADO: estructura diferente
+UNION ALL
+SELECT * FROM source_module_ct_cabinet_payments_daily
 UNION ALL
 SELECT * FROM source_drivers_daily
 UNION ALL
@@ -686,7 +732,8 @@ COMMENT ON VIEW ops.v_data_ingestion_daily IS
 -- Agrega source_type y health_status calculado según reglas por tipo
 -- ============================================================================
 
-CREATE OR REPLACE VIEW ops.v_data_health_status AS
+DROP VIEW IF EXISTS ops.v_data_health_status CASCADE;
+CREATE VIEW ops.v_data_health_status AS
 SELECT 
     f.source_name,
     c.source_type,

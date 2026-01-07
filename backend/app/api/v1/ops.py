@@ -961,3 +961,45 @@ def get_source_registry(
             status_code=500,
             detail="database_error"
         )
+
+
+@router.post("/yango-payments/ingest")
+def ingest_yango_payments(db: Session = Depends(get_db)):
+    """
+    Ejecuta la ingesta de pagos Yango desde module_ct_cabinet_payments al ledger.
+    
+    Esta función ejecuta ops.ingest_yango_payments_snapshot() que:
+    - Lee desde ops.v_yango_payments_raw_current_aliases (que a su vez lee desde public.module_ct_cabinet_payments)
+    - Inserta nuevos registros en ops.yango_payment_ledger de forma idempotente
+    - Actualiza registros existentes cuando aparece información de identidad (driver_id/person_key)
+    
+    Ejemplo curl:
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/ops/yango-payments/ingest"
+    ```
+    
+    Returns:
+        Dict con status y rows_inserted (número de filas nuevas insertadas)
+    
+    Raises:
+        500: Si ocurre un error de base de datos
+    """
+    try:
+        result = db.execute(text("SELECT ops.ingest_yango_payments_snapshot()"))
+        rows_inserted = result.scalar() or 0
+        db.commit()
+        
+        logger.info(f"Yango payments ingest completed: {rows_inserted} rows inserted")
+        
+        return {
+            "status": "success",
+            "rows_inserted": rows_inserted,
+            "message": f"Se insertaron {rows_inserted} nuevos registros en el ledger"
+        }
+    except Exception as e:
+        db.rollback()
+        logger.exception("ingest_yango_payments failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error ejecutando ingesta de pagos Yango: {str(e)}"
+        )

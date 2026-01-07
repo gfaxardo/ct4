@@ -103,30 +103,41 @@ function DriverMatrixPageContent() {
         setLoading(true);
         setError(null);
 
-        const response = await getOpsDriverMatrix({
-          origin_tag: filters.origin_tag || undefined,
-          funnel_status: filters.funnel_status || undefined,
-          only_pending: filters.only_pending || undefined,
+        // Solo enviar filtros al backend si tienen valor (no enviar filtros vacíos que puedan ser restrictivos)
+        const backendFilters: any = {
           order: filters.order,
           limit,
           offset,
-        });
+        };
+        
+        // Solo agregar filtros opcionales si tienen valor
+        if (filters.origin_tag) {
+          backendFilters.origin_tag = filters.origin_tag;
+        }
+        if (filters.funnel_status) {
+          backendFilters.funnel_status = filters.funnel_status;
+        }
+        if (filters.only_pending) {
+          backendFilters.only_pending = filters.only_pending;
+        }
 
-        setData(response.data);
-        setMeta(response.meta);
+        const response = await getOpsDriverMatrix(backendFilters);
 
-        // Filtrar client-side por search si hay
+        // Aplicar filtro de búsqueda client-side después de recibir los datos
+        let filteredData = response.data;
         if (searchDebounced) {
-          const filtered = response.data.filter((row) => {
-            const searchLower = searchDebounced.toLowerCase();
+          const searchLower = searchDebounced.toLowerCase();
+          filteredData = response.data.filter((row) => {
             return (
               row.driver_name?.toLowerCase().includes(searchLower) ||
               row.driver_id?.toLowerCase().includes(searchLower) ||
               row.person_key?.toLowerCase().includes(searchLower)
             );
           });
-          setData(filtered);
         }
+
+        setData(filteredData);
+        setMeta(response.meta);
       } catch (err) {
         if (err instanceof ApiError) {
           if (err.status === 400) {
@@ -145,7 +156,7 @@ function DriverMatrixPageContent() {
     }
 
     loadData();
-  }, [filters.origin_tag, filters.only_pending, filters.order, limit, offset, searchDebounced]);
+  }, [filters.origin_tag, filters.funnel_status, filters.only_pending, filters.order, limit, offset, searchDebounced]);
 
   const handleFilterChange = (key: keyof typeof filters, value: any) => {
     const newFilters = { ...filters, [key]: value };

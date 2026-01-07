@@ -9,7 +9,7 @@ from app.db import get_db, SessionLocal
 from app.models.canon import IdentityRegistry, IdentityLink, IdentityUnmatched, ConfidenceLevel, UnmatchedStatus
 from app.models.ops import IngestionRun, JobType, RunStatus
 from app.models.observational import ScoutingMatchCandidate
-from app.schemas.identity import IdentityRegistry as IdentityRegistrySchema, IdentityLink as IdentityLinkSchema, IdentityUnmatched as IdentityUnmatchedSchema, PersonDetail, UnmatchedResolveRequest, StatsResponse, RunReportResponse, MetricsScope, MetricsResponse
+from app.schemas.identity import IdentityRegistry as IdentityRegistrySchema, IdentityLink as IdentityLinkSchema, IdentityUnmatched as IdentityUnmatchedSchema, PersonDetail, UnmatchedResolveRequest, StatsResponse, RunReportResponse, MetricsScope, MetricsResponse, PersonsBySourceResponse
 from app.schemas.ingestion import IngestionRun as IngestionRunSchema
 from app.schemas.identity_runs import IdentityRunsResponse, IdentityRunRow, IngestionRunStatus, IngestionJobType
 from app.services.ingestion import IngestionService
@@ -177,6 +177,64 @@ def get_stats(db: Session = Depends(get_db)):
         total_links=total_links,
         drivers_links=drivers_links,
         conversion_rate=conversion_rate
+    )
+
+
+@router.get("/stats/persons-by-source", response_model=PersonsBySourceResponse)
+def get_persons_by_source(db: Session = Depends(get_db)):
+    """
+    Obtiene el desglose de personas identificadas por fuente de datos.
+    Esto ayuda a entender de dónde provienen las personas en el sistema.
+    """
+    total_persons = db.query(IdentityRegistry).count()
+    
+    # Contar links por fuente
+    links_by_source = {}
+    for source in ["module_ct_cabinet_leads", "module_ct_scouting_daily", "drivers"]:
+        count = db.query(IdentityLink).filter(IdentityLink.source_table == source).count()
+        links_by_source[source] = count
+    
+    # Personas que tienen al menos un link de cada fuente
+    persons_with_cabinet_leads = db.query(func.count(func.distinct(IdentityLink.person_key))).filter(
+        IdentityLink.source_table == "module_ct_cabinet_leads"
+    ).scalar() or 0
+    
+    persons_with_scouting_daily = db.query(func.count(func.distinct(IdentityLink.person_key))).filter(
+        IdentityLink.source_table == "module_ct_scouting_daily"
+    ).scalar() or 0
+    
+    persons_with_drivers = db.query(func.count(func.distinct(IdentityLink.person_key))).filter(
+        IdentityLink.source_table == "drivers"
+    ).scalar() or 0
+    
+    # Personas que tienen links de cabinet o scouting (fuentes de leads)
+    persons_with_cabinet_or_scouting = db.query(func.count(func.distinct(IdentityLink.person_key))).filter(
+        IdentityLink.source_table.in_(["module_ct_cabinet_leads", "module_ct_scouting_daily"])
+    ).scalar() or 0
+    
+    # Personas que SOLO tienen links de drivers (sin cabinet ni scouting)
+    # Esto son personas que están en el parque pero no vinieron de leads
+    # Usamos SQL directo para mejor rendimiento
+    persons_with_drivers_only_query = text("""
+        SELECT COUNT(DISTINCT d.person_key)
+        FROM canon.identity_links d
+        WHERE d.source_table = 'drivers'
+        AND d.person_key NOT IN (
+            SELECT DISTINCT person_key 
+            FROM canon.identity_links 
+            WHERE source_table IN ('module_ct_cabinet_leads', 'module_ct_scouting_daily')
+        )
+    """)
+    persons_with_drivers_only = db.execute(persons_with_drivers_only_query).scalar() or 0
+    
+    return PersonsBySourceResponse(
+        total_persons=total_persons,
+        links_by_source=links_by_source,
+        persons_with_cabinet_leads=persons_with_cabinet_leads,
+        persons_with_scouting_daily=persons_with_scouting_daily,
+        persons_with_drivers=persons_with_drivers,
+        persons_only_drivers=persons_with_drivers_only,
+        persons_with_cabinet_or_scouting=persons_with_cabinet_or_scouting
     )
 
 

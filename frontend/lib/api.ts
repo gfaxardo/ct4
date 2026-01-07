@@ -52,6 +52,32 @@ async function fetchApi<T>(
   return response.json();
 }
 
+async function fetchApiFormData<T>(
+  path: string,
+  formData: FormData
+): Promise<T> {
+  const url = `${API_BASE_URL}${path}`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+    // No incluir Content-Type header, el browser lo setea automáticamente con boundary
+  });
+
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const errorData = await response.json();
+      detail = errorData.detail || errorData.message;
+    } catch {
+      detail = response.statusText;
+    }
+    throw new ApiError(response.status, response.statusText, detail);
+  }
+
+  return response.json();
+}
+
 // ============================================================================
 // Identity API
 // ============================================================================
@@ -78,10 +104,15 @@ import type {
   HealthChecksResponse,
   HealthGlobalResponse,
   MvHealthResponse,
+  PersonsBySourceResponse,
 } from './types';
 
 export async function getIdentityStats(): Promise<IdentityStats> {
   return fetchApi<IdentityStats>('/api/v1/identity/stats');
+}
+
+export async function getPersonsBySource(): Promise<PersonsBySourceResponse> {
+  return fetchApi<PersonsBySourceResponse>('/api/v1/identity/stats/persons-by-source');
 }
 
 export async function getPersons(params?: {
@@ -666,4 +697,36 @@ export async function getOpsMvHealth(params?: {
   
   const query = searchParams.toString();
   return fetchApi<MvHealthResponse>(`/api/v1/ops/mv-health${query ? `?${query}` : ''}`);
+}
+
+// ============================================================================
+// Cabinet Leads Upload
+// ============================================================================
+
+export interface CabinetLeadsUploadResponse {
+  status: string;
+  message: string;
+  stats: {
+    total_inserted: number;
+    total_ignored: number;
+    total_rows: number;
+    errors_count: number;
+    auto_process: boolean;
+  };
+  errors: string[];
+  run_id: number | null;
+}
+
+export async function uploadCabinetLeadsCSV(
+  file: File,
+  autoProcess: boolean = true
+): Promise<CabinetLeadsUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('auto_process', autoProcess.toString());
+  
+  return fetchApiFormData<CabinetLeadsUploadResponse>(
+    '/api/v1/cabinet-leads/upload-csv',
+    formData
+  );
 }

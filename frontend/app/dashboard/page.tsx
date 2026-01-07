@@ -8,8 +8,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getIdentityStats, getGlobalMetrics, getRunReport, ApiError } from '@/lib/api';
-import type { IdentityStats, MetricsResponse, RunReportResponse } from '@/lib/types';
+import { getIdentityStats, getGlobalMetrics, getRunReport, getPersonsBySource, ApiError } from '@/lib/api';
+import type { IdentityStats, MetricsResponse, RunReportResponse, PersonsBySourceResponse } from '@/lib/types';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import Link from 'next/link';
@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<IdentityStats | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [runReport, setRunReport] = useState<RunReportResponse | null>(null);
+  const [personsBySource, setPersonsBySource] = useState<PersonsBySourceResponse | null>(null);
   const [mode, setMode] = useState<'summary' | 'weekly' | 'breakdowns'>('breakdowns');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,13 +29,15 @@ export default function DashboardPage() {
         setLoading(true);
         setError(null);
 
-        const [statsData, metricsData] = await Promise.all([
+        const [statsData, metricsData, personsBySourceData] = await Promise.all([
           getIdentityStats(),
           getGlobalMetrics({ mode }),
+          getPersonsBySource(),
         ]);
 
         setStats(statsData);
         setMetrics(metricsData);
+        setPersonsBySource(personsBySourceData);
 
         // Intentar obtener última corrida (si hay runs disponibles)
         // Nota: Falta endpoint GET /api/v1/identity/runs, por ahora no cargamos runReport
@@ -130,6 +133,63 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* Desglose por Fuente */}
+      {personsBySource && (
+        <div className="bg-white rounded-lg shadow p-6 mb-8">
+          <h2 className="text-lg font-semibold mb-4">Desglose de Personas por Fuente</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-md font-medium mb-3 text-gray-700">Links por Fuente</h3>
+              <div className="space-y-2">
+                {Object.entries(personsBySource.links_by_source).map(([source, count]) => (
+                  <div key={source} className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">
+                      {source === 'module_ct_cabinet_leads' ? 'Cabinet Leads' : 
+                       source === 'module_ct_scouting_daily' ? 'Scouting Daily' : 
+                       source === 'drivers' ? 'Drivers' : source}
+                    </span>
+                    <span className="font-medium">{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-md font-medium mb-3 text-gray-700">Personas por Fuente</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Con Cabinet Leads</span>
+                  <span className="font-medium">{personsBySource.persons_with_cabinet_leads}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Con Scouting Daily</span>
+                  <span className="font-medium">{personsBySource.persons_with_scouting_daily}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Con Drivers</span>
+                  <span className="font-medium">{personsBySource.persons_with_drivers}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                  <span className="text-sm font-medium text-gray-800">Solo Drivers (sin leads)</span>
+                  <span className="font-bold text-blue-600">{personsBySource.persons_only_drivers}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-800">Con Cabinet o Scouting</span>
+                  <span className="font-bold text-green-600">{personsBySource.persons_with_cabinet_or_scouting}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <p className="text-sm text-gray-600">
+              <strong>Explicación:</strong> El total de {personsBySource.total_persons} personas incluye todas las fuentes. 
+              {personsBySource.persons_only_drivers > 0 && (
+                <> {personsBySource.persons_only_drivers} personas solo tienen links de drivers (están en el parque pero no vinieron de leads).</>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Breakdowns */}
       {mode === 'summary' || mode === 'breakdowns' ? (

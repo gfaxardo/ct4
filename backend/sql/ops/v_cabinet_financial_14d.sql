@@ -44,6 +44,42 @@ WITH conversion_base AS (
         AND lead_date IS NOT NULL
     ORDER BY driver_id, lead_date DESC
 ),
+-- Agregar drivers desde v_payment_calculation que tienen lead_date pero no están en conversion_metrics
+-- Usamos v_payment_calculation directamente (más eficiente que v_claims_payment_status_cabinet)
+payment_calc_base AS (
+    -- Drivers con lead_date desde v_payment_calculation (cabinet) que pueden no estar en conversion_metrics
+    SELECT DISTINCT ON (driver_id)
+        driver_id,
+        lead_date,
+        NULL::date AS first_connection_date
+    FROM ops.v_payment_calculation
+    WHERE origin_tag = 'cabinet'
+        AND driver_id IS NOT NULL
+        AND lead_date IS NOT NULL
+    ORDER BY driver_id, lead_date DESC
+),
+-- Combinar conversion_base con payment_calc_base (drivers con lead_date desde payment_calc pero no en conversion_metrics)
+all_drivers_base AS (
+    SELECT 
+        cb.driver_id,
+        cb.lead_date,
+        cb.first_connection_date
+    FROM conversion_base cb
+    
+    UNION
+    
+    -- Agregar drivers desde payment_calc que no están en conversion_base pero tienen lead_date
+    SELECT 
+        pc.driver_id,
+        pc.lead_date,
+        pc.first_connection_date
+    FROM payment_calc_base pc
+    WHERE NOT EXISTS (
+        SELECT 1 
+        FROM conversion_base cb2 
+        WHERE cb2.driver_id = pc.driver_id
+    )
+),
 summary_daily_normalized AS (
     -- Normalizar summary_daily con fecha convertida
     SELECT 
@@ -58,19 +94,19 @@ summary_daily_normalized AS (
 trips_14d AS (
     -- Viajes dentro de ventana de 14 días desde lead_date
     SELECT 
-        cb.driver_id,
-        cb.lead_date,
-        cb.first_connection_date,
+        adb.driver_id,
+        adb.lead_date,
+        adb.first_connection_date,
         -- Ventana de 14 días: desde lead_date hasta lead_date + 14 días
-        cb.lead_date + INTERVAL '14 days' AS window_end_date,
+        adb.lead_date + INTERVAL '14 days' AS window_end_date,
         -- Viajes completados dentro de ventana
         COALESCE(SUM(sd.count_orders_completed), 0) AS total_trips_14d
-    FROM conversion_base cb
+    FROM all_drivers_base adb
     LEFT JOIN summary_daily_normalized sd
-        ON sd.driver_id = cb.driver_id
-        AND sd.prod_date >= cb.lead_date
-        AND sd.prod_date < cb.lead_date + INTERVAL '14 days'
-    GROUP BY cb.driver_id, cb.lead_date, cb.first_connection_date
+        ON sd.driver_id = adb.driver_id
+        AND sd.prod_date >= adb.lead_date
+        AND sd.prod_date < adb.lead_date + INTERVAL '14 days'
+    GROUP BY adb.driver_id, adb.lead_date, adb.first_connection_date
 ),
 milestones_14d AS (
     -- Milestones alcanzados dentro de ventana de 14 días

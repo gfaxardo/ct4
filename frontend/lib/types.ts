@@ -18,6 +18,16 @@ export interface IdentityStats {
   conversion_rate: number;
 }
 
+export interface PersonsBySourceResponse {
+  total_persons: number;
+  links_by_source: Record<string, number>;
+  persons_with_cabinet_leads: number;
+  persons_with_scouting_daily: number;
+  persons_with_drivers: number;
+  persons_only_drivers: number;
+  persons_with_cabinet_or_scouting: number;
+}
+
 export interface IdentityRegistry {
   person_key: string;
   confidence_level: ConfidenceLevel;

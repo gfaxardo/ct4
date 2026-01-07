@@ -196,3 +196,5 @@ SELECT pg_get_viewdef('ops.v_partner_payments_report_ui', true);
 
 
 
+
+

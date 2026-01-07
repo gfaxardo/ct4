@@ -82,6 +82,16 @@ class StatsResponse(BaseModel):
     conversion_rate: Optional[float] = 0.0
 
 
+class PersonsBySourceResponse(BaseModel):
+    total_persons: int
+    links_by_source: Dict[str, int]
+    persons_with_cabinet_leads: int
+    persons_with_scouting_daily: int
+    persons_with_drivers: int
+    persons_only_drivers: int
+    persons_with_cabinet_or_scouting: int
+
+
 class WeeklyData(BaseModel):
     week_start: str
     week_label: str
