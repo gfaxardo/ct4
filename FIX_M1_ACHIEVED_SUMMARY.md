@@ -131,3 +131,4 @@ psql $DATABASE_URL -f backend/sql/ops/v_payments_driver_matrix_cabinet.sql
 4. ⏳ Monitorear performance de la vista
 5. ⏳ Considerar crear índices si es necesario
 
+

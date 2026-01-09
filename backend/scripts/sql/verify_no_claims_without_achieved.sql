@@ -74,3 +74,4 @@ WHERE (
     OR (m.m25_yango_payment_status IS NOT NULL AND COALESCE(m.m25_achieved_flag, false) = false)
 );
 
+

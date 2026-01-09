@@ -31,3 +31,4 @@ Los logs se generarán automáticamente en: `c:\Users\Pc\Documents\Cursor Proyec
 
 
 
+

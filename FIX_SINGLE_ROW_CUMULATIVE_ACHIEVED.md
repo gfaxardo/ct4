@@ -233,3 +233,4 @@ El problema ocurría porque:
 
 **Solución**: Los flags achieved se calculan directamente desde `deterministic_milestones_events` agregando por `driver_id` con `BOOL_OR` y `MIN`, sin depender de joins con claims por semana. Esto garantiza que si un driver alguna vez alcanzó un milestone por trips, el flag será `true` en la única fila del driver.
 
+

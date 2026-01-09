@@ -33,3 +33,4 @@ echo ""
 echo "=== Primer driver del response (muestra campos achieved) ==="
 echo "$response" | jq '.data[0] | {driver_id, driver_name, m1_achieved_flag, m1_achieved_date, m5_achieved_flag, m5_achieved_date, m25_achieved_flag, m25_achieved_date}' 2>/dev/null || echo "$response" | head -50
 
+

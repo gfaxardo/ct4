@@ -213,3 +213,4 @@ Los KPIs "sin Claim" se muestran con fondo amarillo (variant="warning") para ind
    - Indican drivers que alcanzaron milestones por trips pero no tienen claim asociado
    - Útiles para identificar gaps en el proceso de claims
 
+

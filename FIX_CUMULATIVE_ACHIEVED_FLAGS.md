@@ -208,3 +208,4 @@ El problema ocurría porque:
 
 **Solución**: Cambiar el grano a `(driver_id, week_start, origin_tag)` y hacer flags achieved cumulativos usando `EXISTS` con filtro de fecha hasta el final de cada semana. Esto permite que milestones alcanzados en semanas anteriores aparezcan como `achieved=true` en todas las semanas posteriores.
 
+

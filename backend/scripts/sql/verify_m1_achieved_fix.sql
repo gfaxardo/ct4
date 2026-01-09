@@ -110,3 +110,4 @@ FROM ops.v_payments_driver_matrix_cabinet
 WHERE m5_achieved_flag = true
     AND COALESCE(m1_achieved_flag, false) = false;
 
+

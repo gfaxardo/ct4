@@ -50,3 +50,4 @@ WHERE week_start >= (date_trunc('week', current_date)::date - interval '8 weeks'
 GROUP BY week_start
 ORDER BY week_start DESC;
 
+

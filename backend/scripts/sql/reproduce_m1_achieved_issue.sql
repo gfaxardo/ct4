@@ -369,3 +369,4 @@ ORDER BY milestone_value;
 \echo '4. Si Query 8 muestra "PROBLEMA" para M1, entonces se confirma el bug'
 \echo ''
 
+

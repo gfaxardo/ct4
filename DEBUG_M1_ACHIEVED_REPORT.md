@@ -324,3 +324,4 @@ Ejecutar las queries 1-4 arriba con un `driver_id` real del screenshot para conf
 4. **Mantener información de pagos:** Los campos `yango_payment_status`, `window_status`, `overdue_days` deben seguir viniendo de `v_claims_payment_status_cabinet` o `v_yango_cabinet_claims_for_collection`
 5. **Testing:** Verificar que M1 aparece como achieved cuando se alcanzó por trips, independientemente de pagos
 
+
