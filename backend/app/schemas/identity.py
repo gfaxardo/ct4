@@ -92,6 +92,15 @@ class PersonsBySourceResponse(BaseModel):
     persons_with_cabinet_or_scouting: int
 
 
+class DriversWithoutLeadsAnalysis(BaseModel):
+    total_drivers_without_leads: int
+    by_match_rule: Dict[str, int]
+    drivers_with_lead_events: int
+    drivers_without_lead_events: int
+    missing_links_by_source: Dict[str, int]
+    sample_drivers: List[Dict[str, Any]]
+
+
 class WeeklyData(BaseModel):
     week_start: str
     week_label: str

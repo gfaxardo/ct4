@@ -18,3 +18,5 @@ FROM ops.v_data_freshness_status f
 LEFT JOIN ops.v_data_sources_catalog c ON f.source_name = c.source_name
 LIMIT 5;
 
+
+

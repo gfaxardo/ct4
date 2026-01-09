@@ -162,3 +162,5 @@ El health check alertará automáticamente si:
 
 **No se requiere acción adicional.** El sistema funcionará automáticamente.
 
+
+

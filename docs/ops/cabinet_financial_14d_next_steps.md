@@ -177,3 +177,5 @@ La fuente de verdad financiera está operativa y permite responder sin ambigüed
 La vista está lista para uso en producción para reportes financieros y cobranza a Yango.
 
 
+
+

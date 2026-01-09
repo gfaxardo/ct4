@@ -8,3 +8,5 @@ WHERE table_schema = 'public'
     AND table_name = 'module_ct_cabinet_payments' 
 ORDER BY ordinal_position;
 
+
+

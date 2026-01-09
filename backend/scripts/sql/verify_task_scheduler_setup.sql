@@ -47,3 +47,5 @@ SELECT
     COUNT(*) FILTER (WHERE lead_date >= CURRENT_DATE - INTERVAL '7 days') as drivers_last_7_days
 FROM ops.v_cabinet_financial_14d;
 
+
+

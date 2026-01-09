@@ -104,3 +104,5 @@ Get-ScheduledTaskInfo -TaskName CT4_Identity_Ingestion
 - Verificar que el servidor de la API esté corriendo (si se usa vía API)
 - Verificar conexión a la base de datos
 
+
+

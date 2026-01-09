@@ -28,6 +28,24 @@ export interface PersonsBySourceResponse {
   persons_with_cabinet_or_scouting: number;
 }
 
+export interface DriversWithoutLeadsAnalysis {
+  total_drivers_without_leads: number;
+  by_match_rule: Record<string, number>;
+  drivers_with_lead_events: number;
+  drivers_without_lead_events: number;
+  missing_links_by_source: Record<string, number>;
+  sample_drivers: Array<{
+    driver_id: string;
+    match_rule: string;
+    linked_at: string | null;
+    phone: string | null;
+    license: string | null;
+    name: string | null;
+    lead_events_count: number;
+    evidence: Record<string, any> | null;
+  }>;
+}
+
 export interface IdentityRegistry {
   person_key: string;
   confidence_level: ConfidenceLevel;
@@ -925,6 +943,86 @@ export interface MvHealthResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+// ============================================================================
+// Identity Origin Audit Types
+// ============================================================================
+
+export type OriginTag = 'cabinet_lead' | 'scout_registration' | 'migration' | 'legacy_external';
+export type OriginResolutionStatus = 'pending_review' | 'resolved_auto' | 'resolved_manual' | 'marked_legacy' | 'discarded';
+export type ViolationReason = 'missing_origin' | 'multiple_origins' | 'late_origin_link' | 'orphan_lead' | 'legacy_driver_unclassified';
+export type RecommendedAction = 'auto_link' | 'manual_review' | 'mark_legacy' | 'discard';
+export type AlertType = 'missing_origin' | 'multiple_origins' | 'legacy_unclassified' | 'orphan_lead';
+export type AlertSeverity = 'low' | 'medium' | 'high';
+export type AlertImpact = 'export' | 'collection' | 'reporting' | 'none';
+
+export interface OriginAuditRow {
+  person_key: string;
+  driver_id: string | null;
+  origin_tag: string | null;
+  origin_source_id: string | null;
+  origin_confidence: number | null;
+  origin_created_at: string | null;
+  ruleset_version: string | null;
+  origin_evidence: Record<string, any> | null;
+  decided_by: string | null;
+  decided_at: string | null;
+  resolution_status: string | null;
+  notes: string | null;
+  first_seen_at: string | null;
+  driver_linked_at: string | null;
+  has_lead_links: boolean;
+  links_summary: Array<Record<string, any>> | null;
+  violation_flag: boolean;
+  violation_reason: string | null;
+  recommended_action: string | null;
+}
+
+export interface OriginAlertRow {
+  alert_id: number;
+  person_key: string;
+  driver_id: string | null;
+  alert_type: string;
+  violation_reason: string | null;
+  recommended_action: string | null;
+  severity: string;
+  impact: string;
+  origin_tag: string | null;
+  origin_confidence: number | null;
+  first_seen_at: string | null;
+  first_detected_at: string | null;
+  last_detected_at: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  muted_until: string | null;
+  alert_notes: string | null;
+  is_resolved_or_muted: boolean;
+  resolution_status: string | null;
+}
+
+export interface OriginAuditListResponse {
+  items: OriginAuditRow[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export interface OriginAlertListResponse {
+  items: OriginAlertRow[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export interface OriginAuditStats {
+  total_persons: number;
+  persons_with_violations: number;
+  violations_by_reason: Record<string, number>;
+  violations_by_severity: Record<string, number>;
+  resolution_status_distribution: Record<string, number>;
+  alerts_by_type: Record<string, number>;
+  alerts_by_severity: Record<string, number>;
 }
 
 

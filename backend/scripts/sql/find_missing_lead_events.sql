@@ -37,3 +37,5 @@ FROM observational.lead_events
 WHERE person_key IS NULL
     AND event_date >= '2025-12-15';
 
+
+

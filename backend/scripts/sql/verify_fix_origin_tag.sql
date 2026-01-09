@@ -26,3 +26,5 @@ SELECT
     COUNT(*) FILTER (WHERE lead_date >= '2025-12-15') as drivers_since_dec15
 FROM ops.v_cabinet_financial_14d;
 
+
+

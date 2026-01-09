@@ -1,0 +1,265 @@
+{
+  "total": 1919,
+  "categorias": {
+    "solo_drivers": 902,
+    "sin_links": 0,
+    "con_lead_links_sin_driver": 300,
+    "con_multiple_lead_types": 89,
+    "otros": 628
+  },
+  "recomendaciones": [
+    {
+      "categoria": "Solo Drivers",
+      "cantidad": 902,
+      "accion": "mark_legacy",
+      "descripcion": "Marcar como legacy_external si first_seen_at < LEAD_SYSTEM_START_DATE",
+      "prioridad": "alta"
+    },
+    {
+      "categoria": "Leads sin Driver",
+      "cantidad": 300,
+      "accion": "auto_link",
+      "descripcion": "Intentar crear links de driver mediante matching. Si no existe driver, puede ser lead que nunca se convirti\u00f3 (normal).",
+      "prioridad": "media"
+    },
+    {
+      "categoria": "M\u00faltiples Tipos de Leads",
+      "cantidad": 89,
+      "accion": "manual_review",
+      "descripcion": "Aplicar reglas de prioridad: cabinet > scout > migration",
+      "prioridad": "media"
+    }
+  ],
+  "muestras": {
+    "solo_drivers": [
+      {
+        "person_key": "055d61d9-1401-4cf0-aab7-902dcad7af68",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "a952a8af8e924ca69cac2b717586502d",
+            "match_rule": "R1_PHONE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 95,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "06505c11-a9b2-43f2-9912-216d7ae0a38a",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "8da0b63809d34900806a95455d730c89",
+            "match_rule": "R1_PHONE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 95,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "08dbaf91-5838-4a31-953d-b3b725503da4",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "faeefe411cd441d98f54f40eb517e3d6",
+            "match_rule": "R1_PHONE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 95,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "0c178205-3347-4384-b455-930ce969b5a8",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "26464a380fad404880257144504c70fc",
+            "match_rule": "R1_PHONE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 95,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "0cc4ed70-9cbc-4d7a-b6cc-3e82226c0039",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "475b0f62fb1446afa32ad6ee742895ff",
+            "match_rule": "R1_PHONE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 95,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "0df9ab80-b044-45af-b557-6f0600a0b47a",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "1ad0e9fe25d1496f8c85cef80a9ea5b0",
+            "match_rule": "R1_PHONE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 95,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "0dff3291-577e-4be0-ab6c-696dadc767c7",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "aa21b1d57a7c44bb8c725338e0171b33",
+            "match_rule": "R2_LICENSE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 92,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "11b9e26b-37e3-412f-9611-28d7faeb7d9a",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "2b5d3b9bad894f37bfc1ad1c7cea5270",
+            "match_rule": "R1_PHONE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 95,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "11dd45e9-4d27-4aae-8a06-f7d206cd7b6e",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "d35baec3ee834c949b44cecdd3497f2d",
+            "match_rule": "R1_PHONE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 95,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "1b6abed2-77d1-40aa-80ac-9556858564d4",
+        "created_at": "2025-12-21T14:33:00.006851-05:00",
+        "links": [
+          {
+            "source_table": "drivers",
+            "source_pk": "05f30267cc5e4c42a73d3cf368fa32e8",
+            "match_rule": "R1_PHONE_EXACT",
+            "linked_at": "2025-12-21T14:33:00.006851-05:00",
+            "match_score": 95,
+            "confidence_level": "HIGH"
+          }
+        ],
+        "total_links": 1
+      }
+    ],
+    "sin_links": [],
+    "con_lead_links_sin_driver": [
+      {
+        "person_key": "085bd9eb-f172-4433-9bb7-ea9a4ed32bd3",
+        "created_at": "2025-12-21T13:41:44.879428-05:00",
+        "links": [
+          {
+            "source_table": "module_ct_cabinet_leads",
+            "source_pk": "a94ad79fd1f22ecd3d8e8c4cb7703681",
+            "match_rule": "NEW_PERSON",
+            "linked_at": "2025-12-21T13:41:44.879428-05:00",
+            "match_score": 0,
+            "confidence_level": "LOW"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "0ded84dc-437a-4a28-8e79-8249c4ea0050",
+        "created_at": "2025-12-21T13:41:44.879428-05:00",
+        "links": [
+          {
+            "source_table": "module_ct_cabinet_leads",
+            "source_pk": "e139f060db5943fda809167263ff697e",
+            "match_rule": "NEW_PERSON",
+            "linked_at": "2025-12-21T13:41:44.879428-05:00",
+            "match_score": 0,
+            "confidence_level": "LOW"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "1252fc80-3bc9-43be-b87a-2a41869c1e71",
+        "created_at": "2025-12-21T13:41:44.879428-05:00",
+        "links": [
+          {
+            "source_table": "module_ct_cabinet_leads",
+            "source_pk": "b1abcbdf21ae72d78cbeee93ad9af1c9",
+            "match_rule": "NEW_PERSON",
+            "linked_at": "2025-12-21T13:41:44.879428-05:00",
+            "match_score": 0,
+            "confidence_level": "LOW"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "15707e28-39f8-4592-ae71-8c7eeadab421",
+        "created_at": "2025-12-21T13:41:44.879428-05:00",
+        "links": [
+          {
+            "source_table": "module_ct_cabinet_leads",
+            "source_pk": "38f6a7734552319aa27809118767a0c2",
+            "match_rule": "NEW_PERSON",
+            "linked_at": "2025-12-21T13:41:44.879428-05:00",
+            "match_score": 0,
+            "confidence_level": "LOW"
+          }
+        ],
+        "total_links": 1
+      },
+      {
+        "person_key": "15c1a5b4-e7a3-46a0-9ba5-2cd0957664bf",
+        "created_at": "2025-12-21T13:41:44.879428-05:00",
+        "links": [
+          {
+            "source_table": "module_ct_cabinet_leads",
+            "source_pk": "fbc47dd8d2edbbba69e88438948265e6",
+            "match_rule": "NEW_PERSON",
+            "linked_at": "2025-12-21T13:41:44.879428-05:00",
+            "match_score": 0,
+            "confidence_level": "LOW"
+          }
+        ],
+        "total_links": 1
+      }
+    ]
+  }
+}

@@ -29,3 +29,5 @@ SELECT
     COUNT(*) as total_snapshots
 FROM ops.yango_payment_ledger;
 
+
+

@@ -31,3 +31,5 @@ WHERE s.registration_date >= '2025-12-15'
             AND le.source_pk = s.id::text
     );
 
+
+

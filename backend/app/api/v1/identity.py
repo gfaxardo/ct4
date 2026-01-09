@@ -9,7 +9,7 @@ from app.db import get_db, SessionLocal
 from app.models.canon import IdentityRegistry, IdentityLink, IdentityUnmatched, ConfidenceLevel, UnmatchedStatus
 from app.models.ops import IngestionRun, JobType, RunStatus
 from app.models.observational import ScoutingMatchCandidate
-from app.schemas.identity import IdentityRegistry as IdentityRegistrySchema, IdentityLink as IdentityLinkSchema, IdentityUnmatched as IdentityUnmatchedSchema, PersonDetail, UnmatchedResolveRequest, StatsResponse, RunReportResponse, MetricsScope, MetricsResponse, PersonsBySourceResponse
+from app.schemas.identity import IdentityRegistry as IdentityRegistrySchema, IdentityLink as IdentityLinkSchema, IdentityUnmatched as IdentityUnmatchedSchema, PersonDetail, UnmatchedResolveRequest, StatsResponse, RunReportResponse, MetricsScope, MetricsResponse, PersonsBySourceResponse, DriversWithoutLeadsAnalysis
 from app.schemas.ingestion import IngestionRun as IngestionRunSchema
 from app.schemas.identity_runs import IdentityRunsResponse, IdentityRunRow, IngestionRunStatus, IngestionJobType
 from app.services.ingestion import IngestionService
@@ -235,6 +235,172 @@ def get_persons_by_source(db: Session = Depends(get_db)):
         persons_with_drivers=persons_with_drivers,
         persons_only_drivers=persons_with_drivers_only,
         persons_with_cabinet_or_scouting=persons_with_cabinet_or_scouting
+    )
+
+
+@router.get("/stats/drivers-without-leads", response_model=DriversWithoutLeadsAnalysis)
+def get_drivers_without_leads_analysis(db: Session = Depends(get_db)):
+    """
+    Analiza drivers que están en el sistema sin leads asociados.
+    Estos drivers NO deberían estar en el sistema según el diseño.
+    """
+    # Personas que solo tienen links de drivers
+    persons_only_drivers_query = text("""
+        SELECT DISTINCT ir.person_key
+        FROM canon.identity_registry ir
+        WHERE ir.person_key IN (
+            SELECT DISTINCT person_key
+            FROM canon.identity_links
+            WHERE source_table = 'drivers'
+        )
+        AND ir.person_key NOT IN (
+            SELECT DISTINCT person_key
+            FROM canon.identity_links
+            WHERE source_table IN ('module_ct_cabinet_leads', 'module_ct_scouting_daily', 'module_ct_migrations')
+        )
+    """)
+    
+    persons_only_drivers = db.execute(persons_only_drivers_query).fetchall()
+    total_drivers_without_leads = len(persons_only_drivers)
+    
+    if total_drivers_without_leads == 0:
+        return DriversWithoutLeadsAnalysis(
+            total_drivers_without_leads=0,
+            by_match_rule={},
+            drivers_with_lead_events=0,
+            drivers_without_lead_events=0,
+            missing_links_by_source={},
+            sample_drivers=[]
+        )
+    
+    person_keys = [str(p.person_key) for p in persons_only_drivers]
+    person_keys_str = "', '".join(person_keys)
+    
+    # Desglose por regla
+    by_rule_query = text(f"""
+        SELECT 
+            il.match_rule,
+            COUNT(*) as count
+        FROM canon.identity_links il
+        WHERE il.source_table = 'drivers'
+        AND il.person_key IN ('{person_keys_str}')
+        GROUP BY il.match_rule
+        ORDER BY count DESC
+    """)
+    
+    by_rule_result = db.execute(by_rule_query).fetchall()
+    by_match_rule = {row.match_rule: row.count for row in by_rule_result}
+    
+    # Drivers con/sin lead_events
+    events_query = text(f"""
+        WITH drivers_without_leads AS (
+            SELECT DISTINCT il.source_pk as driver_id
+            FROM canon.identity_links il
+            WHERE il.source_table = 'drivers'
+            AND il.person_key IN ('{person_keys_str}')
+        ),
+        drivers_with_events AS (
+            SELECT DISTINCT d.driver_id
+            FROM drivers_without_leads d
+            INNER JOIN observational.lead_events le
+                ON (le.payload_json->>'driver_id')::text = d.driver_id
+        )
+        SELECT 
+            COUNT(*) FILTER (WHERE d.driver_id IN (SELECT driver_id FROM drivers_with_events)) as with_events,
+            COUNT(*) FILTER (WHERE d.driver_id NOT IN (SELECT driver_id FROM drivers_with_events)) as without_events
+        FROM drivers_without_leads d
+    """)
+    
+    events_result = db.execute(events_query).fetchone()
+    drivers_with_lead_events = events_result.with_events if events_result else 0
+    drivers_without_lead_events = events_result.without_events if events_result else 0
+    
+    # Links faltantes por source_table
+    missing_links_query = text(f"""
+        WITH drivers_without_leads AS (
+            SELECT DISTINCT 
+                il.person_key,
+                il.source_pk as driver_id
+            FROM canon.identity_links il
+            WHERE il.source_table = 'drivers'
+            AND il.person_key IN ('{person_keys_str}')
+        ),
+        drivers_with_events_detail AS (
+            SELECT 
+                d.driver_id,
+                d.person_key,
+                le.source_table as event_source_table
+            FROM drivers_without_leads d
+            INNER JOIN observational.lead_events le
+                ON (le.payload_json->>'driver_id')::text = d.driver_id
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM canon.identity_links il2
+                WHERE il2.person_key = d.person_key
+                AND il2.source_table = le.source_table
+            )
+        )
+        SELECT 
+            event_source_table,
+            COUNT(DISTINCT driver_id) as drivers_count
+        FROM drivers_with_events_detail
+        GROUP BY event_source_table
+    """)
+    
+    missing_links_result = db.execute(missing_links_query).fetchall()
+    missing_links_by_source = {row.event_source_table: row.drivers_count for row in missing_links_result}
+    
+    # Muestra de casos
+    sample_query = text(f"""
+        WITH drivers_without_leads AS (
+            SELECT DISTINCT 
+                il.person_key,
+                il.source_pk as driver_id,
+                il.match_rule,
+                il.linked_at,
+                il.evidence
+            FROM canon.identity_links il
+            WHERE il.source_table = 'drivers'
+            AND il.person_key IN ('{person_keys_str}')
+            LIMIT 10
+        )
+        SELECT 
+            d.driver_id,
+            d.match_rule,
+            d.linked_at,
+            d.evidence,
+            ir.primary_phone,
+            ir.primary_license,
+            ir.primary_full_name,
+            (SELECT COUNT(*) 
+             FROM observational.lead_events le 
+             WHERE (le.payload_json->>'driver_id')::text = d.driver_id) as events_count
+        FROM drivers_without_leads d
+        JOIN canon.identity_registry ir ON ir.person_key = d.person_key
+        ORDER BY d.linked_at DESC
+    """)
+    
+    sample_result = db.execute(sample_query).fetchall()
+    sample_drivers = []
+    for row in sample_result:
+        sample_drivers.append({
+            "driver_id": row.driver_id,
+            "match_rule": row.match_rule,
+            "linked_at": row.linked_at.isoformat() if row.linked_at else None,
+            "phone": row.primary_phone,
+            "license": row.primary_license,
+            "name": row.primary_full_name,
+            "lead_events_count": row.events_count,
+            "evidence": row.evidence
+        })
+    
+    return DriversWithoutLeadsAnalysis(
+        total_drivers_without_leads=total_drivers_without_leads,
+        by_match_rule=by_match_rule,
+        drivers_with_lead_events=drivers_with_lead_events,
+        drivers_without_lead_events=drivers_without_lead_events,
+        missing_links_by_source=missing_links_by_source,
+        sample_drivers=sample_drivers
     )
 
 

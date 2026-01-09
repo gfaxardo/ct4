@@ -141,3 +141,5 @@ FROM ops.v_cabinet_financial_14d;
 - Ejecutar PowerShell como Administrador
 - O configurar manualmente en Task Scheduler GUI
 
+
+

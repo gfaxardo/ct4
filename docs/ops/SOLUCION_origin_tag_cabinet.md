@@ -73,3 +73,5 @@ WHERE source_table = 'module_ct_scouting_daily'
     AND payload_json->>'origin_tag' = 'scouting';
 ```
 
+
+

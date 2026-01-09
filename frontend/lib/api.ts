@@ -105,6 +105,7 @@ import type {
   HealthGlobalResponse,
   MvHealthResponse,
   PersonsBySourceResponse,
+  DriversWithoutLeadsAnalysis,
 } from './types';
 
 export async function getIdentityStats(): Promise<IdentityStats> {
@@ -113,6 +114,10 @@ export async function getIdentityStats(): Promise<IdentityStats> {
 
 export async function getPersonsBySource(): Promise<PersonsBySourceResponse> {
   return fetchApi<PersonsBySourceResponse>('/api/v1/identity/stats/persons-by-source');
+}
+
+export async function getDriversWithoutLeadsAnalysis(): Promise<DriversWithoutLeadsAnalysis> {
+  return fetchApi<DriversWithoutLeadsAnalysis>('/api/v1/identity/stats/drivers-without-leads');
 }
 
 export async function getPersons(params?: {
@@ -729,4 +734,124 @@ export async function uploadCabinetLeadsCSV(
     '/api/v1/cabinet-leads/upload-csv',
     formData
   );
+}
+
+// ============================================================================
+// Identity Origin Audit API
+// ============================================================================
+
+import type {
+  OriginAuditRow,
+  OriginAlertRow,
+  OriginAuditListResponse,
+  OriginAlertListResponse,
+  OriginAuditStats,
+} from './types';
+
+export async function getOriginAudit(params?: {
+  violation_flag?: boolean;
+  violation_reason?: string;
+  resolution_status?: string;
+  origin_tag?: string;
+  skip?: number;
+  limit?: number;
+}): Promise<OriginAuditListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.violation_flag !== undefined) searchParams.set('violation_flag', params.violation_flag.toString());
+  if (params?.violation_reason) searchParams.set('violation_reason', params.violation_reason);
+  if (params?.resolution_status) searchParams.set('resolution_status', params.resolution_status);
+  if (params?.origin_tag) searchParams.set('origin_tag', params.origin_tag);
+  if (params?.skip !== undefined) searchParams.set('skip', params.skip.toString());
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<OriginAuditListResponse>(`/api/v1/identity/audit/origin${query ? `?${query}` : ''}`);
+}
+
+export async function getOriginAuditDetail(personKey: string): Promise<OriginAuditRow> {
+  return fetchApi<OriginAuditRow>(`/api/v1/identity/audit/origin/${personKey}`);
+}
+
+export async function resolveOriginViolation(
+  personKey: string,
+  request: {
+    resolution_status: string;
+    origin_tag?: string;
+    origin_source_id?: string;
+    origin_confidence?: number;
+    notes?: string;
+  }
+): Promise<{ message: string; person_key: string }> {
+  return fetchApi<{ message: string; person_key: string }>(
+    `/api/v1/identity/audit/origin/${personKey}/resolve`,
+    {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }
+  );
+}
+
+export async function markAsLegacy(
+  personKey: string,
+  request: { notes?: string }
+): Promise<{ message: string; person_key: string }> {
+  return fetchApi<{ message: string; person_key: string }>(
+    `/api/v1/identity/audit/origin/${personKey}/mark-legacy`,
+    {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }
+  );
+}
+
+export async function getOriginAlerts(params?: {
+  alert_type?: string;
+  severity?: string;
+  impact?: string;
+  resolved_only?: boolean;
+  skip?: number;
+  limit?: number;
+}): Promise<OriginAlertListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.alert_type) searchParams.set('alert_type', params.alert_type);
+  if (params?.severity) searchParams.set('severity', params.severity);
+  if (params?.impact) searchParams.set('impact', params.impact);
+  if (params?.resolved_only !== undefined) searchParams.set('resolved_only', params.resolved_only.toString());
+  if (params?.skip !== undefined) searchParams.set('skip', params.skip.toString());
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<OriginAlertListResponse>(`/api/v1/identity/audit/alerts${query ? `?${query}` : ''}`);
+}
+
+export async function resolveAlert(
+  personKey: string,
+  alertType: string,
+  request: { resolved_by: string; notes?: string }
+): Promise<{ message: string; person_key: string; alert_type: string }> {
+  return fetchApi<{ message: string; person_key: string; alert_type: string }>(
+    `/api/v1/identity/audit/alerts/${personKey}/${alertType}/resolve`,
+    {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }
+  );
+}
+
+export async function muteAlert(
+  personKey: string,
+  alertType: string,
+  request: { muted_until: string; notes?: string }
+): Promise<{ message: string; person_key: string; alert_type: string }> {
+  return fetchApi<{ message: string; person_key: string; alert_type: string }>(
+    `/api/v1/identity/audit/alerts/${personKey}/${alertType}/mute`,
+    {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }
+  );
+}
+
+export async function getOriginAuditStats(): Promise<OriginAuditStats> {
+  return fetchApi<OriginAuditStats>('/api/v1/identity/audit/stats');
 }

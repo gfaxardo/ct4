@@ -27,3 +27,5 @@ SELECT
     COUNT(DISTINCT source_table) as total_source_tables
 FROM observational.lead_events;
 
+
+

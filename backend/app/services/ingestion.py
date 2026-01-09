@@ -566,8 +566,28 @@ class IngestionService:
         return stats
 
     def process_drivers(self, run_id: int, date_from: Optional[date] = None, date_to: Optional[date] = None) -> Dict[str, int]:
-        stats = {"processed": 0, "matched": 0, "unmatched": 0}
+        """
+        DEPRECATED: process_drivers ya no debe crear links de drivers directamente.
+        
+        Los drivers solo deben tener links cuando hay un lead asociado (cabinet/scouting/migrations).
+        Este método ahora solo actualiza el índice de drivers para matching, pero NO crea links.
+        
+        Los links de drivers se crean automáticamente cuando:
+        1. Un lead (cabinet/scouting) matchea con un driver existente
+        2. Se procesa un migration que tiene un driver_id asociado
+        
+        Para crear links de drivers, usar el flujo normal de ingesta de leads.
+        """
+        stats = {"processed": 0, "skipped": 0, "message": "process_drivers ya no crea links directamente"}
         run_date = datetime.utcnow().date()
+
+        # Solo actualizar el índice de drivers, NO crear links
+        # Los links de drivers se crean cuando hay un lead que matchea con un driver
+        logger.warning(
+            "process_drivers llamado directamente. "
+            "Los drivers solo deben tener links cuando hay un lead asociado. "
+            "Usar refresh_drivers_index() para actualizar el índice de matching."
+        )
 
         query_str = """
             SELECT *
@@ -593,44 +613,38 @@ class IngestionService:
         for idx, row in enumerate(rows):
             stats["processed"] += 1
             
+            # Verificar si el driver ya tiene un link de lead asociado
             row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
-            
             mapped = DataContract.map_row("drivers", row_dict, run_date=run_date)
+            driver_id = str(mapped["source_pk"])
             
-            existing_link = self.db.query(IdentityLink).filter(
-                IdentityLink.source_table == "drivers",
-                IdentityLink.source_pk == str(mapped["source_pk"])
+            # Verificar si existe un link de lead para este driver
+            # (a través de matching con cabinet/scouting/migrations)
+            has_lead_link = self.db.query(IdentityLink).join(IdentityRegistry).filter(
+                IdentityLink.source_table.in_(["module_ct_cabinet_leads", "module_ct_scouting_daily", "module_ct_migrations"]),
+                IdentityLink.person_key.in_(
+                    self.db.query(IdentityLink.person_key).filter(
+                        IdentityLink.source_table == "drivers",
+                        IdentityLink.source_pk == driver_id
+                    )
+                )
             ).first()
-
-            if existing_link:
+            
+            if not has_lead_link:
+                # NO crear link de driver si no hay lead asociado
+                stats["skipped"] += 1
                 continue
 
-            snapshot_date = mapped.get("snapshot_date") or datetime.utcnow()
-            if isinstance(snapshot_date, date):
-                snapshot_date = datetime.combine(snapshot_date, datetime.min.time())
-
-            candidate = IdentityCandidateInput(
-                source_table="drivers",
-                source_pk=str(mapped["source_pk"]),
-                snapshot_date=snapshot_date,
-                park_id=mapped.get("park_id"),
-                phone_norm=normalize_phone(mapped.get("phone_raw")),
-                license_norm=normalize_license(mapped.get("license_raw")),
-                plate_norm=normalize_plate(mapped.get("plate_raw")),
-                name_norm=normalize_name(mapped.get("name_raw")),
-                brand_norm=normalize_name(mapped.get("brand_raw")),
-                model_norm=normalize_name(mapped.get("model_raw"))
-            )
-
-            match_result = self.matching_engine.match_person(candidate)
-
-            if match_result.person_key and match_result.rule:
-                self._create_or_update_person(match_result.person_key, candidate, match_result.confidence)
-                self._create_link(candidate, match_result)
-                stats["matched"] += 1
-            else:
-                self._create_unmatched_from_result(candidate, match_result)
-                stats["unmatched"] += 1
+            # Si hay lead asociado, el link de driver ya debería existir
+            # (se crea automáticamente cuando el lead matchea con el driver)
+            existing_driver_link = self.db.query(IdentityLink).filter(
+                IdentityLink.source_table == "drivers",
+                IdentityLink.source_pk == driver_id
+            ).first()
+            
+            if not existing_driver_link:
+                # Esto no debería pasar, pero si pasa, significa que hay un problema
+                logger.warning(f"Driver {driver_id} tiene lead pero no tiene link de driver. Esto indica un problema en el flujo de matching.")
 
             if stats["processed"] % 100 == 0:
                 self.db.commit()

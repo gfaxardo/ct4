@@ -65,3 +65,5 @@ SELECT
 FROM ops.v_claims_payment_status_cabinet
 WHERE pay_date >= CURRENT_DATE - INTERVAL '30 days';
 
+
+

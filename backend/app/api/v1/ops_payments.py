@@ -807,6 +807,7 @@ def export_cabinet_financial_14d_csv(
         raise HTTPException(
             status_code=500,
             detail=f"Error al exportar datos a CSV: {str(e)[:200]}"
+        )
 
 
 @router.get("/cabinet-financial-14d/funnel-gap")
@@ -915,6 +916,5 @@ def get_funnel_gap_metrics(
         raise HTTPException(
             status_code=500,
             detail=f"Error calculando métricas del gap: {str(e)[:200]}"
-        )
         )
 

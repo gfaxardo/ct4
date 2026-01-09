@@ -112,3 +112,5 @@ Para verificar que todo funciona:
    SELECT MAX(lead_date), COUNT(*) FROM ops.v_cabinet_financial_14d;
    ```
 
+
+

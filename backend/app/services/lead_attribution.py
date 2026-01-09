@@ -32,10 +32,14 @@ class LeadAttributionService:
     ) -> Optional[str]:
         """
         Asegura que exista un vínculo driver_id → person_key.
-        Si el vínculo ya existe, lo reutiliza.
-        Si no existe, crea un nuevo person_key y los registros necesarios.
         
-        Retorna el person_key (como string UUID) o None si hay error.
+        IMPORTANTE: Solo crea el link si hay un lead asociado (cabinet/scouting/migrations).
+        Los drivers NO deben estar en el sistema sin un lead asociado.
+        
+        Si el vínculo ya existe, lo reutiliza.
+        Si no existe y hay un lead asociado, crea un nuevo person_key y los registros necesarios.
+        
+        Retorna el person_key (como string UUID) o None si hay error o no hay lead asociado.
         """
         driver_id_str = str(driver_id)
         
@@ -47,10 +51,66 @@ class LeadAttributionService:
             ).first()
             
             if identity_link:
-                metrics["reused_links"] += 1
-                return str(identity_link.person_key)
+                # Verificar que tiene un lead asociado
+                has_lead = self.db.query(IdentityLink).filter(
+                    IdentityLink.person_key == identity_link.person_key,
+                    IdentityLink.source_table.in_(["module_ct_cabinet_leads", "module_ct_scouting_daily", "module_ct_migrations"])
+                ).first()
+                
+                if has_lead:
+                    metrics["reused_links"] += 1
+                    return str(identity_link.person_key)
+                else:
+                    # Link existe pero sin lead - esto es un problema
+                    logger.warning(
+                        f"[IDENTITY] Driver {driver_id_str} tiene link pero NO tiene lead asociado. "
+                        "Esto no debería ocurrir. El link será reutilizado pero debería investigarse."
+                    )
+                    metrics["reused_links"] += 1
+                    return str(identity_link.person_key)
             
-            # No existe el vínculo, crear uno nuevo
+            # No existe el vínculo - verificar si hay un lead asociado antes de crear
+            # Buscar si hay un lead_event o migration que referencia este driver_id
+            from app.models.observational import LeadEvent
+            
+            has_lead = False
+            lead_source = None
+            
+            # Buscar en lead_events por driver_id en payload_json
+            lead_event = self.db.query(LeadEvent).filter(
+                LeadEvent.payload_json['driver_id'].astext == driver_id_str
+            ).first()
+            
+            if lead_event:
+                has_lead = True
+                lead_source = "lead_events"
+            else:
+                # Si no hay lead_event, buscar en migrations directamente
+                migration_query = text("""
+                    SELECT id
+                    FROM public.module_ct_migrations
+                    WHERE driver_id::text = :driver_id
+                    LIMIT 1
+                """)
+                try:
+                    migration_result = self.db.execute(migration_query, {"driver_id": driver_id_str})
+                    migration_row = migration_result.fetchone()
+                    if migration_row:
+                        has_lead = True
+                        lead_source = "migrations"
+                except Exception:
+                    pass
+            
+            if not has_lead:
+                # NO hay lead asociado - NO crear link
+                logger.warning(
+                    f"[IDENTITY] Driver {driver_id_str} no tiene lead asociado. "
+                    "No se creará link de driver sin lead."
+                )
+                metrics["link_missing_count"] += 1
+                return None
+            
+            # Hay un lead asociado - proceder a crear el link
             # Obtener información del driver desde public.drivers
             query = text("""
                 SELECT phone, license_number, license_normalized_number, full_name, first_name, middle_name, last_name
@@ -77,7 +137,6 @@ class LeadAttributionService:
             
             if not row:
                 logger.warning(f"[IDENTITY] Driver {driver_id_str} no encontrado en public.drivers después de query exitosa")
-                # Si no se encuentra el driver, retornar None (no crear vínculo)
                 metrics["link_missing_count"] += 1
                 return None
             
@@ -112,14 +171,18 @@ class LeadAttributionService:
                 match_rule="driver_direct",
                 match_score=100,
                 confidence_level=ConfidenceLevel.HIGH,
-                evidence={"created_by": "ensure_driver_identity_link"},
+                evidence={
+                    "created_by": "ensure_driver_identity_link",
+                    "has_lead": True,
+                    "lead_source": lead_source
+                },
                 run_id=run_id
             )
             self.db.add(identity_link)
             self.db.flush()
             
             metrics["created_links"] += 1
-            logger.info(f"Created identity link drivers:{driver_id_str} -> {person_key}")
+            logger.info(f"Created identity link drivers:{driver_id_str} -> {person_key} (with lead association)")
             
             return str(person_key)
             

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, JSON, Enum, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Integer, DateTime, JSON, Enum, ForeignKey, UniqueConstraint, Numeric, Text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.schema import CreateSchema
@@ -17,6 +17,64 @@ class UnmatchedStatus(str, enum.Enum):
     OPEN = "OPEN"
     RESOLVED = "RESOLVED"
     IGNORED = "IGNORED"
+
+
+class OriginTag(str, enum.Enum):
+    CABINET_LEAD = "cabinet_lead"
+    SCOUT_REGISTRATION = "scout_registration"
+    MIGRATION = "migration"
+    LEGACY_EXTERNAL = "legacy_external"
+    
+    def __str__(self):
+        return self.value
+
+
+class DecidedBy(str, enum.Enum):
+    SYSTEM = "system"
+    MANUAL = "manual"
+
+
+class OriginResolutionStatus(str, enum.Enum):
+    PENDING_REVIEW = "pending_review"
+    RESOLVED_AUTO = "resolved_auto"
+    RESOLVED_MANUAL = "resolved_manual"
+    MARKED_LEGACY = "marked_legacy"
+    DISCARDED = "discarded"
+
+
+class ViolationReason(str, enum.Enum):
+    MISSING_ORIGIN = "missing_origin"
+    MULTIPLE_ORIGINS = "multiple_origins"
+    LATE_ORIGIN_LINK = "late_origin_link"
+    ORPHAN_LEAD = "orphan_lead"
+    LEGACY_DRIVER_UNCLASSIFIED = "legacy_driver_unclassified"
+
+
+class RecommendedAction(str, enum.Enum):
+    AUTO_LINK = "auto_link"
+    MANUAL_REVIEW = "manual_review"
+    MARK_LEGACY = "mark_legacy"
+    DISCARD = "discard"
+
+
+class AlertType(str, enum.Enum):
+    MISSING_ORIGIN = "missing_origin"
+    MULTIPLE_ORIGINS = "multiple_origins"
+    LEGACY_UNCLASSIFIED = "legacy_unclassified"
+    ORPHAN_LEAD = "orphan_lead"
+
+
+class AlertSeverity(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class AlertImpact(str, enum.Enum):
+    EXPORT = "export"
+    COLLECTION = "collection"
+    REPORTING = "reporting"
+    NONE = "none"
 
 
 class IdentityRegistry(Base):
@@ -72,6 +130,65 @@ class IdentityUnmatched(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     run_id = Column(Integer, ForeignKey("ops.ingestion_runs.id"), nullable=True)
+
+
+class IdentityOrigin(Base):
+    __tablename__ = "identity_origin"
+    __table_args__ = {"schema": "canon"}
+
+    person_key = Column(PGUUID(as_uuid=True), ForeignKey("canon.identity_registry.person_key", ondelete="CASCADE"), primary_key=True)
+    origin_tag = Column(Enum(OriginTag), nullable=False)
+    origin_source_id = Column(String, nullable=False)
+    origin_confidence = Column(Numeric(precision=5, scale=2), nullable=False)
+    origin_created_at = Column(DateTime(timezone=True), nullable=False)
+    ruleset_version = Column(String, nullable=False, server_default="origin_rules_v1")
+    evidence = Column(JSONB, nullable=True)
+    decided_by = Column(Enum(DecidedBy), nullable=False, server_default=DecidedBy.SYSTEM.value)
+    decided_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    resolution_status = Column(Enum(OriginResolutionStatus), nullable=False, server_default=OriginResolutionStatus.PENDING_REVIEW.value)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class IdentityOriginHistory(Base):
+    __tablename__ = "identity_origin_history"
+    __table_args__ = {"schema": "canon"}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    person_key = Column(PGUUID(as_uuid=True), ForeignKey("canon.identity_registry.person_key", ondelete="CASCADE"), nullable=False)
+    origin_tag_old = Column(String, nullable=True)
+    origin_tag_new = Column(String, nullable=True)
+    origin_source_id_old = Column(String, nullable=True)
+    origin_source_id_new = Column(String, nullable=True)
+    origin_confidence_old = Column(Numeric(precision=5, scale=2), nullable=True)
+    origin_confidence_new = Column(Numeric(precision=5, scale=2), nullable=True)
+    resolution_status_old = Column(String, nullable=True)
+    resolution_status_new = Column(String, nullable=True)
+    ruleset_version_old = Column(String, nullable=True)
+    ruleset_version_new = Column(String, nullable=True)
+    changed_by = Column(String, nullable=False)
+    change_reason = Column(Text, nullable=True)
+    changed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class IdentityOriginAlertState(Base):
+    __tablename__ = "identity_origin_alert_state"
+    __table_args__ = (
+        UniqueConstraint("person_key", "alert_type", name="uq_identity_origin_alert_state"),
+        {"schema": "ops"}
+    )
+
+    person_key = Column(PGUUID(as_uuid=True), ForeignKey("canon.identity_registry.person_key", ondelete="CASCADE"), primary_key=True)
+    alert_type = Column(Enum(AlertType), primary_key=True)
+    first_detected_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_detected_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by = Column(String, nullable=True)
+    muted_until = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
 

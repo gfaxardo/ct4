@@ -20,3 +20,5 @@ SELECT
 FROM public.module_ct_cabinet_leads
 WHERE lead_created_at IS NOT NULL;
 
+
+

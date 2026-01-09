@@ -96,3 +96,5 @@ curl -X POST "http://localhost:8000/api/v1/identity/run?date_from=2025-12-15&dat
 
 La tarea `CT4_Identity_Ingestion` está creada y configurada para ejecutarse automáticamente cada 6 horas. El health check monitoreará el estado del sistema y alertará si hay problemas.
 
+
+

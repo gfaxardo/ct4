@@ -25,3 +25,5 @@ FROM ops.v_claims_payment_status_cabinet
 WHERE driver_id IS NOT NULL
     AND lead_date >= '2025-12-15';
 
+
+

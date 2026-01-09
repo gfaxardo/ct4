@@ -130,3 +130,5 @@ El sistema está completamente configurado. Solo falta:
 
 Después de esto, todo funcionará automáticamente y el health check monitoreará el estado del sistema.
 
+
+

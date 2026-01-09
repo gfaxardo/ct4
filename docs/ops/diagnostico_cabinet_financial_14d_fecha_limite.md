@@ -86,3 +86,5 @@ Esto asegura que:
 - Se use `lead_date` real cuando esté disponible
 - Se mantenga la integridad de la ventana de 14 días
 
+
+

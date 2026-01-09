@@ -24,3 +24,5 @@ SELECT
     COUNT(DISTINCT driver_id) FILTER (WHERE driver_id IS NOT NULL AND pay_date >= '2025-12-15') as drivers_with_payments
 FROM ops.yango_payment_status_ledger;
 
+
+

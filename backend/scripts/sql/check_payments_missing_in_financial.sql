@@ -54,3 +54,5 @@ WHERE (l.driver_id IS NOT NULL OR l.person_key IS NOT NULL)
 ORDER BY l.pay_date DESC
 LIMIT 20;
 
+
+

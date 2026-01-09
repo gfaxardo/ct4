@@ -82,3 +82,5 @@ COMMENT ON COLUMN ops.v_yango_cabinet_claims_for_collection.yango_payment_status
 
 
 
+
+
