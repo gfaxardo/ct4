@@ -1,318 +1,257 @@
 # Runbook: Scout Attribution Fix
 
-## Objetivo
+## Propósito
 
-Cerrar el gap "0% scout satisfactorio" y normalizar atribución scout end-to-end, asegurando que todos los registros con `scout_id` en las fuentes lleguen a `observational.lead_ledger.attributed_scout_id` (source of truth).
+Este runbook documenta el proceso completo para cerrar Scout Attribution y dejar lista la base para pagar scouts sin discusión. Incluye auditoría, sanity-check, fixes de pipeline, backfills, vistas, verificación, integración con Cobranza Yango y base de liquidación diaria scout.
 
-## Contexto
+## Principios No Negociables
 
-- **Total personas**: 1,919
-- **Con scout canónico**: 353 (18.39%)
-- **Sin scout**: 1,566 (81.61%)
+- **C0 Identidad no se recalcula globalmente**: Solo backfill segmentado y auditable.
+- **C2 Elegibilidad define reglas**: C3 Claims solo nace desde C2; C4 Pagos concilia contra claims.
+- **Source-of-truth canónico**: Para scout, "satisfactorio" = está en `observational.lead_ledger.attributed_scout_id` (por person_key) SI existe. Si no existe lead_ledger, entonces define el equivalente canónico actual y documenta el reemplazo.
+- **No romper el flujo de cobro Yango**: Claims-to-collect/export existentes no se modifican.
+- **Audit trail append-only**: Todo update debe tener audit trail o tabla de auditoría.
 
-### Categorías sin scout:
-- **C (legacy/externo)**: 1,199 - Sin events ni ledger
-- **A (eventos sin scout_id)**: 193 - Principalmente `module_ct_cabinet_leads`
-- **D (scout en events, no en ledger)**: 174 - Requiere propagación
+## Requisitos
 
-### scouting_daily:
-- **609 registros** con `scout_id`
-- **605 tienen lead_events** con `scout_id`
-- **0 tienen identity_links** → **0% "satisfactorio"**
+### Variables de Entorno
 
-## Definición de "Scout Satisfactorio"
+El script requiere las siguientes variables de entorno (o configuración en `app/config.py`):
 
-Un scout es "satisfactorio" cuando existe en el source of truth:
-- `observational.lead_ledger.attributed_scout_id` (por `person_key`)
+- `DATABASE_URL`: URL de conexión a PostgreSQL (formato: `postgresql://user:password@host:port/database`)
 
-## Ejecución
+### Dependencias
 
-### Opción 1: Ejecución Automatizada (Recomendada)
+- Python 3.8+
+- PostgreSQL 12+
+- Librerías Python: `psycopg2`, `sqlalchemy`, `psycopg2-binary`
 
-```bash
-cd backend
-python scripts/execute_scout_attribution_fix.py
-```
+## Archivos del PR
 
-Este script ejecuta todos los pasos en orden:
-1. Diagnóstico y categorización
-2. Crear/actualizar vistas canónicas
-3. Backfill identity_links para scouting_daily
-4. Backfill lead_ledger attributed_scout
-5. Fix eventos sin scout_id
-6. Verificación completa
+### A) SQL de Inventario/Diagnóstico (Idempotente)
 
-### Opción 2: Ejecución Manual (Paso a Paso)
+1. `backend/scripts/sql/00_inventory_scout_sources.sql` - Inventario de tablas/columnas candidatas
+2. `backend/scripts/sql/01_diagnose_scout_attribution.sql` - Diagnóstico completo
+3. `backend/scripts/sql/02_categorize_persons_without_scout.sql` - Categorización (crea `ops.v_persons_without_scout_categorized`)
+4. `backend/scripts/sql/03_verify_scout_attribution_views.sql` - Verificación final
+5. `backend/scripts/sql/04_yango_collection_with_scout.sql` - Integración con cobranza Yango
 
-#### Paso 1: Diagnóstico y Categorización
+### B) Vistas Canónicas de Atribución (Idempotente)
 
-```bash
-psql $DATABASE_URL -f backend/scripts/sql/categorize_persons_without_scout.sql
-```
+1. `backend/scripts/sql/10_create_v_scout_attribution_raw.sql` - Vista RAW con todas las fuentes
+2. `backend/scripts/sql/11_create_v_scout_attribution.sql` - Vista canónica (1 fila por person_key)
+3. `backend/scripts/sql/12_create_v_scout_attribution_conflicts.sql` - Vista de conflictos
 
-O desde Python:
-```bash
-python -c "from app.config import settings; import psycopg2; from urllib.parse import urlparse; from pathlib import Path; parsed = urlparse(settings.database_url); conn = psycopg2.connect(host=parsed.hostname, port=parsed.port or 5432, database=parsed.path[1:], user=parsed.username, password=parsed.password); conn.autocommit = True; cur = conn.cursor(); cur.execute(Path('backend/scripts/sql/categorize_persons_without_scout.sql').read_text(encoding='utf-8')); print('Vista creada')"
-```
+### C) Backfills / Fixes (Segmentados, Auditable)
 
-#### Paso 2: Crear/Actualizar Vistas Canónicas
+1. `backend/scripts/backfill_identity_links_scouting_daily.py` - Backfill de identity_links
+2. `backend/scripts/sql/20_backfill_lead_ledger_attributed_scout.sql` - Backfill lead_ledger
+3. `backend/scripts/sql/21_backfill_lead_events_scout_from_cabinet_leads.sql` - Backfill cabinet leads → events
+4. `backend/scripts/sql/22_create_backfill_audit_tables.sql` - Crear tablas de auditoría
 
-```bash
-psql $DATABASE_URL -f backend/scripts/sql/scout_attribution_recommendations.sql
-```
+### D) Automatización de Ejecución Batch
 
-#### Paso 3: Backfill Identity Links para scouting_daily
+1. `backend/scripts/execute_scout_attribution_fix.py` - Script Python principal
+2. `backend/scripts/execute_scout_attribution_fix.ps1` - Script PowerShell para Windows
 
-```bash
-cd backend
-python scripts/backfill_identity_links_scouting_daily.py
-```
+### E) Base para Liquidación Diaria Scout
 
-**Output esperado:**
-```
-Total procesados: 609
-Creados con driver match: X
-Creados con person nuevo: Y
-Errores: Z
-```
+1. `backend/scripts/sql/13_create_v_scout_daily_expected_base.sql` - Vista base para liquidación
 
-#### Paso 4: Backfill Lead Ledger Attributed Scout
+## Cómo Ejecutar
+
+### Opción 1: Script Python (Recomendado)
 
 ```bash
-psql $DATABASE_URL -f backend/scripts/sql/backfill_lead_ledger_attributed_scout.sql
+cd backend/scripts
+python execute_scout_attribution_fix.py
 ```
 
-**Output esperado:**
-```
-Actualizados X registros en lead_ledger
-Registrados X registros en auditoría
-```
+### Opción 2: Script PowerShell (Windows)
 
-#### Paso 5: Fix Eventos Sin Scout ID
-
-```bash
-psql $DATABASE_URL -f backend/scripts/sql/fix_events_missing_scout_id.sql
+```powershell
+cd backend\scripts
+.\execute_scout_attribution_fix.ps1
 ```
 
-#### Paso 6: Verificación Completa
+El script ejecuta automáticamente todos los pasos en orden:
 
-```bash
-psql $DATABASE_URL -f backend/scripts/sql/verify_scout_attribution_complete.sql
-```
+1. Inventory (00)
+2. Create/replace vistas (10-12)
+3. Diagnose (baseline) (01)
+4. Backfill audit tables (22)
+5. Backfill identity_links scouting_daily
+6. Backfill lead_ledger attributed_scout (20)
+7. Backfill cabinet leads → events (21)
+8. Recreate/refresh vistas (04, 13, 02)
+9. Verify (03)
+10. Genera reporte `SCOUT_ATTRIBUTION_AFTER_REPORT.md`
 
-## Validaciones
+## Qué Revisar si Falla
 
-### 1. Coverage scouting_daily
+### Error de Conexión a Base de Datos
+
+- Verificar que `DATABASE_URL` esté configurado correctamente
+- Verificar que PostgreSQL esté corriendo
+- Verificar permisos de usuario en la base de datos
+
+### Error en Vistas
+
+- Verificar que existan las tablas base: `observational.lead_ledger`, `observational.lead_events`, `canon.identity_registry`, `canon.identity_links`
+- Verificar que existan las tablas de fuente: `public.module_ct_scouting_daily`, `public.module_ct_cabinet_leads` (si aplica)
+- Revisar logs del script para errores específicos de SQL
+
+### Error en Backfills
+
+- Verificar que las tablas de auditoría se hayan creado correctamente (`ops.identity_links_backfill_audit`, `ops.lead_ledger_scout_backfill_audit`, etc.)
+- Revisar logs de backfill para ver qué registros fallaron y por qué
+- Verificar que no haya conflictos de constraints (ej: identity_links ya existe)
+
+### Cobertura 0%
+
+Si después del fix la cobertura sigue en 0%:
+
+1. Verificar que `module_ct_scouting_daily` tenga registros con `scout_id NOT NULL`
+2. Verificar que existan `identity_links` para esos registros
+3. Verificar que existan `lead_ledger` entries para los `person_key` correspondientes
+4. Ejecutar diagnóstico manual: `backend/scripts/sql/01_diagnose_scout_attribution.sql`
+
+## Cómo Revisar Conflictos y Categorías
+
+### Conflictos (múltiples scout_ids para mismo person_key)
 
 ```sql
--- % de scouting_daily con scout_id que tienen identity_links
-SELECT 
-    COUNT(*) AS total_with_scout_id,
-    COUNT(DISTINCT sd.id) FILTER (
-        WHERE EXISTS (
-            SELECT 1 FROM canon.identity_links il
-            WHERE il.source_table = 'module_ct_scouting_daily'
-            AND il.source_pk = sd.id::TEXT
-        )
-    ) AS with_identity_links,
-    ROUND(COUNT(DISTINCT sd.id) FILTER (
-        WHERE EXISTS (
-            SELECT 1 FROM canon.identity_links il
-            WHERE il.source_table = 'module_ct_scouting_daily'
-            AND il.source_pk = sd.id::TEXT
-        )
-    )::NUMERIC / NULLIF(COUNT(*), 0) * 100, 2) AS pct_with_links
-FROM public.module_ct_scouting_daily sd
-WHERE sd.scout_id IS NOT NULL;
-
--- % que llegan a lead_ledger con attributed_scout_id
-SELECT 
-    COUNT(*) AS total_with_scout_id,
-    COUNT(DISTINCT sd.id) FILTER (
-        WHERE EXISTS (
-            SELECT 1 FROM canon.identity_links il
-            JOIN observational.lead_ledger ll ON ll.person_key = il.person_key
-            WHERE il.source_table = 'module_ct_scouting_daily'
-            AND il.source_pk = sd.id::TEXT
-            AND ll.attributed_scout_id IS NOT NULL
-        )
-    ) AS with_lead_ledger_scout,
-    ROUND(COUNT(DISTINCT sd.id) FILTER (
-        WHERE EXISTS (
-            SELECT 1 FROM canon.identity_links il
-            JOIN observational.lead_ledger ll ON ll.person_key = il.person_key
-            WHERE il.source_table = 'module_ct_scouting_daily'
-            AND il.source_pk = sd.id::TEXT
-            AND ll.attributed_scout_id IS NOT NULL
-        )
-    )::NUMERIC / NULLIF(COUNT(*), 0) * 100, 2) AS pct_with_ledger_scout
-FROM public.module_ct_scouting_daily sd
-WHERE sd.scout_id IS NOT NULL;
+SELECT * FROM ops.v_scout_attribution_conflicts
+ORDER BY distinct_scout_count DESC, total_records DESC
+LIMIT 50;
 ```
 
-**Esperado después del fix:**
-- `pct_with_links` > 0% (antes: 0%)
-- `pct_with_ledger_scout` > 0% (antes: 0%)
+Estos conflictos requieren revisión manual para decidir qué scout_id usar.
 
-### 2. Coverage Global
-
-```sql
-SELECT 
-    (SELECT COUNT(DISTINCT person_key) FROM canon.identity_registry) AS total_persons,
-    (SELECT COUNT(DISTINCT person_key) FROM observational.lead_ledger WHERE attributed_scout_id IS NOT NULL) AS persons_with_scout,
-    ROUND((
-        SELECT COUNT(DISTINCT person_key) FROM observational.lead_ledger WHERE attributed_scout_id IS NOT NULL
-    )::NUMERIC / NULLIF((
-        SELECT COUNT(DISTINCT person_key) FROM canon.identity_registry
-    ), 0) * 100, 2) AS pct_with_scout
-```
-
-**Esperado después del fix:**
-- `pct_with_scout` > 18.39% (mejora desde baseline)
-
-### 3. Categoría D (Scout en events, no en ledger)
+### Categorías de Personas Sin Scout
 
 ```sql
 SELECT 
     categoria,
-    COUNT(*) AS count
+    COUNT(*) AS count,
+    ROUND(COUNT(*)::NUMERIC / NULLIF((SELECT COUNT(*) FROM ops.v_persons_without_scout_categorized), 0) * 100, 2) AS pct
 FROM ops.v_persons_without_scout_categorized
-WHERE categoria = 'D: Scout en eventos, no en ledger'
-GROUP BY categoria;
+GROUP BY categoria
+ORDER BY count DESC;
 ```
 
-**Esperado después del fix:**
-- Categoría D debería reducirse sustancialmente (de 174 a menos)
+Categorías:
+- **A**: Tiene lead_events pero sin scout_id
+- **B**: Tiene lead_ledger sin scout (attribution_rule indica unassigned/bucket)
+- **C**: Sin events ni ledger (legacy/externo)
+- **D**: Scout en events pero no en ledger
+- **E**: Otros (verificar manualmente)
 
-### 4. Conflictos
+### Muestras por Categoría
 
 ```sql
-SELECT COUNT(*) AS total_conflicts
-FROM ops.v_scout_attribution_conflicts;
+-- Categoría D (prioritaria para backfill)
+SELECT * FROM ops.v_persons_without_scout_categorized
+WHERE categoria = 'D: Scout en events pero no en ledger'
+ORDER BY events_with_scout_count DESC, identity_created_at DESC
+LIMIT 50;
 ```
 
-**Esperado:**
-- No deben aumentar sin explicación
-- Revisar los 17 conflictos existentes
+## Cómo Validar en UI (Cobranza con Scout)
 
-### 5. Grano de Vistas
+### Verificar Vista de Cobranza Yango con Scout
 
 ```sql
--- Verificar que v_scout_attribution tiene 1 fila por person_key
 SELECT 
-    COUNT(*) AS total_rows,
-    COUNT(DISTINCT person_key) AS distinct_person_keys,
-    CASE 
-        WHEN COUNT(*) = COUNT(DISTINCT person_key) THEN 'OK'
-        ELSE 'ERROR: Hay duplicados'
-    END AS status
-FROM ops.v_scout_attribution
-WHERE person_key IS NOT NULL;
+    scout_quality_bucket,
+    COUNT(*) AS claim_count,
+    ROUND(COUNT(*)::NUMERIC / NULLIF((SELECT COUNT(*) FROM ops.v_yango_collection_with_scout), 0) * 100, 2) AS pct
+FROM ops.v_yango_collection_with_scout
+GROUP BY scout_quality_bucket
+ORDER BY claim_count DESC;
 ```
 
-**Esperado:**
-- `status = 'OK'` (sin duplicados)
+Calidad de atribución:
+- **SATISFACTORY_LEDGER**: Desde lead_ledger (source-of-truth)
+- **EVENTS_ONLY**: Solo desde eventos
+- **SCOUTING_DAILY_ONLY**: Solo desde scouting_daily
+- **MISSING**: Sin scout
 
-## Rollback
-
-### Si es necesario revertir cambios:
-
-#### 1. Revertir Backfill de Lead Ledger
+### Cobertura de Scout en Cobranza
 
 ```sql
--- Revertir cambios de backfill en lead_ledger usando auditoría
+SELECT 
+    COUNT(*) AS total_claims,
+    COUNT(*) FILTER (WHERE is_scout_resolved = true) AS claims_with_scout,
+    ROUND((COUNT(*) FILTER (WHERE is_scout_resolved = true)::NUMERIC / COUNT(*) * 100), 2) AS pct_with_scout
+FROM ops.v_yango_collection_with_scout;
+```
+
+## Rollback / Seguridad
+
+### Principios de Seguridad
+
+- **Backfills segmentados**: Solo afectan registros específicos (ej: categoría D)
+- **Audit logs**: Todas las actualizaciones se registran en tablas de auditoría append-only
+- **Idempotencia**: Los scripts pueden ejecutarse múltiples veces sin duplicar efectos
+
+### Tablas de Auditoría
+
+1. **ops.identity_links_backfill_audit**: Registra creación de identity_links desde scouting_daily
+2. **ops.lead_ledger_scout_backfill_audit**: Registra actualizaciones de `attributed_scout_id` en lead_ledger
+3. **ops.lead_events_scout_backfill_audit**: Registra actualizaciones de `scout_id` en lead_events
+
+### Rollback Manual
+
+Si es necesario revertir un backfill:
+
+1. Identificar registros afectados en las tablas de auditoría
+2. Usar los campos `old_*` para restaurar valores anteriores
+3. Ejecutar UPDATE manuales con WHERE clauses específicos
+4. Documentar el rollback en las tablas de auditoría
+
+**Ejemplo de rollback** (solo para emergencias, requiere aprobación):
+
+```sql
+-- Rollback de lead_ledger (ejemplo - NO ejecutar sin aprobación)
 UPDATE observational.lead_ledger ll
 SET 
-    attributed_scout_id = a.old_attributed_scout_id,
-    attribution_rule = a.attribution_rule_old,
-    confidence_level = a.confidence_level_old::attributionconfidence,
-    evidence_json = a.evidence_json_old,
-    updated_at = NOW()
-FROM ops.lead_ledger_backfill_audit a
-WHERE ll.person_key = a.person_key
-    AND a.backfill_method = 'BACKFILL_SINGLE_SCOUT_FROM_EVENTS'
-    AND a.backfill_timestamp >= NOW() - INTERVAL '1 day';
+    attributed_scout_id = audit.old_attributed_scout_id,
+    attribution_rule = audit.attribution_rule_old,
+    evidence_json = audit.evidence_json_old
+FROM ops.lead_ledger_scout_backfill_audit audit
+WHERE ll.person_key = audit.person_key
+    AND audit.backfill_timestamp >= 'YYYY-MM-DD HH:MM:SS'  -- Timestamp específico
+    AND audit.backfill_method = 'BACKFILL_SINGLE_SCOUT_FROM_EVENTS';
 ```
 
-#### 2. Revertir Identity Links (Solo si es necesario)
+## Salida Final Esperada
 
-**ADVERTENCIA**: Esto puede afectar otros procesos. Solo hacer si es absolutamente necesario.
+Después de ejecutar el fix completo:
 
-```sql
--- Eliminar identity_links creados por el backfill
-DELETE FROM canon.identity_links
-WHERE source_table = 'module_ct_scouting_daily'
-    AND match_rule LIKE 'BACKFILL_%'
-    AND linked_at >= NOW() - INTERVAL '1 day';
-```
+- ✅ Cobertura "satisfactorio" en scouting_daily **ya NO es 0%** (al menos identity_links > 0 y ledger scout > 0 si ledger existe)
+- ✅ Categoría D reduce notablemente (propagación events → ledger)
+- ✅ Categoría A: o se resuelve por mapping 1:1 o queda alertada con evidencia
+- ✅ Vista de cobranza Yango con scout y buckets de calidad (`ops.v_yango_collection_with_scout`)
+- ✅ Base para liquidación diaria scout lista para construir C2/C3 scout (`ops.v_scout_daily_expected_base`)
 
-## Revisión de Conflictos
+## Reportes Generados
 
-Los conflictos se pueden revisar en:
+Después de la ejecución, se genera:
 
-```sql
-SELECT * FROM ops.v_scout_attribution_conflicts
-ORDER BY distinct_scout_count DESC, total_attributions DESC;
-```
+- `backend/scripts/sql/SCOUT_ATTRIBUTION_AFTER_REPORT.md`: Reporte completo con métricas antes/después, warnings, y log de ejecución
 
-Para cada conflicto, revisar:
-1. ¿Cuál scout_id es el correcto?
-2. ¿Hay evidencia adicional en otras fuentes?
-3. ¿Requiere resolución manual?
+## Notas Adicionales
 
-## Validación en Cobranza Yango
+- Los scripts están diseñados para ejecutarse en **modo batch sin interacción** (sin `input()`)
+- Encoding UTF-8 para Windows
+- Sin emojis en output
+- Todos los scripts SQL son **idempotentes** (pueden ejecutarse múltiples veces)
 
-Para validar que el fix no rompió la lógica de cobranza:
+## Soporte
 
-```sql
--- Verificar que los scouts atribuidos están siendo usados correctamente
-SELECT 
-    ll.attributed_scout_id,
-    COUNT(DISTINCT ll.person_key) AS distinct_persons,
-    COUNT(DISTINCT cp.payment_id) AS distinct_payments
-FROM observational.lead_ledger ll
-LEFT JOIN public.module_ct_cabinet_payments cp 
-    ON cp.person_key = ll.person_key
-WHERE ll.attributed_scout_id IS NOT NULL
-GROUP BY ll.attributed_scout_id
-ORDER BY distinct_persons DESC
-LIMIT 20;
-```
-
-## Troubleshooting
-
-### Error: "relation ops.lead_ledger_backfill_audit does not exist"
-
-El script `backfill_lead_ledger_attributed_scout.sql` crea esta tabla automáticamente. Si falla, ejecutar manualmente:
-
-```sql
-CREATE TABLE IF NOT EXISTS ops.lead_ledger_backfill_audit (
-    id SERIAL PRIMARY KEY,
-    person_key UUID NOT NULL,
-    old_attributed_scout_id INTEGER,
-    new_attributed_scout_id INTEGER,
-    -- ... (ver script completo)
-);
-```
-
-### Error: "No se pueden crear identity_links"
-
-Verificar que:
-1. `canon.drivers_index` está actualizado
-2. Los datos de `scouting_daily` tienen `driver_license` o `driver_phone` válidos
-3. No hay restricciones de integridad referencial
-
-### Performance: Scripts muy lentos
-
-Si los scripts son muy lentos:
-1. Ejecutar en horarios de bajo tráfico
-2. Considerar ejecutar por lotes (fechas)
-3. Verificar índices en `canon.identity_links` y `observational.lead_ledger`
-
-## Contacto
-
-Para dudas o problemas:
+Para problemas o preguntas:
 1. Revisar logs del script
-2. Consultar `ops.lead_ledger_backfill_audit` para auditoría
-3. Revisar `ops.v_scout_attribution_conflicts` para conflictos
-
+2. Ejecutar diagnóstico manual: `backend/scripts/sql/01_diagnose_scout_attribution.sql`
+3. Revisar tablas de auditoría para detalles de backfills
+4. Consultar este runbook

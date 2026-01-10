@@ -1025,5 +1025,157 @@ export interface OriginAuditStats {
   alerts_by_severity: Record<string, number>;
 }
 
+// ============================================================================
+// Scout Attribution Types
+// ============================================================================
+
+export interface ScoutAttributionMetrics {
+  total_persons: number;
+  persons_with_scout_satisfactory: number;
+  pct_scout_satisfactory: number;
+  persons_missing_scout: number;
+  conflicts_count: number;
+  backlog: {
+    a_events_without_scout: number;
+    d_scout_in_events_not_in_ledger: number;
+    c_legacy: number;
+  };
+  last_job: {
+    status: string | null;
+    ended_at: string | null;
+    started_at: string | null;
+    duration_seconds: number | null;
+    summary: any;
+    error: string | null;
+  };
+  snapshot_timestamp: string | null;
+}
+
+export interface ScoutAttributionMetricsDaily {
+  daily_metrics: Array<{
+    date: string;
+    total_persons: number;
+    satisfactory_count: number;
+    pct_satisfactory: number;
+    missing_count: number;
+    by_source: {
+      scouting_daily: number;
+      cabinet_leads: number;
+      lead_ledger: number;
+    };
+  }>;
+}
+
+export interface ScoutAttributionConflict {
+  person_key: string;
+  distinct_scout_count: number;
+  scout_ids: number[];
+  sources: string[];
+  origin_tags: string[] | null;
+  first_event_date: string | null;
+  last_event_date: string | null;
+  total_sources: number;
+}
+
+export interface ScoutAttributionConflictsResponse {
+  conflicts: ScoutAttributionConflict[];
+  pagination: {
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
+export interface ScoutAttributionBacklogItem {
+  person_key: string;
+  category: string;
+  category_label: string;
+  scout_id: number | null;
+  source_tables: string[];
+  origin_tags: string[] | null;
+  first_event_date: string | null;
+  last_event_date: string | null;
+  event_count: number;
+}
+
+export interface ScoutAttributionBacklogResponse {
+  backlog: ScoutAttributionBacklogItem[];
+  pagination: {
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
+export interface ScoutAttributionJobStatus {
+  last_run: {
+    run_id: number;
+    status: string;
+    started_at: string;
+    ended_at: string | null;
+    duration_seconds: number | null;
+    summary: any;
+    error: string | null;
+  } | null;
+  status: string;
+}
+
+export interface ScoutLiquidationBaseItem {
+  person_key: string | null;
+  driver_id: string | null;
+  scout_id: number;
+  origin_tag: string | null;
+  milestone_reached: number;
+  milestone_date: string | null;
+  eligible_7d: boolean;
+  amount_payable: number;
+  payment_status: string;
+  block_reason: string | null;
+}
+
+export interface ScoutLiquidationBaseResponse {
+  items: ScoutLiquidationBaseItem[];
+  pagination: {
+    page: number;
+    page_size: number;
+  };
+}
+
+export interface YangoCollectionWithScoutItem {
+  driver_id: string;
+  person_key: string | null;
+  driver_name: string | null;
+  milestone_value: number;
+  lead_date: string | null;
+  expected_amount: number;
+  yango_due_date: string | null;
+  days_overdue_yango: number | null;
+  overdue_bucket_yango: string | null;
+  yango_payment_status: string | null;
+  payment_key: string | null;
+  pay_date: string | null;
+  reason_code: string | null;
+  match_rule: string | null;
+  match_confidence: string | null;
+  identity_status: string | null;
+  scout_id: number | null;
+  scout_name: string | null;
+  scout_type: string | null;
+  scout_quality_bucket: string | null;
+  is_scout_resolved: boolean;
+}
+
+export interface YangoCollectionWithScoutResponse {
+  items: YangoCollectionWithScoutItem[];
+  pagination: {
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
 
 
