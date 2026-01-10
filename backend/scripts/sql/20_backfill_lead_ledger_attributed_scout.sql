@@ -1,9 +1,9 @@
 -- ============================================================================
--- BACKFILL: Propagar scout_id desde lead_events a lead_ledger (CATEGORÍA D)
+-- BACKFILL: Propagar scout desde lead_events a lead_ledger
 -- ============================================================================
--- OBJETIVO: Para person_keys con scout_id en lead_events pero NO en lead_ledger
--- REGLA: Solo si hay EXACTAMENTE 1 scout_id distinto en eventos
--- EJECUCIÓN: Idempotente (solo actualiza si attributed_scout_id es NULL)
+-- Objetivo: Para person_keys con scout_id en eventos pero NO en ledger (Categoría D)
+-- Regla segura: Solo si hay EXACTAMENTE 1 scout_id distinto en eventos
+-- Ejecución: Idempotente (solo actualiza si attributed_scout_id es NULL)
 -- ============================================================================
 
 -- ============================================================================
@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS ops.lead_ledger_scout_backfill_audit (
     attribution_rule_new TEXT,
     attribution_confidence_old TEXT,
     attribution_confidence_new TEXT,
-    attribution_source TEXT,
     evidence_json_old JSONB,
     evidence_json_new JSONB,
     backfill_method TEXT NOT NULL,
@@ -55,7 +54,6 @@ WHERE le.person_key IS NOT NULL
         le.scout_id IS NOT NULL 
         OR (le.payload_json IS NOT NULL AND le.payload_json->>'scout_id' IS NOT NULL)
     )
-    -- Excluir si ya tiene scout satisfactorio en lead_ledger
     AND NOT EXISTS (
         SELECT 1 FROM observational.lead_ledger ll
         WHERE ll.person_key = le.person_key
@@ -103,7 +101,6 @@ BEGIN
         new_evidence_json := COALESCE(rec.current_evidence_json, '{}'::JSONB) || jsonb_build_object(
             'backfill_method', 'BACKFILL_SINGLE_SCOUT_FROM_EVENTS',
             'backfill_timestamp', NOW(),
-            'attribution_source', 'lead_events',
             'source_tables', rec.source_tables,
             'origin_tags', rec.origin_tags,
             'total_events', rec.total_events,
@@ -116,8 +113,8 @@ BEGIN
         SET 
             attributed_scout_id = rec.scout_id,
             attribution_rule = COALESCE(attribution_rule, 'BACKFILL_SINGLE_SCOUT_FROM_EVENTS'),
-            confidence_level = CASE 
-                WHEN confidence_level::TEXT = 'high' THEN confidence_level
+            attribution_confidence = CASE 
+                WHEN attribution_confidence::TEXT = 'high' THEN attribution_confidence
                 ELSE 'high'::attributionconfidence
             END,
             evidence_json = new_evidence_json,
@@ -137,7 +134,6 @@ BEGIN
                 attribution_rule_new,
                 attribution_confidence_old,
                 attribution_confidence_new,
-                attribution_source,
                 evidence_json_old,
                 evidence_json_new,
                 backfill_method,
@@ -151,7 +147,6 @@ BEGIN
                 'BACKFILL_SINGLE_SCOUT_FROM_EVENTS',
                 rec.current_attribution_confidence::TEXT,
                 'high',
-                'lead_events',
                 rec.current_evidence_json,
                 new_evidence_json,
                 'BACKFILL_SINGLE_SCOUT_FROM_EVENTS',
@@ -218,3 +213,4 @@ SELECT
 FROM v_conflicts_multiple_scouts
 ORDER BY distinct_scout_count DESC, total_events DESC
 LIMIT 20;
+

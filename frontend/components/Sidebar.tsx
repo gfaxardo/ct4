@@ -53,6 +53,18 @@ const navItems: NavItem[] = [
     ],
   },
   {
+    label: 'Scouts',
+    href: '#',
+    icon: '🎯',
+    children: [
+      { label: 'Salud de Atribución', href: '/scouts/attribution-health', icon: '' },
+      { label: 'Conflictos', href: '/scouts/conflicts', icon: '' },
+      { label: 'Backlog', href: '/scouts/backlog', icon: '' },
+      { label: 'Cobranza Yango', href: '/scouts/cobranza-yango', icon: '' },
+      { label: 'Liquidación Base', href: '/scouts/liquidation', icon: '' },
+    ],
+  },
+  {
     label: 'Liquidaciones',
     href: '#',
     icon: '💵',

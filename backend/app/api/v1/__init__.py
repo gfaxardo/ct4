@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import identity, ops, attribution, dashboard, liquidation, yango_payments, cabinet_leads, identity_audit
+from app.api.v1 import identity, ops, attribution, dashboard, liquidation, yango_payments, cabinet_leads, identity_audit, scouts
 from .payments import router as payments_router
 
 router = APIRouter()
@@ -13,6 +13,7 @@ router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 router.include_router(liquidation.router, prefix="/liquidation", tags=["liquidation"])
 router.include_router(yango_payments.router, prefix="/yango", tags=["yango"])
 router.include_router(cabinet_leads.router, prefix="/cabinet-leads", tags=["cabinet-leads"])
+router.include_router(scouts.router, prefix="/scouts", tags=["scouts"])
 
 
 

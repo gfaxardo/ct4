@@ -14,6 +14,7 @@ class RunStatus(str, enum.Enum):
 class JobType(str, enum.Enum):
     IDENTITY_RUN = "identity_run"
     DRIVERS_INDEX_REFRESH = "drivers_index_refresh"
+    SCOUT_ATTRIBUTION_REFRESH = "scout_attribution_refresh"
 
 
 class JobTypeEnum(TypeDecorator):
@@ -21,7 +22,7 @@ class JobTypeEnum(TypeDecorator):
     cache_ok = True
     
     def __init__(self):
-        super().__init__('identity_run', 'drivers_index_refresh', name='jobtype', create_type=False)
+        super().__init__('identity_run', 'drivers_index_refresh', 'scout_attribution_refresh', name='jobtype', create_type=False)
     
     def process_bind_param(self, value, dialect):
         if value is None:

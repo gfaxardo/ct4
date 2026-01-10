@@ -323,9 +323,11 @@ def main():
     """Ejecuta el backfill de identity_links para scouting_daily"""
     stats = {
         "total": 0,
+        "created": 0,
         "created_with_driver": 0,
         "created_new_person": 0,
         "skipped": 0,
+        "ambiguous": 0,
         "errors": 0
     }
     
@@ -363,15 +365,19 @@ def main():
         
         # Commit final
         db.commit()
+        stats["created"] = stats["created_with_driver"] + stats["created_new_person"]
         
         logger.info("="*70)
         logger.info("RESUMEN FINAL")
         logger.info("="*70)
         logger.info(f"Total procesados: {stats['total']}")
-        logger.info(f"Creados con driver match: {stats['created_with_driver']}")
-        logger.info(f"Creados con person nuevo: {stats['created_new_person']}")
+        logger.info(f"Creados (total): {stats['created']}")
+        logger.info(f"  - Con driver match: {stats['created_with_driver']}")
+        logger.info(f"  - Con person nuevo: {stats['created_new_person']}")
+        logger.info(f"Omitidos: {stats['skipped']}")
+        logger.info(f"Ambiguos: {stats['ambiguous']}")
         logger.info(f"Errores: {stats['errors']}")
-        logger.info(f"Total creados: {stats['created_with_driver'] + stats['created_new_person']}")
+        logger.info(f"Tasa de éxito: {(stats['created']/stats['total']*100):.1f}%")
         
         return stats
         

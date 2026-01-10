@@ -1,0 +1,213 @@
+[
+  {
+    "person_key": "b3d8f553-28ca-48f6-a0cf-79ceeea58edc",
+    "person_name": "LINARES VANDERLEY",
+    "person_phone": "51905459777",
+    "person_license": "DRIVERDRAFTF66C1AB9DF4245FF9EF02DBEFDB98E25",
+    "person_created_at": "2025-12-23 19:57:29.855269-05:00",
+    "distinct_scout_count": 3,
+    "scout_ids": [
+      10,
+      13,
+      23
+    ],
+    "source_tables": [
+      "module_ct_scouting_daily"
+    ],
+    "first_attribution_date": "2025-12-13 00:00:00",
+    "last_attribution_date": "2025-12-22 00:00:00",
+    "total_records": 3,
+    "ledger_attributed_scout_id": null,
+    "ledger_attribution_rule": "U",
+    "ledger_confidence_level": "low",
+    "ledger_updated_at": "2025-12-24 01:41:49.542311-05:00",
+    "sources_detail": [
+      {
+        "scout_id": 10,
+        "source_table": "module_ct_scouting_daily",
+        "source_pk": "541",
+        "attribution_date": "2025-12-22T00:00:00",
+        "created_at": "2026-01-07T11:41:11.549435-05:00",
+        "priority": 2
+      },
+      {
+        "scout_id": 13,
+        "source_table": "module_ct_scouting_daily",
+        "source_pk": "437",
+        "attribution_date": "2025-12-15T00:00:00",
+        "created_at": "2025-12-23T17:24:42.091638-05:00",
+        "priority": 2
+      },
+      {
+        "scout_id": 23,
+        "source_table": "module_ct_scouting_daily",
+        "source_pk": "434",
+        "attribution_date": "2025-12-13T00:00:00",
+        "created_at": "2025-12-23T17:24:42.091638-05:00",
+        "priority": 2
+      }
+    ]
+  },
+  {
+    "person_key": "10a37516-659b-4b96-a010-a479fbfd3f0d",
+    "person_name": null,
+    "person_phone": "998701906",
+    "person_license": "X",
+    "person_created_at": "2026-01-09 15:55:53.392573-05:00",
+    "distinct_scout_count": 2,
+    "scout_ids": [
+      10,
+      13
+    ],
+    "source_tables": [
+      "public.module_ct_scouting_daily"
+    ],
+    "first_attribution_date": "2025-11-26 00:00:00",
+    "last_attribution_date": "2025-12-19 00:00:00",
+    "total_records": 2,
+    "ledger_attributed_scout_id": null,
+    "ledger_attribution_rule": null,
+    "ledger_confidence_level": null,
+    "ledger_updated_at": null,
+    "sources_detail": [
+      {
+        "scout_id": 10,
+        "source_table": "public.module_ct_scouting_daily",
+        "source_pk": "518",
+        "attribution_date": "2025-12-19T00:00:00",
+        "created_at": "2026-01-07T14:44:24.28713-05:00",
+        "priority": 4
+      },
+      {
+        "scout_id": 13,
+        "source_table": "public.module_ct_scouting_daily",
+        "source_pk": "143",
+        "attribution_date": "2025-11-26T00:00:00",
+        "created_at": "2026-01-07T14:40:32.744432-05:00",
+        "priority": 4
+      }
+    ]
+  },
+  {
+    "person_key": "49877d22-cc19-4fec-a0a2-e14defffcd25",
+    "person_name": null,
+    "person_phone": null,
+    "person_license": null,
+    "person_created_at": "2025-12-25 21:01:00.007415-05:00",
+    "distinct_scout_count": 2,
+    "scout_ids": [
+      1,
+      20
+    ],
+    "source_tables": [
+      "module_ct_migrations",
+      "module_ct_scouting_daily"
+    ],
+    "first_attribution_date": "2025-12-19 00:00:00",
+    "last_attribution_date": "2025-12-19 00:00:00",
+    "total_records": 2,
+    "ledger_attributed_scout_id": null,
+    "ledger_attribution_rule": null,
+    "ledger_confidence_level": null,
+    "ledger_updated_at": null,
+    "sources_detail": [
+      {
+        "scout_id": 1,
+        "source_table": "module_ct_scouting_daily",
+        "source_pk": "513",
+        "attribution_date": "2025-12-19T00:00:00",
+        "created_at": "2026-01-07T11:41:11.549435-05:00",
+        "priority": 2
+      },
+      {
+        "scout_id": 20,
+        "source_table": "module_ct_migrations",
+        "source_pk": "174",
+        "attribution_date": "2025-12-19T00:00:00",
+        "created_at": "2025-12-22T15:40:35.112591-05:00",
+        "priority": 2
+      }
+    ]
+  },
+  {
+    "person_key": "d49ce6e9-8d8d-44c1-ab3d-15e3780c3a92",
+    "person_name": null,
+    "person_phone": null,
+    "person_license": null,
+    "person_created_at": "2025-12-25 21:01:00.007415-05:00",
+    "distinct_scout_count": 2,
+    "scout_ids": [
+      19,
+      20
+    ],
+    "source_tables": [
+      "module_ct_migrations",
+      "module_ct_scouting_daily"
+    ],
+    "first_attribution_date": "2025-12-02 00:00:00",
+    "last_attribution_date": "2025-12-23 00:00:00",
+    "total_records": 2,
+    "ledger_attributed_scout_id": null,
+    "ledger_attribution_rule": null,
+    "ledger_confidence_level": null,
+    "ledger_updated_at": null,
+    "sources_detail": [
+      {
+        "scout_id": 20,
+        "source_table": "module_ct_scouting_daily",
+        "source_pk": "592",
+        "attribution_date": "2025-12-23T00:00:00",
+        "created_at": "2026-01-07T11:42:36.519495-05:00",
+        "priority": 2
+      },
+      {
+        "scout_id": 19,
+        "source_table": "module_ct_migrations",
+        "source_pk": "161",
+        "attribution_date": "2025-12-02T00:00:00",
+        "created_at": "2025-12-22T15:40:30.64493-05:00",
+        "priority": 2
+      }
+    ]
+  },
+  {
+    "person_key": "d853c008-9758-4e0d-8bc4-42a5f4c392f0",
+    "person_name": "MARIN CENTENO MIGUEL ANGEL",
+    "person_phone": "51928138965",
+    "person_license": "Q25498695",
+    "person_created_at": "2025-12-23 19:53:05.665213-05:00",
+    "distinct_scout_count": 2,
+    "scout_ids": [
+      9,
+      22
+    ],
+    "source_tables": [
+      "module_ct_scouting_daily"
+    ],
+    "first_attribution_date": "2025-11-26 00:00:00",
+    "last_attribution_date": "2025-11-26 00:00:00",
+    "total_records": 2,
+    "ledger_attributed_scout_id": null,
+    "ledger_attribution_rule": "U",
+    "ledger_confidence_level": "low",
+    "ledger_updated_at": "2025-12-24 01:44:24.818664-05:00",
+    "sources_detail": [
+      {
+        "scout_id": 22,
+        "source_table": "module_ct_scouting_daily",
+        "source_pk": "157",
+        "attribution_date": "2025-11-26T00:00:00",
+        "created_at": "2025-12-23T17:24:42.091638-05:00",
+        "priority": 2
+      },
+      {
+        "scout_id": 9,
+        "source_table": "module_ct_scouting_daily",
+        "source_pk": "134",
+        "attribution_date": "2025-11-26T00:00:00",
+        "created_at": "2025-12-23T17:24:42.091638-05:00",
+        "priority": 2
+      }
+    ]
+  }
+]

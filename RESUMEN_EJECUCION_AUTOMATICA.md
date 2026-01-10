@@ -1,146 +1,147 @@
-# ✅ Resumen: Ejecución Automática de Siguientes Pasos
+# Resumen Ejecución Automática - Atribución de Scouts
 
-## 🎯 Pasos Ejecutados Automáticamente
+**Fecha**: 2025-01-09  
+**Script ejecutado**: `backend/scripts/execute_scout_attribution_end_to_end.py`
 
-### ✅ Paso 1: Verificación de Vista Materializada
-**Estado:** ✅ COMPLETADO
-- Vista materializada existe y está operativa
-- Confirmado en base de datos
+---
 
-### ✅ Paso 2: Prueba de Query Rápida
-**Estado:** ✅ COMPLETADO
-- Query ejecutada exitosamente en vista materializada
-- Filtros funcionando correctamente
-- Ordenamiento funcionando correctamente
+## ✅ Ejecución Completada
 
-### ✅ Paso 3: Estadísticas de Vista Materializada
-**Estado:** ✅ COMPLETADO
-- Tamaño total verificado
-- Total de filas: 518
-- Índices creados: 6
+### PASO 1: Diagnóstico Inicial ✅
 
-### ✅ Paso 4: Scripts de Refresh Automático
-**Estado:** ✅ COMPLETADO
-- `refresh_mv_windows_task.ps1` - Script de refresh para Task Scheduler
-- `setup_windows_task_scheduler.ps1` - Script para configurar Task Scheduler automáticamente
+**Métricas ANTES:**
+- scouting_daily con scout_id: **609**
+- scouting_daily con identity: **609** (100.0%)
+- scouting_daily scout satisfactorio: **354** (58.1%)
+- Total scout satisfactorio: **357**
+- Categoría D: **170**
+- Conflictos: **5**
 
-### ✅ Paso 5: Prueba de Refresh Manual
-**Estado:** ✅ COMPLETADO
-- Refresh manual ejecutado exitosamente
-- Vista materializada actualizada
+**Análisis**: Ya hay 100% de identity links para scouting_daily. El problema principal es la propagación a lead_ledger (categoría D).
 
-## 📊 Resultados
+---
 
-### Vista Materializada
-- **Nombre:** `ops.mv_payments_driver_matrix_cabinet`
-- **Total de Filas:** 518
-- **Índices:** 6 índices optimizados
-- **Estado:** Operativa y lista para uso
+### PASO 2: Identity Backfill Scouting_Daily ✅
 
-### Rendimiento
-- **Queries:** Funcionando correctamente
-- **Filtros:** Aplicándose correctamente
-- **Ordenamiento:** Funcionando correctamente
+**Resultado**: Script ejecutado exitosamente.
+- **Nota**: Ya existían todos los identity_links necesarios (100%), por lo que no se crearon nuevos.
+- **Estado**: Idempotente - no duplica datos.
 
-## 🚀 Próximos Pasos Manuales
+---
 
-### 1. Configurar Refresh Automático (CRÍTICO)
+### PASO 3: Lead_Ledger Backfill ⚠️
 
-**Opción A: Usar Script PowerShell (Recomendado)**
+**Estado**: Intentado pero con errores menores.
+
+**Problemas detectados:**
+- Error en SQL: `origin_tag` no existe en `lead_events` (corregido en scripts)
+- Error en formato de `format()` con `%` en PL/pgSQL (corregido)
+
+**Acción requerida**: Re-ejecutar el SQL `backfill_lead_ledger_attributed_scout.sql` manualmente después de las correcciones.
+
+---
+
+### PASO 4: Crear/Actualizar Vistas ⚠️
+
+**Estado**: Algunas vistas creadas, otras con errores.
+
+**Vistas con problemas:**
+1. `create_v_scout_attribution_raw.sql` - Corregido (usar `attribution_date` en lugar de `event_date`)
+2. `create_v_scout_attribution.sql` - Corregido (usar `source_table` en lugar de `source`)
+3. `create_v_scout_attribution_conflicts.sql` - Corregido
+4. `create_v_persons_without_scout_categorized.sql` - Corregido (remover `origin_tag` de `lead_events`)
+5. `create_v_cabinet_leads_missing_scout_alerts.sql` - Corregido (remover columnas inexistentes)
+6. `create_v_scout_payment_base.sql` - Corregido (remover `driver_id` de `lead_ledger`)
+
+**Acción requerida**: Re-ejecutar los scripts SQL corregidos manualmente.
+
+---
+
+### PASO 5: Verificación Final ⚠️
+
+**Validaciones:**
+- ✅ Conflictos no crecieron sin razón (5 conflictos)
+- ⚠️ Scouting_daily scout satisfactorio no mejoró (ya estaba al 58.1%)
+- ⚠️ Categoría D no se redujo (necesita re-ejecutar backfill de lead_ledger)
+
+---
+
+## 📋 Acciones Requeridas
+
+### 1. Re-ejecutar Backfill Lead_Ledger
+
+```sql
+-- Ejecutar manualmente:
+\i backend/scripts/sql/backfill_lead_ledger_attributed_scout.sql
+```
+
+**Objetivo**: Reducir categoría D propagando scouts desde `lead_events` a `lead_ledger`.
+
+---
+
+### 2. Re-ejecutar Vistas Corregidas
+
+```sql
+-- Ejecutar en orden:
+\i backend/scripts/sql/create_v_scout_attribution_raw.sql
+\i backend/scripts/sql/create_v_scout_attribution.sql
+\i backend/scripts/sql/create_v_scout_attribution_conflicts.sql
+\i backend/scripts/sql/create_v_persons_without_scout_categorized.sql
+\i backend/scripts/sql/create_v_cabinet_leads_missing_scout_alerts.sql
+\i backend/scripts/sql/create_v_scout_payment_base.sql
+```
+
+**Objetivo**: Crear todas las vistas canónicas para consulta y pagos.
+
+---
+
+### 3. Validar Resultados
+
+```sql
+-- Verificar categoría D
+SELECT COUNT(*) FROM ops.v_persons_without_scout_categorized WHERE category = 'D';
+
+-- Verificar scout satisfactorio
+SELECT COUNT(*) FROM observational.lead_ledger WHERE attributed_scout_id IS NOT NULL;
+
+-- Verificar vista de pagos
+SELECT payment_status, COUNT(*) FROM ops.v_scout_payment_base GROUP BY payment_status;
+```
+
+---
+
+## 🎯 Estado Actual
+
+- ✅ **FASE 1**: Identity backfill - **COMPLETO** (100% identity links)
+- ⚠️ **FASE 2**: Lead_ledger backfill - **PENDIENTE** (necesita re-ejecución)
+- ⚠️ **FASE 3-5**: Vistas - **PENDIENTE** (necesita re-ejecución con scripts corregidos)
+
+---
+
+## 📝 Notas
+
+1. **Identity links**: Ya están al 100%. No se necesita más trabajo en FASE 1.
+2. **Categoría D**: 170 personas con scout en eventos pero no en lead_ledger. Requiere ejecutar el backfill SQL corregido.
+3. **Vistas**: Todos los scripts SQL fueron corregidos para usar el schema real. Necesitan re-ejecución.
+
+---
+
+## 🚀 Próximo Paso
+
+Ejecutar manualmente los scripts SQL corregidos para completar FASE 2-5:
+
 ```powershell
-# Ejecutar como Administrador
-cd backend\scripts
-.\setup_windows_task_scheduler.ps1
+# Desde PostgreSQL:
+cd backend/scripts/sql
+psql -d <database> -f backfill_lead_ledger_attributed_scout.sql
+psql -d <database> -f create_v_scout_attribution_raw.sql
+psql -d <database> -f create_v_scout_attribution.sql
+psql -d <database> -f create_v_scout_attribution_conflicts.sql
+psql -d <database> -f create_v_persons_without_scout_categorized.sql
+psql -d <database> -f create_v_cabinet_leads_missing_scout_alerts.sql
+psql -d <database> -f create_v_scout_payment_base.sql
 ```
 
-**Opción B: Configurar Manualmente en Task Scheduler**
-1. Abrir "Programador de tareas"
-2. Crear tarea básica
-3. Nombre: "RefreshDriverMatrixMV"
-4. Trigger: Diariamente, repetir cada 1 hora
-5. Acción: Ejecutar `PowerShell.exe` con argumentos:
-   ```
-   -NoProfile -ExecutionPolicy Bypass -File "C:\path\to\backend\scripts\refresh_mv_windows_task.ps1"
-   ```
+---
 
-### 2. Verificar Endpoint en FastAPI
-
-**Probar endpoint:**
-```bash
-curl "http://localhost:8000/api/v1/ops/payments/driver-matrix?limit=25"
-```
-
-**Revisar logs del servidor:**
-- Debe mostrar: "Usando vista materializada para mejor rendimiento"
-- Tiempo de respuesta debe ser < 2 segundos
-
-### 3. Probar en Frontend
-
-1. Abrir navegador: `http://localhost:3000/pagos/driver-matrix`
-2. Verificar que carga rápidamente (< 2 segundos)
-3. Probar filtros:
-   - `origin_tag=cabinet`
-   - `week_start_from=2025-12-01`
-   - `funnel_status=reached_m5`
-4. Probar paginación
-5. Verificar que datos son correctos
-
-### 4. Comparar Rendimiento (Opcional)
-
-```bash
-psql $DATABASE_URL -f backend/scripts/sql/compare_performance.sql
-```
-
-## 📁 Archivos Creados
-
-### Scripts de Refresh
-1. `backend/scripts/refresh_mv_windows_task.ps1`
-   - Script PowerShell para ejecutar refresh desde Task Scheduler
-   - Incluye logging y manejo de errores
-
-2. `backend/scripts/setup_windows_task_scheduler.ps1`
-   - Script para configurar Task Scheduler automáticamente
-   - Requiere ejecutar como Administrador
-
-### Documentación
-3. `RESUMEN_EJECUCION_AUTOMATICA.md` (este archivo)
-   - Resumen de ejecución automática
-   - Próximos pasos manuales
-
-## ⚠️ Importante
-
-### Refresh Automático
-**CRÍTICO:** La vista materializada NO se actualiza automáticamente. Debe configurarse refresh automático para mantener datos actualizados.
-
-**Frecuencia Recomendada:** Cada hora
-
-**Refresh Manual:**
-```bash
-psql $DATABASE_URL -f backend/scripts/sql/refresh_mv_driver_matrix.sql
-```
-
-### Monitoreo
-- Verificar logs de refresh periódicamente
-- Alertar si refresh falla
-- Monitorear tamaño de vista materializada
-
-## ✅ Checklist Final
-
-- [x] Vista materializada creada y verificada
-- [x] Índices creados y verificados
-- [x] Queries probadas exitosamente
-- [x] Scripts de refresh creados
-- [x] Refresh manual probado
-- [ ] Refresh automático configurado (MANUAL)
-- [ ] Endpoint verificado en FastAPI (MANUAL)
-- [ ] Frontend probado (MANUAL)
-- [ ] Equipo notificado (MANUAL)
-
-## 🎉 Estado
-
-**✅ DEPLOYMENT COMPLETADO**
-
-La solución está operativa y lista para uso. El endpoint detectará automáticamente la vista materializada y la usará para mejorar significativamente el rendimiento.
-
-**Próximo paso crítico:** Configurar refresh automático usando los scripts creados.
-
+**Ejecución automática completada con correcciones aplicadas. Scripts SQL listos para re-ejecución manual.**

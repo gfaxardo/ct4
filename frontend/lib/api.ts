@@ -855,3 +855,99 @@ export async function muteAlert(
 export async function getOriginAuditStats(): Promise<OriginAuditStats> {
   return fetchApi<OriginAuditStats>('/api/v1/identity/audit/stats');
 }
+
+// ============================================================================
+// Scout Attribution API
+// ============================================================================
+
+import type {
+  ScoutAttributionMetrics,
+  ScoutAttributionMetricsDaily,
+  ScoutAttributionConflictsResponse,
+  ScoutAttributionBacklogResponse,
+  ScoutAttributionJobStatus,
+  ScoutLiquidationBaseResponse,
+  YangoCollectionWithScoutResponse,
+} from './types';
+
+export async function getScoutAttributionMetrics(): Promise<ScoutAttributionMetrics> {
+  return fetchApi<ScoutAttributionMetrics>('/api/v1/scouts/attribution/metrics');
+}
+
+export async function getScoutAttributionMetricsDaily(params?: {
+  days?: number;
+}): Promise<ScoutAttributionMetricsDaily> {
+  const searchParams = new URLSearchParams();
+  if (params?.days !== undefined) searchParams.set('days', params.days.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<ScoutAttributionMetricsDaily>(`/api/v1/scouts/attribution/metrics/daily${query ? `?${query}` : ''}`);
+}
+
+export async function getScoutAttributionConflicts(params?: {
+  page?: number;
+  page_size?: number;
+}): Promise<ScoutAttributionConflictsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString());
+  if (params?.page_size !== undefined) searchParams.set('page_size', params.page_size.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<ScoutAttributionConflictsResponse>(`/api/v1/scouts/attribution/conflicts${query ? `?${query}` : ''}`);
+}
+
+export async function getScoutAttributionBacklog(params?: {
+  category?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<ScoutAttributionBacklogResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.category) searchParams.set('category', params.category);
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString());
+  if (params?.page_size !== undefined) searchParams.set('page_size', params.page_size.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<ScoutAttributionBacklogResponse>(`/api/v1/scouts/attribution/backlog${query ? `?${query}` : ''}`);
+}
+
+export async function getScoutAttributionJobStatus(): Promise<ScoutAttributionJobStatus> {
+  return fetchApi<ScoutAttributionJobStatus>('/api/v1/scouts/attribution/job-status');
+}
+
+export async function runScoutAttributionNow(): Promise<{ status: string; run_id: number; message: string }> {
+  return fetchApi<{ status: string; run_id: number; message: string }>('/api/v1/scouts/attribution/run-now', {
+    method: 'POST',
+  });
+}
+
+export async function getScoutLiquidationBase(params?: {
+  page?: number;
+  page_size?: number;
+  filters?: string;
+}): Promise<ScoutLiquidationBaseResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString());
+  if (params?.page_size !== undefined) searchParams.set('page_size', params.page_size.toString());
+  if (params?.filters) searchParams.set('filters', params.filters);
+  
+  const query = searchParams.toString();
+  return fetchApi<ScoutLiquidationBaseResponse>(`/api/v1/scouts/liquidation/base${query ? `?${query}` : ''}`);
+}
+
+export async function getYangoCollectionWithScout(params?: {
+  page?: number;
+  page_size?: number;
+  scout_missing_only?: boolean;
+  conflicts_only?: boolean;
+  scout_id?: number;
+}): Promise<YangoCollectionWithScoutResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString());
+  if (params?.page_size !== undefined) searchParams.set('page_size', params.page_size.toString());
+  if (params?.scout_missing_only !== undefined) searchParams.set('scout_missing_only', params.scout_missing_only.toString());
+  if (params?.conflicts_only !== undefined) searchParams.set('conflicts_only', params.conflicts_only.toString());
+  if (params?.scout_id !== undefined) searchParams.set('scout_id', params.scout_id.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<YangoCollectionWithScoutResponse>(`/api/v1/yango/cabinet/collection-with-scout${query ? `?${query}` : ''}`);
+}

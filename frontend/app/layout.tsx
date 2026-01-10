@@ -13,6 +13,7 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  // Note: Suspense boundary needed for useSearchParams in client components
   return (
     <html lang="es">
       <body>

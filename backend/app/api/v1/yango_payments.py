@@ -570,6 +570,113 @@ def get_driver_detail(
         )
 
 
+@router.get("/cabinet/collection-with-scout")
+def get_collection_with_scout(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=1000),
+    scout_missing_only: bool = Query(False, description="Solo missing scout"),
+    conflicts_only: bool = Query(False, description="Solo conflicts"),
+    scout_id: Optional[int] = Query(None, description="Filtrar por scout_id"),
+):
+    """
+    Cobranza Yango con información de scout
+    """
+    try:
+        offset = (page - 1) * page_size
+        
+        where_conditions = []
+        params = {"page_size": page_size, "offset": offset}
+        
+        if scout_missing_only:
+            where_conditions.append("is_scout_resolved = false")
+        if conflicts_only:
+            # Requiere join con conflicts view
+            where_conditions.append("person_key IN (SELECT person_key FROM ops.v_scout_attribution_conflicts)")
+        if scout_id:
+            where_conditions.append("scout_id = :scout_id")
+            params["scout_id"] = scout_id
+        
+        where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+        
+        query = text(f"""
+            SELECT 
+                driver_id,
+                person_key,
+                driver_name,
+                milestone_value,
+                lead_date,
+                expected_amount,
+                yango_due_date,
+                days_overdue_yango,
+                overdue_bucket_yango,
+                yango_payment_status,
+                payment_key,
+                pay_date,
+                reason_code,
+                match_rule,
+                match_confidence,
+                identity_status,
+                scout_id,
+                scout_name,
+                scout_type,
+                scout_quality_bucket,
+                is_scout_resolved
+            FROM ops.v_yango_collection_with_scout
+            {where_clause}
+            ORDER BY lead_date DESC, milestone_value DESC
+            LIMIT :page_size OFFSET :offset
+        """)
+        
+        count_query = text(f"""
+            SELECT COUNT(*) 
+            FROM ops.v_yango_collection_with_scout
+            {where_clause}
+        """)
+        
+        result = db.execute(query, params)
+        count_result = db.execute(count_query, {k: v for k, v in params.items() if k != "page_size" and k != "offset"})
+        total = count_result.scalar()
+        
+        return {
+            "items": [
+                {
+                    "driver_id": row.driver_id,
+                    "person_key": str(row.person_key) if row.person_key else None,
+                    "driver_name": row.driver_name,
+                    "milestone_value": row.milestone_value,
+                    "lead_date": str(row.lead_date) if row.lead_date else None,
+                    "expected_amount": float(row.expected_amount) if row.expected_amount else 0,
+                    "yango_due_date": str(row.yango_due_date) if row.yango_due_date else None,
+                    "days_overdue_yango": row.days_overdue_yango,
+                    "overdue_bucket_yango": row.overdue_bucket_yango,
+                    "yango_payment_status": row.yango_payment_status,
+                    "payment_key": row.payment_key,
+                    "pay_date": str(row.pay_date) if row.pay_date else None,
+                    "reason_code": row.reason_code,
+                    "match_rule": row.match_rule,
+                    "match_confidence": row.match_confidence,
+                    "identity_status": row.identity_status,
+                    "scout_id": row.scout_id,
+                    "scout_name": row.scout_name,
+                    "scout_type": row.scout_type,
+                    "scout_quality_bucket": row.scout_quality_bucket,
+                    "is_scout_resolved": row.is_scout_resolved,
+                }
+                for row in result.fetchall()
+            ],
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error obteniendo collection with scout: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error obteniendo collection with scout: {str(e)}")
+
+
 @router.get("/cabinet/claims-to-collect", response_model=YangoCabinetClaimsResponse)
 def get_cabinet_claims_to_collect(
     db: Session = Depends(get_db),
