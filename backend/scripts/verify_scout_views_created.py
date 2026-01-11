@@ -39,3 +39,4 @@ with engine.connect() as conn:
         print("No se encontraron vistas de scout_attribution")
 
 
+

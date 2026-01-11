@@ -204,3 +204,4 @@ SELECT
     (SELECT COUNT(*) FROM ops.v_scout_attribution_conflicts) AS total_conflicts;
 
 
+

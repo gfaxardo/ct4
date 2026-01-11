@@ -238,3 +238,4 @@ Driver B  | ✅ Alcanzado 15/01
 3. **Compatibilidad**: Los cambios son retrocompatibles. Si `achieved_flag` es `null` o `false`, el comportamiento es el mismo que antes.
 
 
+

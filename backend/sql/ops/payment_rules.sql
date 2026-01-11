@@ -199,3 +199,4 @@ COMMENT ON COLUMN ops.scout_payment_rules.is_active IS
 
 
 
+

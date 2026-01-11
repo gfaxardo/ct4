@@ -253,5 +253,6 @@ Después de la ejecución, se genera:
 Para problemas o preguntas:
 1. Revisar logs del script
 2. Ejecutar diagnóstico manual: `backend/scripts/sql/01_diagnose_scout_attribution.sql`
-3. Revisar tablas de auditoría para detalles de backfills
-4. Consultar este runbook
+3. Consultar `ops.lead_ledger_backfill_audit` para auditoría
+4. Revisar `ops.v_scout_attribution_conflicts` para conflictos
+5. Consultar este runbook

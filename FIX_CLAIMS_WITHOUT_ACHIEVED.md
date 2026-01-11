@@ -201,3 +201,4 @@ El problema ocurría porque:
 **Solución**: Agregar `INNER JOIN` con `v_cabinet_milestones_achieved_from_trips` para exigir milestone determinístico antes de generar claim. Esto garantiza que solo se generen claims cuando existe evidencia real de viajes, independientemente de las ventanas de tiempo.
 
 
+

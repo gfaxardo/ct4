@@ -55,3 +55,4 @@
 5. `backend/scripts/sql/RESUMEN_MISSING_SCOUT.md` - Este resumen
 
 
+

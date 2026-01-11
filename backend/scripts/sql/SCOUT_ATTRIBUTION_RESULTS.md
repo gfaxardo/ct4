@@ -63,3 +63,4 @@ Según la verificación ejecutada:
 - Los 17 conflictos deben resolverse manualmente o con reglas de negocio específicas
 
 
+

@@ -368,3 +368,4 @@ Todos los componentes del feature "Yango Cabinet Claims" están implementados en
 **Si el audit SQL muestra que todo existe:** El feature está 100% operativo y listo para uso.
 
 
+

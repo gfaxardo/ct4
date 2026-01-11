@@ -223,3 +223,4 @@ WHERE attributed_scout_id IS NOT NULL;
 4. `backend/scripts/sql/monitor_scout_attribution_gap.sql` - Monitoreo
 
 
+

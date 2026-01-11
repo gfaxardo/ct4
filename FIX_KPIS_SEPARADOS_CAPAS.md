@@ -214,3 +214,4 @@ Los KPIs "sin Claim" se muestran con fondo amarillo (variant="warning") para ind
    - Útiles para identificar gaps en el proceso de claims
 
 
+

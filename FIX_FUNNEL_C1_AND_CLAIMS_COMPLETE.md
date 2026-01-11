@@ -162,3 +162,4 @@ El problema de claims sin milestone achieved ocurría porque:
 **Solución**: Agregar `INNER JOIN` con `v_cabinet_milestones_achieved_from_trips` para exigir milestone determinístico antes de generar claim.
 
 
+

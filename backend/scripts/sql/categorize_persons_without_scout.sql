@@ -69,3 +69,4 @@ GROUP BY categoria
 ORDER BY count DESC;
 
 
+

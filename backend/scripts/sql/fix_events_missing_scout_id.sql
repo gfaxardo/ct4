@@ -178,3 +178,4 @@ WHERE event_date >= CURRENT_DATE - INTERVAL '30 days'
 ORDER BY event_date DESC
 LIMIT 30;
 
+

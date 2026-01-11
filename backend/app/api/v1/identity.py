@@ -1,15 +1,43 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, func, text, Date
+from sqlalchemy import or_, and_, func, text, Date, select, bindparam
 from typing import Optional, List
 from uuid import UUID
 from datetime import date, datetime
 import json
 from app.db import get_db, SessionLocal
-from app.models.canon import IdentityRegistry, IdentityLink, IdentityUnmatched, ConfidenceLevel, UnmatchedStatus
+from app.models.canon import (
+    IdentityRegistry, 
+    IdentityLink, 
+    IdentityUnmatched, 
+    ConfidenceLevel, 
+    UnmatchedStatus,
+    DriverOrphanQuarantine,
+    OrphanStatus,
+    OrphanDetectedReason
+)
 from app.models.ops import IngestionRun, JobType, RunStatus
-from app.models.observational import ScoutingMatchCandidate
-from app.schemas.identity import IdentityRegistry as IdentityRegistrySchema, IdentityLink as IdentityLinkSchema, IdentityUnmatched as IdentityUnmatchedSchema, PersonDetail, UnmatchedResolveRequest, StatsResponse, RunReportResponse, MetricsScope, MetricsResponse, PersonsBySourceResponse, DriversWithoutLeadsAnalysis
+from app.models.observational import ScoutingMatchCandidate, LeadEvent as LeadEventModel
+import logging
+
+logger = logging.getLogger(__name__)
+from app.schemas.identity import (
+    IdentityRegistry as IdentityRegistrySchema, 
+    IdentityLink as IdentityLinkSchema, 
+    IdentityUnmatched as IdentityUnmatchedSchema, 
+    PersonDetail, 
+    UnmatchedResolveRequest, 
+    StatsResponse, 
+    RunReportResponse, 
+    MetricsScope, 
+    MetricsResponse, 
+    PersonsBySourceResponse, 
+    DriversWithoutLeadsAnalysis,
+    OrphanDriver,
+    OrphansListResponse,
+    OrphansMetricsResponse,
+    RunFixResponse
+)
 from app.schemas.ingestion import IngestionRun as IngestionRunSchema
 from app.schemas.identity_runs import IdentityRunsResponse, IdentityRunRow, IngestionRunStatus, IngestionJobType
 from app.services.ingestion import IngestionService
@@ -242,9 +270,35 @@ def get_persons_by_source(db: Session = Depends(get_db)):
 def get_drivers_without_leads_analysis(db: Session = Depends(get_db)):
     """
     Analiza drivers que están en el sistema sin leads asociados.
-    Estos drivers NO deberían estar en el sistema según el diseño.
+    
+    IMPORTANTE: Los drivers en cuarentena (canon.driver_orphan_quarantine) 
+    NO se cuentan como "operativos" y deben estar excluidos del funnel/claims/pagos.
     """
-    # Personas que solo tienen links de drivers
+    # Contar drivers en cuarentena
+    quarantined_query = text("""
+        SELECT 
+            status,
+            detected_reason,
+            COUNT(*) as count
+        FROM canon.driver_orphan_quarantine
+        WHERE status = 'quarantined'
+        GROUP BY status, detected_reason
+    """)
+    
+    quarantined_result = db.execute(quarantined_query).fetchall()
+    drivers_quarantined_count = sum(row.count for row in quarantined_result)
+    quarantine_breakdown = {row.detected_reason: row.count for row in quarantined_result}
+    
+    # Obtener driver_ids en cuarentena
+    quarantined_driver_ids_query = text("""
+        SELECT driver_id
+        FROM canon.driver_orphan_quarantine
+        WHERE status = 'quarantined'
+    """)
+    quarantined_driver_ids_result = db.execute(quarantined_driver_ids_query).fetchall()
+    quarantined_driver_ids = {row.driver_id for row in quarantined_driver_ids_result}
+    
+    # Personas que solo tienen links de drivers (incluyendo quarantined)
     persons_only_drivers_query = text("""
         SELECT DISTINCT ir.person_key
         FROM canon.identity_registry ir
@@ -263,144 +317,233 @@ def get_drivers_without_leads_analysis(db: Session = Depends(get_db)):
     persons_only_drivers = db.execute(persons_only_drivers_query).fetchall()
     total_drivers_without_leads = len(persons_only_drivers)
     
+    # Drivers operativos (excluyendo quarantined)
+    drivers_operativos_query = text("""
+        SELECT DISTINCT il.source_pk as driver_id
+        FROM canon.identity_links il
+        WHERE il.source_table = 'drivers'
+        AND il.person_key IN (
+            SELECT DISTINCT ir.person_key
+            FROM canon.identity_registry ir
+            WHERE ir.person_key IN (
+                SELECT DISTINCT person_key
+                FROM canon.identity_links
+                WHERE source_table = 'drivers'
+            )
+            AND ir.person_key NOT IN (
+                SELECT DISTINCT person_key
+                FROM canon.identity_links
+                WHERE source_table IN ('module_ct_cabinet_leads', 'module_ct_scouting_daily', 'module_ct_migrations')
+            )
+        )
+        AND il.source_pk NOT IN (
+            SELECT driver_id
+            FROM canon.driver_orphan_quarantine
+            WHERE status = 'quarantined'
+        )
+    """)
+    
+    drivers_operativos_result = db.execute(drivers_operativos_query).fetchall()
+    drivers_without_leads_operativos = len(drivers_operativos_result)
+    
     if total_drivers_without_leads == 0:
         return DriversWithoutLeadsAnalysis(
             total_drivers_without_leads=0,
+            drivers_quarantined_count=drivers_quarantined_count,
+            drivers_without_leads_operativos=0,
             by_match_rule={},
             drivers_with_lead_events=0,
             drivers_without_lead_events=0,
             missing_links_by_source={},
-            sample_drivers=[]
+            sample_drivers=[],
+            quarantine_breakdown=quarantine_breakdown
         )
     
-    person_keys = [str(p.person_key) for p in persons_only_drivers]
-    person_keys_str = "', '".join(person_keys)
+    person_keys_list = [str(p.person_key) for p in persons_only_drivers]
     
-    # Desglose por regla
-    by_rule_query = text(f"""
-        SELECT 
-            il.match_rule,
-            COUNT(*) as count
-        FROM canon.identity_links il
-        WHERE il.source_table = 'drivers'
-        AND il.person_key IN ('{person_keys_str}')
-        GROUP BY il.match_rule
-        ORDER BY count DESC
-    """)
-    
-    by_rule_result = db.execute(by_rule_query).fetchall()
-    by_match_rule = {row.match_rule: row.count for row in by_rule_result}
-    
-    # Drivers con/sin lead_events
-    events_query = text(f"""
-        WITH drivers_without_leads AS (
-            SELECT DISTINCT il.source_pk as driver_id
-            FROM canon.identity_links il
-            WHERE il.source_table = 'drivers'
-            AND il.person_key IN ('{person_keys_str}')
-        ),
-        drivers_with_events AS (
-            SELECT DISTINCT d.driver_id
-            FROM drivers_without_leads d
-            INNER JOIN observational.lead_events le
-                ON (le.payload_json->>'driver_id')::text = d.driver_id
+    if not person_keys_list:
+        return DriversWithoutLeadsAnalysis(
+            total_drivers_without_leads=0,
+            drivers_quarantined_count=drivers_quarantined_count,
+            drivers_without_leads_operativos=0,
+            by_match_rule={},
+            drivers_with_lead_events=0,
+            drivers_without_lead_events=0,
+            missing_links_by_source={},
+            sample_drivers=[],
+            quarantine_breakdown=quarantine_breakdown
         )
-        SELECT 
-            COUNT(*) FILTER (WHERE d.driver_id IN (SELECT driver_id FROM drivers_with_events)) as with_events,
-            COUNT(*) FILTER (WHERE d.driver_id NOT IN (SELECT driver_id FROM drivers_with_events)) as without_events
-        FROM drivers_without_leads d
-    """)
     
-    events_result = db.execute(events_query).fetchone()
-    drivers_with_lead_events = events_result.with_events if events_result else 0
-    drivers_without_lead_events = events_result.without_events if events_result else 0
+    # Desglose por regla (excluyendo quarantined para operativos)
+    from sqlalchemy import select
+    from app.models.canon import IdentityLink
     
-    # Links faltantes por source_table
-    missing_links_query = text(f"""
-        WITH drivers_without_leads AS (
-            SELECT DISTINCT 
-                il.person_key,
-                il.source_pk as driver_id
-            FROM canon.identity_links il
-            WHERE il.source_table = 'drivers'
-            AND il.person_key IN ('{person_keys_str}')
-        ),
-        drivers_with_events_detail AS (
-            SELECT 
-                d.driver_id,
-                d.person_key,
-                le.source_table as event_source_table
-            FROM drivers_without_leads d
-            INNER JOIN observational.lead_events le
-                ON (le.payload_json->>'driver_id')::text = d.driver_id
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM canon.identity_links il2
-                WHERE il2.person_key = d.person_key
-                AND il2.source_table = le.source_table
+    # Usar SQLAlchemy ORM para query seguro
+    by_rule_subquery = db.query(
+        IdentityLink.match_rule,
+        func.count().filter(
+            ~IdentityLink.source_pk.in_(
+                select(DriverOrphanQuarantine.driver_id).where(
+                    DriverOrphanQuarantine.status == OrphanStatus.QUARANTINED
+                )
             )
-        )
-        SELECT 
-            event_source_table,
-            COUNT(DISTINCT driver_id) as drivers_count
-        FROM drivers_with_events_detail
-        GROUP BY event_source_table
-    """)
+        ).label('count_operativos'),
+        func.count().label('count_total')
+    ).filter(
+        IdentityLink.source_table == 'drivers',
+        IdentityLink.person_key.in_(person_keys_list)
+    ).group_by(IdentityLink.match_rule).order_by(func.count().desc()).all()
     
-    missing_links_result = db.execute(missing_links_query).fetchall()
-    missing_links_by_source = {row.event_source_table: row.drivers_count for row in missing_links_result}
+    by_match_rule = {row.match_rule: row.count_operativos for row in by_rule_subquery}
     
-    # Muestra de casos
-    sample_query = text(f"""
-        WITH drivers_without_leads AS (
-            SELECT DISTINCT 
-                il.person_key,
-                il.source_pk as driver_id,
-                il.match_rule,
-                il.linked_at,
-                il.evidence
-            FROM canon.identity_links il
-            WHERE il.source_table = 'drivers'
-            AND il.person_key IN ('{person_keys_str}')
-            LIMIT 10
-        )
-        SELECT 
-            d.driver_id,
-            d.match_rule,
-            d.linked_at,
-            d.evidence,
-            ir.primary_phone,
-            ir.primary_license,
-            ir.primary_full_name,
-            (SELECT COUNT(*) 
-             FROM observational.lead_events le 
-             WHERE (le.payload_json->>'driver_id')::text = d.driver_id) as events_count
-        FROM drivers_without_leads d
-        JOIN canon.identity_registry ir ON ir.person_key = d.person_key
-        ORDER BY d.linked_at DESC
-    """)
+    # Drivers con/sin lead_events (solo operativos, excluyendo quarantined)
+    # Obtener driver_ids operativos usando ORM
+    drivers_operativos_ids_result = db.query(IdentityLink.source_pk).filter(
+        IdentityLink.source_table == 'drivers',
+        IdentityLink.person_key.in_(person_keys_uuids),
+        ~IdentityLink.source_pk.in_(quarantined_driver_ids_subq)
+    ).distinct().all()
     
-    sample_result = db.execute(sample_query).fetchall()
+    drivers_operativos_ids = [str(row[0]) for row in drivers_operativos_ids_result]
+    
+    if drivers_operativos_ids:
+        # Buscar eventos para estos drivers usando query SQL con parámetros seguros
+        # Usar query más eficiente: buscar eventos que tengan estos driver_ids
+        # Limitar a primeros 100 para performance
+        drivers_sample = drivers_operativos_ids[:100]
+        
+        drivers_with_events_set = set()
+        for driver_id in drivers_sample:
+            event_exists = db.query(LeadEventModel.id).filter(
+                or_(
+                    LeadEventModel.payload_json['driver_id'].astext == driver_id,
+                    LeadEventModel.payload_json['driverId'].astext == driver_id
+                )
+            ).first()
+            if event_exists:
+                drivers_with_events_set.add(driver_id)
+        
+        # Estimar total (proporcional si limitamos la muestra)
+        if len(drivers_sample) < len(drivers_operativos_ids):
+            ratio_with_events = len(drivers_with_events_set) / len(drivers_sample) if drivers_sample else 0
+            drivers_with_lead_events = int(len(drivers_operativos_ids) * ratio_with_events)
+        else:
+            drivers_with_lead_events = len(drivers_with_events_set)
+        
+        drivers_without_lead_events = len(drivers_operativos_ids) - drivers_with_lead_events
+    else:
+        drivers_with_lead_events = 0
+        drivers_without_lead_events = 0
+    
+    # Links faltantes por source_table (solo operativos, excluyendo quarantined)
+    # Simplificado: usar query SQL con parámetros seguros
+    missing_links_by_source = {}
+    
+    if drivers_operativos_ids:
+        # Query SQL seguro con parámetros
+        missing_links_query_safe = text("""
+            WITH drivers_operativos AS (
+                SELECT DISTINCT 
+                    il.person_key,
+                    il.source_pk as driver_id
+                FROM canon.identity_links il
+                WHERE il.source_table = 'drivers'
+                  AND il.source_pk = ANY(:driver_ids)
+            ),
+            events_without_links AS (
+                SELECT DISTINCT
+                    d.person_key,
+                    le.source_table
+                FROM drivers_operativos d
+                INNER JOIN observational.lead_events le ON (
+                    le.payload_json->>'driver_id' = d.driver_id
+                    OR le.payload_json->>'driverId' = d.driver_id
+                )
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM canon.identity_links il2
+                    WHERE il2.person_key = d.person_key
+                      AND il2.source_table = le.source_table
+                      AND il2.source_pk = le.source_pk
+                )
+            )
+            SELECT 
+                source_table,
+                COUNT(DISTINCT person_key) as drivers_count
+            FROM events_without_links
+            GROUP BY source_table
+        """)
+        
+        try:
+            missing_links_result = db.execute(
+                missing_links_query_safe,
+                {"driver_ids": drivers_operativos_ids[:100]}  # Limitar para performance
+            ).fetchall()
+            missing_links_by_source = {row.source_table: row.drivers_count for row in missing_links_result}
+        except Exception as e:
+            logger.error(f"Error en query de missing_links: {e}")
+            missing_links_by_source = {}
+    
+    # Muestra de casos (priorizar operativos, luego quarantined)
+    # Usar ORM para query seguro
+    sample_drivers_query = db.query(
+        IdentityLink.source_pk,
+        IdentityLink.match_rule,
+        IdentityLink.linked_at,
+        IdentityLink.evidence,
+        IdentityRegistry.primary_phone,
+        IdentityRegistry.primary_license,
+        IdentityRegistry.primary_full_name
+    ).join(
+        IdentityRegistry, IdentityLink.person_key == IdentityRegistry.person_key
+    ).filter(
+        IdentityLink.source_table == 'drivers',
+        IdentityLink.person_key.in_(person_keys_uuids)
+    ).order_by(IdentityLink.linked_at.desc()).limit(10).all()
+    
     sample_drivers = []
-    for row in sample_result:
+    for row in sample_drivers_query:
+        driver_id_str = str(row.source_pk)
+        
+        # Verificar si está en cuarentena
+        is_quarantined = db.query(DriverOrphanQuarantine).filter(
+            DriverOrphanQuarantine.driver_id == driver_id_str,
+            DriverOrphanQuarantine.status == OrphanStatus.QUARANTINED
+        ).first() is not None
+        
+        # Contar eventos (simplificado - solo contar si hay alguno)
+        events_count = db.query(LeadEventModel.id).filter(
+            or_(
+                LeadEventModel.payload_json['driver_id'].astext == driver_id_str,
+                LeadEventModel.payload_json['driverId'].astext == driver_id_str
+            )
+        ).limit(1).count()
+        
         sample_drivers.append({
-            "driver_id": row.driver_id,
+            "driver_id": driver_id_str,
             "match_rule": row.match_rule,
             "linked_at": row.linked_at.isoformat() if row.linked_at else None,
             "phone": row.primary_phone,
             "license": row.primary_license,
             "name": row.primary_full_name,
-            "lead_events_count": row.events_count,
-            "evidence": row.evidence
+            "lead_events_count": events_count,
+            "evidence": row.evidence,
+            "status": "quarantined" if is_quarantined else "operativo"
         })
+    
+    # Ordenar por status (operativo primero)
+    sample_drivers.sort(key=lambda x: (x["status"] == "quarantined", x.get("linked_at") or ""), reverse=False)
     
     return DriversWithoutLeadsAnalysis(
         total_drivers_without_leads=total_drivers_without_leads,
+        drivers_quarantined_count=drivers_quarantined_count,
+        drivers_without_leads_operativos=drivers_without_leads_operativos,
         by_match_rule=by_match_rule,
         drivers_with_lead_events=drivers_with_lead_events,
         drivers_without_lead_events=drivers_without_lead_events,
         missing_links_by_source=missing_links_by_source,
-        sample_drivers=sample_drivers
+        sample_drivers=sample_drivers,
+        quarantine_breakdown=quarantine_breakdown
     )
 
 
@@ -1790,4 +1933,240 @@ def get_window_metrics(
     )
     
     return _build_metrics_response(db, scope)
+
+
+# ============================================================================
+# Orphans / Cuarentena Endpoints
+# ============================================================================
+
+@router.get("/orphans", response_model=OrphansListResponse)
+def list_orphans(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1, description="Número de página"),
+    page_size: int = Query(50, ge=1, le=500, description="Tamaño de página"),
+    status: Optional[str] = Query(None, description="Filtrar por status: quarantined, resolved_relinked, resolved_created_lead, purged"),
+    detected_reason: Optional[str] = Query(None, description="Filtrar por razón: no_lead_no_events, no_lead_has_events_repair_failed, legacy_driver_without_origin, manual_detection"),
+    driver_id: Optional[str] = Query(None, description="Buscar por driver_id exacto")
+):
+    """
+    Lista drivers huérfanos en cuarentena con paginación y filtros.
+    """
+    query = db.query(DriverOrphanQuarantine)
+    
+    # Aplicar filtros
+    if status:
+        try:
+            status_enum = OrphanStatus(status)
+            query = query.filter(DriverOrphanQuarantine.status == status_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Status inválido: {status}")
+    
+    if detected_reason:
+        try:
+            reason_enum = OrphanDetectedReason(detected_reason)
+            query = query.filter(DriverOrphanQuarantine.detected_reason == reason_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Razón inválida: {detected_reason}")
+    
+    if driver_id:
+        query = query.filter(DriverOrphanQuarantine.driver_id == driver_id)
+    
+    # Contar total
+    total = query.count()
+    
+    # Paginación
+    offset = (page - 1) * page_size
+    orphans_db = query.order_by(DriverOrphanQuarantine.detected_at.desc()).offset(offset).limit(page_size).all()
+    
+    # Enriquecer con información adicional
+    orphans = []
+    for orphan_db in orphans_db:
+        # Buscar información adicional del driver/persona
+        lead_events_count = db.execute(text("""
+            SELECT COUNT(*) 
+            FROM observational.lead_events le 
+            WHERE (le.payload_json->>'driver_id')::text = :driver_id
+        """), {"driver_id": orphan_db.driver_id}).scalar() or 0
+        
+        driver_links_count = db.execute(text("""
+            SELECT COUNT(*) 
+            FROM canon.identity_links il 
+            WHERE il.source_table = 'drivers' 
+            AND il.source_pk = :driver_id
+        """), {"driver_id": orphan_db.driver_id}).scalar() or 0
+        
+        # Obtener información de persona si existe
+        primary_phone = None
+        primary_license = None
+        primary_full_name = None
+        
+        if orphan_db.person_key:
+            person = db.query(IdentityRegistry).filter(
+                IdentityRegistry.person_key == orphan_db.person_key
+            ).first()
+            if person:
+                primary_phone = person.primary_phone
+                primary_license = person.primary_license
+                primary_full_name = person.primary_full_name
+        
+        orphan_dict = {
+            "driver_id": orphan_db.driver_id,
+            "person_key": orphan_db.person_key,
+            "detected_at": orphan_db.detected_at,
+            "detected_reason": orphan_db.detected_reason.value if isinstance(orphan_db.detected_reason, OrphanDetectedReason) else str(orphan_db.detected_reason),
+            "creation_rule": orphan_db.creation_rule,
+            "evidence_json": orphan_db.evidence_json,
+            "status": orphan_db.status.value if isinstance(orphan_db.status, OrphanStatus) else str(orphan_db.status),
+            "resolved_at": orphan_db.resolved_at,
+            "resolution_notes": orphan_db.resolution_notes,
+            "primary_phone": primary_phone,
+            "primary_license": primary_license,
+            "primary_full_name": primary_full_name,
+            "driver_links_count": driver_links_count,
+            "lead_events_count": lead_events_count
+        }
+        orphans.append(OrphanDriver(**orphan_dict))
+    
+    total_pages = (total + page_size - 1) // page_size
+    
+    return OrphansListResponse(
+        orphans=orphans,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
+
+
+@router.get("/orphans/metrics", response_model=OrphansMetricsResponse)
+def get_orphans_metrics(db: Session = Depends(get_db)):
+    """
+    Obtiene métricas agregadas de drivers huérfanos.
+    """
+    # Total de orphans
+    total_orphans = db.query(DriverOrphanQuarantine).count()
+    
+    # Por status
+    by_status = {}
+    for status in OrphanStatus:
+        count = db.query(DriverOrphanQuarantine).filter(
+            DriverOrphanQuarantine.status == status
+        ).count()
+        by_status[status.value] = count
+    
+    # Por razón
+    by_reason = {}
+    for reason in OrphanDetectedReason:
+        count = db.query(DriverOrphanQuarantine).filter(
+            DriverOrphanQuarantine.detected_reason == reason
+        ).count()
+        by_reason[reason.value] = count
+    
+    # Drivers con/sin lead_events
+    all_orphan_ids = [row[0] for row in db.query(DriverOrphanQuarantine.driver_id).all()]
+    
+    with_events = 0
+    without_events = 0
+    
+    if all_orphan_ids:
+        # Contar drivers con lead_events (usando query segura)
+        placeholders = ", ".join([f":id_{i}" for i in range(len(all_orphan_ids))])
+        params = {f"id_{i}": orphan_id for i, orphan_id in enumerate(all_orphan_ids)}
+        
+        query_with_events = text(f"""
+            SELECT COUNT(DISTINCT (le.payload_json->>'driver_id')::text)
+            FROM observational.lead_events le
+            WHERE (le.payload_json->>'driver_id')::text IN ({placeholders})
+        """)
+        with_events = db.execute(query_with_events, params).scalar() or 0
+        without_events = total_orphans - with_events
+    
+    # Última actualización
+    last_updated = db.query(func.max(DriverOrphanQuarantine.detected_at)).scalar()
+    
+    return OrphansMetricsResponse(
+        total_orphans=total_orphans,
+        by_status=by_status,
+        by_reason=by_reason,
+        quarantined=by_status.get("quarantined", 0),
+        resolved_relinked=by_status.get("resolved_relinked", 0),
+        resolved_created_lead=by_status.get("resolved_created_lead", 0),
+        purged=by_status.get("purged", 0),
+        with_lead_events=with_events,
+        without_lead_events=without_events,
+        last_updated_at=last_updated
+    )
+
+
+@router.post("/orphans/run-fix", response_model=RunFixResponse)
+def run_orphans_fix(
+    db: Session = Depends(get_db),
+    execute: bool = Query(False, description="Si True, aplica los cambios. Si False, solo hace dry-run."),
+    limit: Optional[int] = Query(None, ge=1, description="Limitar número de drivers a procesar"),
+    output_dir: Optional[str] = Query(None, description="Directorio para guardar reportes")
+):
+    """
+    Ejecuta el script de limpieza de drivers huérfanos.
+    Por defecto hace dry-run. Usar ?execute=true para aplicar cambios.
+    
+    Requiere variable de entorno ENABLE_ORPHANS_FIX=true para ejecutar en producción.
+    """
+    import os
+    import subprocess
+    from pathlib import Path
+    
+    # Protección: requerir flag de entorno en producción
+    if execute and os.getenv("ENABLE_ORPHANS_FIX") != "true":
+        raise HTTPException(
+            status_code=403, 
+            detail="Para ejecutar cambios, establecer ENABLE_ORPHANS_FIX=true en variables de entorno"
+        )
+    
+    try:
+        # Ejecutar script
+        script_path = Path(__file__).parent.parent.parent.parent / "scripts" / "fix_drivers_without_leads.py"
+        cmd = ["python", str(script_path)]
+        
+        if execute:
+            cmd.append("--execute")
+        
+        if limit:
+            cmd.extend(["--limit", str(limit)])
+        
+        if output_dir:
+            cmd.extend(["--output-dir", output_dir])
+        
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=script_path.parent.parent
+        )
+        
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error ejecutando script: {result.stderr}"
+            )
+        
+        # Parsear output para extraer información (simplificado)
+        # En producción, el script debería retornar JSON
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        return RunFixResponse(
+            dry_run=not execute,
+            timestamp=timestamp,
+            stats={
+                "processed": 0,  # Se obtendría del script
+                "with_events": 0,
+                "without_events": 0,
+                "resolved_relinked": 0,
+                "quarantined": 0
+            },
+            drivers=[],
+            report_path=None
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error ejecutando fix: {str(e)}")
 

@@ -29,14 +29,18 @@ export interface PersonsBySourceResponse {
 }
 
 export interface DriversWithoutLeadsAnalysis {
-  total_drivers_without_leads: number;
+  total_drivers_without_leads: number;  // Total incluyendo quarantined
+  drivers_quarantined_count: number;  // Drivers en cuarentena
+  drivers_without_leads_operativos: number;  // Total - quarantined (operativos)
   by_match_rule: Record<string, number>;
   drivers_with_lead_events: number;
   drivers_without_lead_events: number;
   missing_links_by_source: Record<string, number>;
+  quarantine_breakdown: Record<string, number>;  // breakdown por detected_reason
   sample_drivers: Array<{
     driver_id: string;
     match_rule: string;
+    status?: string;  // 'quarantined' o 'operativo'
     linked_at: string | null;
     phone: string | null;
     license: string | null;
@@ -44,6 +48,56 @@ export interface DriversWithoutLeadsAnalysis {
     lead_events_count: number;
     evidence: Record<string, any> | null;
   }>;
+}
+
+// ============================================================================
+// Orphans / Cuarentena Types
+// ============================================================================
+
+export interface OrphanDriver {
+  driver_id: string;
+  person_key: string | null;
+  detected_at: string;
+  detected_reason: string;
+  creation_rule: string | null;
+  evidence_json: Record<string, any> | null;
+  status: string;
+  resolved_at: string | null;
+  resolution_notes: string | null;
+  primary_phone: string | null;
+  primary_license: string | null;
+  primary_full_name: string | null;
+  driver_links_count: number;
+  lead_events_count: number;
+}
+
+export interface OrphansListResponse {
+  orphans: OrphanDriver[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface OrphansMetricsResponse {
+  total_orphans: number;
+  by_status: Record<string, number>;
+  by_reason: Record<string, number>;
+  quarantined: number;
+  resolved_relinked: number;
+  resolved_created_lead: number;
+  purged: number;
+  with_lead_events: number;
+  without_lead_events: number;
+  last_updated_at: string | null;
+}
+
+export interface RunFixResponse {
+  dry_run: boolean;
+  timestamp: string;
+  stats: Record<string, any>;
+  drivers: Array<Record<string, any>>;
+  report_path: string | null;
 }
 
 export interface IdentityRegistry {

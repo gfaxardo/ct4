@@ -98,3 +98,4 @@ SELECT COUNT(*) FROM ops.v_payments_driver_matrix_cabinet;
 Si retorna un número (incluso 0), la vista existe y es accesible. ✅
 
 
+

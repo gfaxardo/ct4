@@ -93,12 +93,15 @@ class PersonsBySourceResponse(BaseModel):
 
 
 class DriversWithoutLeadsAnalysis(BaseModel):
-    total_drivers_without_leads: int
+    total_drivers_without_leads: int  # Total incluyendo quarantined
+    drivers_quarantined_count: int  # Drivers en cuarentena
+    drivers_without_leads_operativos: int  # Total - quarantined (drivers operativos sin lead)
     by_match_rule: Dict[str, int]
     drivers_with_lead_events: int
     drivers_without_lead_events: int
     missing_links_by_source: Dict[str, int]
     sample_drivers: List[Dict[str, Any]]
+    quarantine_breakdown: Dict[str, int] = {}  # breakdown por detected_reason
 
 
 class WeeklyData(BaseModel):
@@ -162,5 +165,55 @@ class MetricsResponse(BaseModel):
     weekly_trend: Optional[List[WeeklyTrend]] = None
     available_event_weeks: Optional[List[str]] = None
     breakdowns: Optional[Dict[str, Any]] = None
+
+
+# Schemas para Orphans / Cuarentena
+class OrphanDriver(BaseModel):
+    driver_id: str
+    person_key: Optional[UUID] = None
+    detected_at: datetime
+    detected_reason: str
+    creation_rule: Optional[str] = None
+    evidence_json: Optional[Dict[str, Any]] = None
+    status: str
+    resolved_at: Optional[datetime] = None
+    resolution_notes: Optional[str] = None
+    primary_phone: Optional[str] = None
+    primary_license: Optional[str] = None
+    primary_full_name: Optional[str] = None
+    driver_links_count: int = 0
+    lead_events_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class OrphansListResponse(BaseModel):
+    orphans: List[OrphanDriver]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class OrphansMetricsResponse(BaseModel):
+    total_orphans: int
+    by_status: Dict[str, int]
+    by_reason: Dict[str, int]
+    quarantined: int
+    resolved_relinked: int
+    resolved_created_lead: int
+    purged: int
+    with_lead_events: int
+    without_lead_events: int
+    last_updated_at: Optional[datetime] = None
+
+
+class RunFixResponse(BaseModel):
+    dry_run: bool
+    timestamp: str
+    stats: Dict[str, Any]
+    drivers: List[Dict[str, Any]]
+    report_path: Optional[str] = None
 
 

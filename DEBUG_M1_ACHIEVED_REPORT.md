@@ -325,3 +325,4 @@ Ejecutar las queries 1-4 arriba con un `driver_id` real del screenshot para conf
 5. **Testing:** Verificar que M1 aparece como achieved cuando se alcanzó por trips, independientemente de pagos
 
 
+

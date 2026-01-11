@@ -220,3 +220,4 @@ SELECT
          AND ll.attributed_scout_id IS NOT NULL
      )) AS scouting_daily_with_lead_ledger_scout;
 
+

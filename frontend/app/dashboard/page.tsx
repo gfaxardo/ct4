@@ -8,8 +8,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getIdentityStats, getGlobalMetrics, getRunReport, getPersonsBySource, getDriversWithoutLeadsAnalysis, ApiError } from '@/lib/api';
-import type { IdentityStats, MetricsResponse, RunReportResponse, PersonsBySourceResponse, DriversWithoutLeadsAnalysis } from '@/lib/types';
+import { getIdentityStats, getGlobalMetrics, getRunReport, getPersonsBySource, getDriversWithoutLeadsAnalysis, getOrphansMetrics, runOrphansFix, ApiError } from '@/lib/api';
+import type { IdentityStats, MetricsResponse, RunReportResponse, PersonsBySourceResponse, DriversWithoutLeadsAnalysis, OrphansMetricsResponse } from '@/lib/types';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import Link from 'next/link';
@@ -20,47 +20,75 @@ export default function DashboardPage() {
   const [runReport, setRunReport] = useState<RunReportResponse | null>(null);
   const [personsBySource, setPersonsBySource] = useState<PersonsBySourceResponse | null>(null);
   const [driversWithoutLeads, setDriversWithoutLeads] = useState<DriversWithoutLeadsAnalysis | null>(null);
+  const [orphansMetrics, setOrphansMetrics] = useState<OrphansMetricsResponse | null>(null);
   const [mode, setMode] = useState<'summary' | 'weekly' | 'breakdowns'>('breakdowns');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [fixRunning, setFixRunning] = useState(false);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [statsData, metricsData, personsBySourceData, driversWithoutLeadsData, orphansMetricsData] = await Promise.all([
+        getIdentityStats(),
+        getGlobalMetrics({ mode }),
+        getPersonsBySource(),
+        getDriversWithoutLeadsAnalysis(),
+        getOrphansMetrics(),
+      ]);
+
+      setStats(statsData);
+      setMetrics(metricsData);
+      setPersonsBySource(personsBySourceData);
+      setDriversWithoutLeads(driversWithoutLeadsData);
+      setOrphansMetrics(orphansMetricsData);
+
+      // Intentar obtener última corrida (si hay runs disponibles)
+      // Nota: Falta endpoint GET /api/v1/identity/runs, por ahora no cargamos runReport
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 500) {
+          setError('Error al cargar estadísticas');
+        } else {
+          setError(`Error ${err.status}: ${err.detail || err.message}`);
+        }
+      } else {
+        setError('Error desconocido');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const [statsData, metricsData, personsBySourceData, driversWithoutLeadsData] = await Promise.all([
-          getIdentityStats(),
-          getGlobalMetrics({ mode }),
-          getPersonsBySource(),
-          getDriversWithoutLeadsAnalysis(),
-        ]);
-
-        setStats(statsData);
-        setMetrics(metricsData);
-        setPersonsBySource(personsBySourceData);
-        setDriversWithoutLeads(driversWithoutLeadsData);
-
-        // Intentar obtener última corrida (si hay runs disponibles)
-        // Nota: Falta endpoint GET /api/v1/identity/runs, por ahora no cargamos runReport
-      } catch (err) {
-        if (err instanceof ApiError) {
-          if (err.status === 500) {
-            setError('Error al cargar estadísticas');
-          } else {
-            setError(`Error ${err.status}: ${err.detail || err.message}`);
-          }
-        } else {
-          setError('Error desconocido');
-        }
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  const handleRunFix = async (execute: boolean = false) => {
+    try {
+      setFixRunning(true);
+      setError(null);
+      const result = await runOrphansFix({ execute, limit: 100 });
+      // Recargar métricas después del fix
+      if (result && !result.dry_run) {
+        setTimeout(() => {
+          loadData();
+        }, 2000);
+      }
+      alert(`Fix ${execute ? 'ejecutado' : 'dry-run'} completado. Ver consola para detalles.`);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(`Error al ejecutar fix: ${err.detail || err.message}`);
+      } else {
+        setError('Error desconocido al ejecutar fix');
+      }
+    } finally {
+      setFixRunning(false);
+    }
+  };
 
   if (loading) {
     return <div className="text-center py-12">Cargando...</div>;
@@ -137,90 +165,89 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Análisis de Drivers sin Leads */}
-      {driversWithoutLeads && driversWithoutLeads.total_drivers_without_leads > 0 && (
-        <div className="bg-red-50 border-2 border-red-300 rounded-lg p-6 mb-8">
-          <h2 className="text-lg font-semibold mb-4 text-red-800">⚠️ Drivers sin Leads Detectados</h2>
-          <div className="mb-4">
-            <p className="text-red-700 mb-2">
-              <strong>Problema:</strong> Se encontraron <strong>{driversWithoutLeads.total_drivers_without_leads}</strong> drivers en el sistema 
-              que NO tienen un lead asociado (ni cabinet, ni scouting, ni migrations).
-            </p>
-            <p className="text-sm text-red-600 mb-4">
-              Estos drivers NO deberían estar en el sistema según el diseño. Los drivers solo deberían agregarse cuando matchean con un lead.
-            </p>
+      {/* Métricas de Drivers Huérfanos (Orphans) */}
+      {mode === 'breakdowns' && orphansMetrics && orphansMetrics.total_orphans > 0 && (
+        <div className="bg-orange-50 border-2 border-orange-300 rounded-lg p-6 mb-8">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-orange-800 mb-2">📋 Drivers Huérfanos (Orphans)</h2>
+              <p className="text-sm text-orange-600">
+                Drivers detectados sin leads asociados. Los drivers en cuarentena están excluidos de funnel/claims/pagos.
+              </p>
+            </div>
+            <Link href="/orphans" className="text-sm text-orange-700 hover:text-orange-900 underline">
+              Ver Todos →
+            </Link>
           </div>
           
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div className="bg-white rounded p-4 border border-orange-200">
+              <div className="text-sm text-orange-600 mb-1">Total</div>
+              <div className="text-2xl font-bold text-orange-800">{orphansMetrics.total_orphans}</div>
+            </div>
+            <div className="bg-white rounded p-4 border border-red-200">
+              <div className="text-sm text-red-600 mb-1">En Cuarentena</div>
+              <div className="text-2xl font-bold text-red-800">{orphansMetrics.quarantined}</div>
+            </div>
+            <div className="bg-white rounded p-4 border border-green-200">
+              <div className="text-sm text-green-600 mb-1">Resueltos</div>
+              <div className="text-2xl font-bold text-green-800">{orphansMetrics.resolved_relinked + orphansMetrics.resolved_created_lead}</div>
+            </div>
+            <div className="bg-white rounded p-4 border border-blue-200">
+              <div className="text-sm text-blue-600 mb-1">Con Lead Events</div>
+              <div className="text-2xl font-bold text-blue-800">{orphansMetrics.with_lead_events}</div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
             <div>
-              <h3 className="text-md font-medium mb-3 text-red-700">Por Regla de Creación</h3>
+              <h3 className="text-md font-medium mb-3 text-orange-700">Por Estado</h3>
               <div className="space-y-2">
-                {Object.entries(driversWithoutLeads.by_match_rule).map(([rule, count]) => (
-                  <div key={rule} className="flex justify-between items-center">
-                    <span className="text-sm text-red-600">{rule}</span>
-                    <span className="font-medium text-red-800">{count}</span>
+                {Object.entries(orphansMetrics.by_status).filter(([status, count]) => count > 0).map(([status, count]) => (
+                  <div key={status} className="flex justify-between items-center">
+                    <span className="text-sm text-orange-600 capitalize">{status.replace('_', ' ')}</span>
+                    <span className="font-medium text-orange-800">{count}</span>
                   </div>
                 ))}
               </div>
             </div>
             <div>
-              <h3 className="text-md font-medium mb-3 text-red-700">Análisis de Lead Events</h3>
+              <h3 className="text-md font-medium mb-3 text-orange-700">Por Razón</h3>
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-red-600">Con lead_events</span>
-                  <span className="font-medium text-green-700">{driversWithoutLeads.drivers_with_lead_events}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-red-600">Sin lead_events</span>
-                  <span className="font-medium text-red-800">{driversWithoutLeads.drivers_without_lead_events}</span>
-                </div>
-              </div>
-              {Object.keys(driversWithoutLeads.missing_links_by_source).length > 0 && (
-                <div className="mt-4">
-                  <h4 className="text-sm font-medium mb-2 text-red-700">Links Faltantes por Fuente:</h4>
-                  <div className="space-y-1">
-                    {Object.entries(driversWithoutLeads.missing_links_by_source).map(([source, count]) => (
-                      <div key={source} className="flex justify-between items-center text-sm">
-                        <span className="text-red-600">{source}</span>
-                        <span className="font-medium text-red-800">{count} drivers</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          {driversWithoutLeads.sample_drivers.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-red-200">
-              <h3 className="text-sm font-medium mb-2 text-red-700">Muestra de Casos (Top 10):</h3>
-              <div className="space-y-2 text-sm">
-                {driversWithoutLeads.sample_drivers.slice(0, 5).map((driver, idx) => (
-                  <div key={idx} className="bg-white rounded p-2 border border-red-200">
-                    <div className="flex justify-between">
-                      <span className="font-medium">Driver: {driver.driver_id}</span>
-                      <span className="text-gray-600">Regla: {driver.match_rule}</span>
-                    </div>
-                    <div className="text-gray-600 mt-1">
-                      {driver.lead_events_count > 0 ? (
-                        <span className="text-green-700">✓ {driver.lead_events_count} lead_events encontrados</span>
-                      ) : (
-                        <span className="text-red-700">✗ Sin lead_events</span>
-                      )}
-                    </div>
+                {Object.entries(orphansMetrics.by_reason).filter(([reason, count]) => count > 0).map(([reason, count]) => (
+                  <div key={reason} className="flex justify-between items-center">
+                    <span className="text-sm text-orange-600 capitalize">{reason.replace(/_/g, ' ')}</span>
+                    <span className="font-medium text-orange-800">{count}</span>
                   </div>
                 ))}
               </div>
             </div>
-          )}
+          </div>
           
-          <div className="mt-4 pt-4 border-t border-red-200">
-            <p className="text-sm text-red-600">
-              <strong>Acción recomendada:</strong> Ejecutar el script de limpieza para corregir estos casos:
-              <code className="block mt-2 bg-red-100 p-2 rounded text-xs">
-                python backend/scripts/fix_drivers_without_leads.py --execute
-              </code>
-            </p>
+          <div className="mt-4 pt-4 border-t border-orange-200 flex gap-2">
+            <button
+              onClick={() => handleRunFix(false)}
+              disabled={fixRunning}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
+            >
+              {fixRunning ? 'Ejecutando...' : 'Run Dry-Run'}
+            </button>
+            <button
+              onClick={() => {
+                if (confirm('¿Estás seguro de ejecutar el fix? Esto aplicará cambios en la base de datos.')) {
+                  handleRunFix(true);
+                }
+              }}
+              disabled={fixRunning}
+              className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
+            >
+              {fixRunning ? 'Ejecutando...' : 'Ejecutar Fix'}
+            </button>
+            {orphansMetrics.last_updated_at && (
+              <div className="ml-auto text-xs text-orange-600 self-center">
+                Última actualización: {new Date(orphansMetrics.last_updated_at).toLocaleString()}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -276,6 +303,68 @@ export default function DashboardPage() {
               <strong>Explicación:</strong> El total de {personsBySource.total_persons} personas incluye todas las fuentes. 
               {personsBySource.persons_only_drivers > 0 && (
                 <> {personsBySource.persons_only_drivers} personas solo tienen links de drivers (están en el parque pero no vinieron de leads).</>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Drivers Sin Leads - Análisis Detallado */}
+      {driversWithoutLeads && driversWithoutLeads.total_drivers_without_leads > 0 && (
+        <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-6 mb-8">
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-blue-800 mb-2">📊 Drivers Sin Leads - Análisis</h2>
+              <p className="text-sm text-blue-600">
+                Drivers que están en el sistema sin leads asociados. Los drivers en cuarentena están excluidos del funnel operativo.
+              </p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div className="bg-white rounded p-4 border border-blue-200">
+              <div className="text-sm text-blue-600 mb-1">Total (incluyendo quarantined)</div>
+              <div className="text-2xl font-bold text-blue-800">{driversWithoutLeads.total_drivers_without_leads}</div>
+            </div>
+            <div className="bg-white rounded p-4 border border-red-200">
+              <div className="text-sm text-red-600 mb-1">En Cuarentena</div>
+              <div className="text-2xl font-bold text-red-800">{driversWithoutLeads.drivers_quarantined_count}</div>
+            </div>
+            <div className="bg-white rounded p-4 border border-orange-200">
+              <div className="text-sm text-orange-600 mb-1">Operativos (sin leads)</div>
+              <div className="text-2xl font-bold text-orange-800">{driversWithoutLeads.drivers_without_leads_operativos}</div>
+              <div className="text-xs text-orange-500 mt-1">
+                {driversWithoutLeads.drivers_without_leads_operativos === 0 ? '✅ OK' : '⚠️ Requiere atención'}
+              </div>
+            </div>
+            <div className="bg-white rounded p-4 border border-green-200">
+              <div className="text-sm text-green-600 mb-1">Con Lead Events</div>
+              <div className="text-2xl font-bold text-green-800">{driversWithoutLeads.drivers_with_lead_events}</div>
+            </div>
+          </div>
+
+          {driversWithoutLeads.quarantine_breakdown && Object.keys(driversWithoutLeads.quarantine_breakdown).length > 0 && (
+            <div className="mt-4 pt-4 border-t border-blue-200">
+              <h3 className="text-md font-medium mb-3 text-blue-700">Breakdown de Cuarentena por Razón</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {Object.entries(driversWithoutLeads.quarantine_breakdown).map(([reason, count]) => (
+                  <div key={reason} className="bg-white rounded p-2 border border-blue-200">
+                    <div className="text-xs text-blue-600 mb-1 capitalize">{reason.replace(/_/g, ' ')}</div>
+                    <div className="text-lg font-bold text-blue-800">{count}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 pt-4 border-t border-blue-200">
+            <p className="text-sm text-blue-600">
+              <strong>Interpretación:</strong> 
+              {driversWithoutLeads.drivers_without_leads_operativos === 0 ? (
+                <> ✅ Todos los drivers sin leads están en cuarentena. El sistema está funcionando correctamente.</>
+              ) : (
+                <> ⚠️ Hay {driversWithoutLeads.drivers_without_leads_operativos} drivers operativos sin leads que requieren atención. 
+                Los {driversWithoutLeads.drivers_quarantined_count} drivers en cuarentena son legacy aislados y están excluidos del funnel/claims/pagos.</>
               )}
             </p>
           </div>
