@@ -450,7 +450,13 @@ def get_cabinet_financial_14d(
             }
             with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
                 f.write(json.dumps(log_entry) + "\n")
-        except Exception:
+        except Exception as e:
+            # Si falla la consulta de logging, hacer rollback y continuar
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            # No fallar por errores de logging
             pass
         # #endregion
         
@@ -605,6 +611,11 @@ def get_cabinet_financial_14d(
     except HTTPException:
         raise
     except Exception as e:
+        # Hacer rollback si hay una transacción fallida
+        try:
+            db.rollback()
+        except Exception:
+            pass
         logger.error(f"Error en get_cabinet_financial_14d: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
@@ -912,6 +923,11 @@ def get_funnel_gap_metrics(
         }
         
     except Exception as e:
+        # Hacer rollback si hay una transacción fallida
+        try:
+            db.rollback()
+        except Exception:
+            pass
         logger.error(f"Error calculando métricas del gap del embudo: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
