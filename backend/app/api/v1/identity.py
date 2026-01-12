@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, func, text, Date, select, bindparam
+from sqlalchemy import or_, and_, func, text, Date, select, bindparam, cast, String
 from typing import Optional, List
 from uuid import UUID
 from datetime import date, datetime
@@ -19,8 +19,36 @@ from app.models.canon import (
 from app.models.ops import IngestionRun, JobType, RunStatus
 from app.models.observational import ScoutingMatchCandidate, LeadEvent as LeadEventModel
 import logging
+import os
+import json as json_lib
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Helper function para logging de debug
+def _write_debug_log(location: str, message: str, data: dict, hypothesis_id: str, run_id: str = "run1"):
+    """Escribe un log de debug en formato NDJSON"""
+    try:
+        from datetime import datetime
+        # Desde backend/app/api/v1/identity.py necesitamos subir 4 niveles para llegar al workspace root
+        # backend/app/api/v1 -> backend/app/api -> backend/app -> backend -> workspace_root
+        workspace_root = Path(__file__).parent.parent.parent.parent.parent
+        debug_log_path = workspace_root / ".cursor" / "debug.log"
+        debug_log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_entry = {
+            "id": f"log_{int(datetime.now().timestamp() * 1000)}",
+            "timestamp": int(datetime.now().timestamp() * 1000),
+            "location": location,
+            "message": message,
+            "data": data,
+            "sessionId": "debug-session",
+            "runId": run_id,
+            "hypothesisId": hypothesis_id
+        }
+        with open(debug_log_path, "a", encoding="utf-8") as f:
+            f.write(json_lib.dumps(log_entry) + "\n")
+    except Exception as e:
+        logger.error(f"Error writing debug log: {e}", exc_info=True)
 from app.schemas.identity import (
     IdentityRegistry as IdentityRegistrySchema, 
     IdentityLink as IdentityLinkSchema, 
@@ -274,6 +302,9 @@ def get_drivers_without_leads_analysis(db: Session = Depends(get_db)):
     IMPORTANTE: Los drivers en cuarentena (canon.driver_orphan_quarantine) 
     NO se cuentan como "operativos" y deben estar excluidos del funnel/claims/pagos.
     """
+    # #region agent log
+    _write_debug_log("identity.py:270", "FUNCTION_ENTRY_get_drivers_without_leads", {}, "H1")
+    # #endregion
     # Contar drivers en cuarentena
     quarantined_query = text("""
         SELECT 
@@ -379,29 +410,94 @@ def get_drivers_without_leads_analysis(db: Session = Depends(get_db)):
     from app.models.canon import IdentityLink
     
     # Usar SQLAlchemy ORM para query seguro
-    by_rule_subquery = db.query(
-        IdentityLink.match_rule,
-        func.count().filter(
-            ~IdentityLink.source_pk.in_(
-                select(DriverOrphanQuarantine.driver_id).where(
-                    DriverOrphanQuarantine.status == OrphanStatus.QUARANTINED
-                )
-            )
-        ).label('count_operativos'),
-        func.count().label('count_total')
-    ).filter(
-        IdentityLink.source_table == 'drivers',
-        IdentityLink.person_key.in_(person_keys_list)
-    ).group_by(IdentityLink.match_rule).order_by(func.count().desc()).all()
+    # Nota: Usar SQL directo para la subquery ya que el tipo enum puede no existir en PostgreSQL
+    # El enum OrphanStatus tiene valores: "quarantined", "resolved_relinked"
+    quarantined_status_str = OrphanStatus.QUARANTINED.value  # "quarantined"
     
-    by_match_rule = {row.match_rule: row.count_operativos for row in by_rule_subquery}
+    # Construir la lista de person_keys para la query SQL
+    person_keys_placeholders = ", ".join([f":pk_{i}" for i in range(len(person_keys_list))])
+    person_keys_params = {f"pk_{i}": str(pk) for i, pk in enumerate(person_keys_list)}
+    
+    # Query SQL directa para evitar problemas con enums en subqueries
+    sql_query = text(f"""
+        SELECT 
+            match_rule,
+            COUNT(*) FILTER (WHERE source_pk NOT IN (
+                SELECT driver_id 
+                FROM canon.driver_orphan_quarantine 
+                WHERE status = :quarantined_status
+            )) AS count_operativos,
+            COUNT(*) AS count_total
+        FROM canon.identity_links
+        WHERE source_table = :source_table
+        AND person_key IN ({person_keys_placeholders})
+        GROUP BY match_rule
+        ORDER BY count_total DESC
+    """)
+    
+    params = {
+        "quarantined_status": quarantined_status_str,
+        "source_table": "drivers",
+        **person_keys_params
+    }
+    
+    result = db.execute(sql_query, params)
+    by_rule_subquery = result.fetchall()
+    
+    # Procesar resultados: (match_rule, count_operativos, count_total)
+    by_match_rule = {row[0]: row[1] for row in by_rule_subquery}
+    
+    # Obtener driver_ids en cuarentena primero para evitar problemas con enum en subqueries
+    # SQLAlchemy puede usar el nombre del enum en lugar del valor en subqueries con select()
+    # #region agent log
+    enum_value = OrphanStatus.QUARANTINED
+    _write_debug_log("identity.py:449", "BEFORE_QUERY_QUARANTINED_ENUM", {
+        "enum_name": enum_value.name,
+        "enum_value": enum_value.value,
+        "enum_repr": repr(enum_value),
+        "enum_str": str(enum_value),
+        "enum_type": str(type(enum_value))
+    }, "H1")
+    # #endregion
+    # Usar cast para forzar que SQLAlchemy use el valor del enum en lugar del nombre
+    try:
+        quarantined_status_value = OrphanStatus.QUARANTINED.value  # "quarantined"
+        quarantined_driver_ids_list = [
+            row[0] for row in db.query(DriverOrphanQuarantine.driver_id).filter(
+                cast(DriverOrphanQuarantine.status, String) == quarantined_status_value
+            ).all()
+        ]
+        # #region agent log
+        _write_debug_log("identity.py:470", "AFTER_QUERY_QUARANTINED", {
+            "quarantined_count": len(quarantined_driver_ids_list),
+            "success": True
+        }, "H1")
+        # #endregion
+    except Exception as e:
+        # #region agent log
+        _write_debug_log("identity.py:470", "AFTER_QUERY_QUARANTINED_ERROR", {
+            "error": str(e),
+            "error_type": str(type(e).__name__),
+            "success": False
+        }, "H1")
+        # #endregion
+        raise
+    
+    # Convertir person_keys_list a UUIDs para la query ORM
+    from uuid import UUID
+    person_keys_uuids = [UUID(pk) for pk in person_keys_list]
     
     # Drivers con/sin lead_events (solo operativos, excluyendo quarantined)
     # Obtener driver_ids operativos usando ORM
-    drivers_operativos_ids_result = db.query(IdentityLink.source_pk).filter(
+    query_filter = [
         IdentityLink.source_table == 'drivers',
-        IdentityLink.person_key.in_(person_keys_uuids),
-        ~IdentityLink.source_pk.in_(quarantined_driver_ids_subq)
+        IdentityLink.person_key.in_(person_keys_uuids)
+    ]
+    if quarantined_driver_ids_list:
+        query_filter.append(~IdentityLink.source_pk.in_(quarantined_driver_ids_list))
+    
+    drivers_operativos_ids_result = db.query(IdentityLink.source_pk).filter(
+        *query_filter
     ).distinct().all()
     
     drivers_operativos_ids = [str(row[0]) for row in drivers_operativos_ids_result]
@@ -508,7 +604,7 @@ def get_drivers_without_leads_analysis(db: Session = Depends(get_db)):
         # Verificar si está en cuarentena
         is_quarantined = db.query(DriverOrphanQuarantine).filter(
             DriverOrphanQuarantine.driver_id == driver_id_str,
-            DriverOrphanQuarantine.status == OrphanStatus.QUARANTINED
+            cast(DriverOrphanQuarantine.status, String) == OrphanStatus.QUARANTINED.value
         ).first() is not None
         
         # Contar eventos (simplificado - solo contar si hay alguno)
@@ -1957,14 +2053,14 @@ def list_orphans(
     if status:
         try:
             status_enum = OrphanStatus(status)
-            query = query.filter(DriverOrphanQuarantine.status == status_enum)
+            query = query.filter(cast(DriverOrphanQuarantine.status, String) == status_enum.value)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Status inválido: {status}")
     
     if detected_reason:
         try:
             reason_enum = OrphanDetectedReason(detected_reason)
-            query = query.filter(DriverOrphanQuarantine.detected_reason == reason_enum)
+            query = query.filter(cast(DriverOrphanQuarantine.detected_reason, String) == reason_enum.value)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Razón inválida: {detected_reason}")
     
@@ -2043,22 +2139,51 @@ def get_orphans_metrics(db: Session = Depends(get_db)):
     """
     Obtiene métricas agregadas de drivers huérfanos.
     """
+    # #region agent log
+    _write_debug_log("identity.py:2126", "FUNCTION_ENTRY_get_orphans_metrics", {}, "H4")
+    # #endregion
     # Total de orphans
     total_orphans = db.query(DriverOrphanQuarantine).count()
     
     # Por status
     by_status = {}
+    # #region agent log
+    _write_debug_log("identity.py:2148", "BEFORE_STATUS_LOOP", {
+        "orphan_status_values": [s.value for s in OrphanStatus],
+        "orphan_status_names": [s.name for s in OrphanStatus]
+    }, "H4")
+    # #endregion
     for status in OrphanStatus:
+        # #region agent log
+        _write_debug_log("identity.py:2176", "BEFORE_STATUS_QUERY", {
+            "status_name": status.name,
+            "status_value": status.value,
+            "status_repr": repr(status),
+            "status_str": str(status),
+            "status_type": str(type(status))
+        }, "H4")
+        # #endregion
+        # Usar cast para forzar que SQLAlchemy use el valor del enum en lugar del nombre
+        status_value = status.value
         count = db.query(DriverOrphanQuarantine).filter(
-            DriverOrphanQuarantine.status == status
+            cast(DriverOrphanQuarantine.status, String) == status_value
         ).count()
+        # #region agent log
+        _write_debug_log("identity.py:2193", "AFTER_STATUS_QUERY", {
+            "status_name": status.name,
+            "status_value": status.value,
+            "count": count
+        }, "H4")
+        # #endregion
         by_status[status.value] = count
     
     # Por razón
     by_reason = {}
     for reason in OrphanDetectedReason:
+        # Usar cast para forzar que SQLAlchemy use el valor del enum en lugar del nombre
+        reason_value = reason.value
         count = db.query(DriverOrphanQuarantine).filter(
-            DriverOrphanQuarantine.detected_reason == reason
+            cast(DriverOrphanQuarantine.detected_reason, String) == reason_value
         ).count()
         by_reason[reason.value] = count
     
