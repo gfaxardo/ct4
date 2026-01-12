@@ -311,6 +311,11 @@ class DriverMatrixRow(BaseModel):
     scout_due_flag: Optional[bool] = None
     scout_paid_flag: Optional[bool] = None
     scout_amount: Optional[Decimal] = None
+    # Scout attribution (agregado)
+    scout_id: Optional[int] = None
+    scout_name: Optional[str] = None
+    scout_quality_bucket: Optional[str] = None
+    is_scout_resolved: bool = False
     # Flags de inconsistencia de milestones
     m5_without_m1_flag: Optional[bool] = None
     m25_without_m5_flag: Optional[bool] = None

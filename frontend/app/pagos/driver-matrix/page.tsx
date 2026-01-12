@@ -416,7 +416,7 @@ function DriverMatrixPageContent() {
           'reached_m5': 'M5',
           'reached_m25': 'M25',
         };
-        const statusColors: Record<string, 'default' | 'info' | 'success' | 'warning' | 'danger'> = {
+        const statusColors: Record<string, 'default' | 'info' | 'success' | 'warning' | 'error'> = {
           'registered_incomplete': 'warning',
           'registered_complete': 'info',
           'connected_no_trips': 'default',

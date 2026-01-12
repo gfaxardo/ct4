@@ -7,15 +7,19 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getCabinetFinancial14d,
   exportCabinetFinancial14dCSV,
   getFunnelGapMetrics,
+  getCobranzaYangoScoutAttributionMetrics,
+  getCobranzaYangoWeeklyKpis,
+  getIdentityGaps,
+  getIdentityGapAlerts,
   ApiError,
 } from '@/lib/api';
-import type { FunnelGapMetrics } from '@/lib/api';
+import type { FunnelGapMetrics, ScoutAttributionMetricsResponse, WeeklyKpisResponse, IdentityGapResponse, IdentityGapAlertsResponse } from '@/lib/api';
 import type {
   CabinetFinancialResponse,
   CabinetFinancialRow,
@@ -34,12 +38,35 @@ export default function CobranzaYangoPage() {
   const [filters, setFilters] = useState({
     only_with_debt: true,
     reached_milestone: '',
+    scout_id: '',
+    week_start: '', // Filtro por semana (formato YYYY-MM-DD)
   });
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(100);
   const [exporting, setExporting] = useState(false);
   const [funnelGap, setFunnelGap] = useState<FunnelGapMetrics | null>(null);
   const [loadingGap, setLoadingGap] = useState(true);
+  const [scoutMetrics, setScoutMetrics] = useState<ScoutAttributionMetricsResponse | null>(null);
+  const [loadingScoutMetrics, setLoadingScoutMetrics] = useState(true);
+  const [weeklyKpis, setWeeklyKpis] = useState<WeeklyKpisResponse | null>(null);
+  const [loadingWeeklyKpis, setLoadingWeeklyKpis] = useState(true);
+  const [identityGaps, setIdentityGaps] = useState<IdentityGapResponse | null>(null);
+  const [loadingIdentityGaps, setLoadingIdentityGaps] = useState(true);
+  const [identityGapAlerts, setIdentityGapAlerts] = useState<IdentityGapAlertsResponse | null>(null);
+  const [loadingIdentityGapAlerts, setLoadingIdentityGapAlerts] = useState(true);
+  const [showAlerts, setShowAlerts] = useState(false);
+  
+  // Debounce para filtros (300ms)
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedFilters(filters);
+      setOffset(0); // Reset offset cuando cambian filtros
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [filters]);
 
   useEffect(() => {
     async function loadData() {
@@ -48,8 +75,10 @@ export default function CobranzaYangoPage() {
         setError(null);
 
         const response = await getCabinetFinancial14d({
-          only_with_debt: filters.only_with_debt,
-          reached_milestone: filters.reached_milestone ? filters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
+          only_with_debt: debouncedFilters.only_with_debt,
+          reached_milestone: debouncedFilters.reached_milestone ? debouncedFilters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
+          scout_id: debouncedFilters.scout_id ? parseInt(debouncedFilters.scout_id) : undefined,
+          week_start: debouncedFilters.week_start || undefined,
           limit,
           offset,
           include_summary: true,
@@ -75,7 +104,7 @@ export default function CobranzaYangoPage() {
     }
 
     loadData();
-  }, [filters, offset, limit]);
+  }, [debouncedFilters, offset, limit]);
 
   useEffect(() => {
     async function loadFunnelGap() {
@@ -92,14 +121,96 @@ export default function CobranzaYangoPage() {
     loadFunnelGap();
   }, []);
 
+  useEffect(() => {
+    async function loadScoutMetrics() {
+      try {
+        setLoadingScoutMetrics(true);
+        const metrics = await getCobranzaYangoScoutAttributionMetrics({
+          only_with_debt: debouncedFilters.only_with_debt,
+          reached_milestone: debouncedFilters.reached_milestone ? debouncedFilters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
+          scout_id: debouncedFilters.scout_id ? parseInt(debouncedFilters.scout_id) : undefined,
+          use_materialized: true,
+        });
+        setScoutMetrics(metrics);
+      } catch (err) {
+        console.error('Error cargando métricas de scout:', err);
+      } finally {
+        setLoadingScoutMetrics(false);
+      }
+    }
+    loadScoutMetrics();
+  }, [debouncedFilters]);
+
+  useEffect(() => {
+    async function loadWeeklyKpis() {
+      try {
+        setLoadingWeeklyKpis(true);
+        const kpis = await getCobranzaYangoWeeklyKpis({
+          only_with_debt: debouncedFilters.only_with_debt,
+          reached_milestone: debouncedFilters.reached_milestone ? debouncedFilters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
+          scout_id: debouncedFilters.scout_id ? parseInt(debouncedFilters.scout_id) : undefined,
+          limit_weeks: 52,
+          use_materialized: true,
+        });
+        setWeeklyKpis(kpis);
+      } catch (err) {
+        console.error('Error cargando KPIs semanales:', err);
+      } finally {
+        setLoadingWeeklyKpis(false);
+      }
+    }
+    loadWeeklyKpis();
+  }, [debouncedFilters]);
+
+  // Cargar Identity Gaps con polling cada 60s
+  useEffect(() => {
+    async function loadIdentityGaps() {
+      try {
+        setLoadingIdentityGaps(true);
+        const gaps = await getIdentityGaps({
+          page: 1,
+          page_size: 100,
+        });
+        setIdentityGaps(gaps);
+      } catch (err) {
+        console.error('Error cargando brechas de identidad:', err);
+      } finally {
+        setLoadingIdentityGaps(false);
+      }
+    }
+
+    loadIdentityGaps();
+    const interval = setInterval(loadIdentityGaps, 60000); // 60 segundos
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    async function loadIdentityGapAlerts() {
+      try {
+        setLoadingIdentityGapAlerts(true);
+        const alerts = await getIdentityGapAlerts();
+        setIdentityGapAlerts(alerts);
+      } catch (err) {
+        console.error('Error cargando alertas de brechas:', err);
+      } finally {
+        setLoadingIdentityGapAlerts(false);
+      }
+    }
+
+    loadIdentityGapAlerts();
+    const interval = setInterval(loadIdentityGapAlerts, 60000); // 60 segundos
+    return () => clearInterval(interval);
+  }, []);
+
   const handleExport = async () => {
     try {
       setExporting(true);
       setError(null);
 
       const blob = await exportCabinetFinancial14dCSV({
-        only_with_debt: filters.only_with_debt,
-        reached_milestone: filters.reached_milestone ? filters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
+        only_with_debt: debouncedFilters.only_with_debt,
+        reached_milestone: debouncedFilters.reached_milestone ? debouncedFilters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
+        week_start: debouncedFilters.week_start || undefined,
         use_materialized: true,
       });
 
@@ -140,9 +251,29 @@ export default function CobranzaYangoPage() {
         { value: 'm25', label: 'M25 alcanzado (25+ viajes)' },
       ],
     },
+    {
+      name: 'scout_id',
+      label: 'Scout ID',
+      type: 'number' as const,
+    },
+    {
+      name: 'week_start',
+      label: 'Semana',
+      type: 'select' as const,
+      options: weeklyKpis?.weeks 
+        ? [
+            { value: '', label: 'Todas' },
+            ...weeklyKpis.weeks.map(w => ({
+              value: w.week_start,
+              label: `${new Date(w.week_start).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })} (${w.total_rows} drivers)`
+            }))
+          ]
+        : [{ value: '', label: 'Todas' }],
+    },
   ];
 
-  const columns = [
+  // Memoizar columns para evitar re-renders innecesarios
+  const columns = useMemo(() => [
     {
       key: 'driver_name',
       header: 'Conductor',
@@ -225,6 +356,53 @@ export default function CobranzaYangoPage() {
             {milestones.map((m) => (
               <Badge key={m} variant="info">{m}</Badge>
             ))}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'scout',
+      header: 'Scout',
+      render: (row: CabinetFinancialRow) => {
+        if (row.scout_id) {
+          const qualityBadgeVariant = 
+            row.scout_quality_bucket === 'SATISFACTORY_LEDGER' ? 'success' :
+            row.scout_quality_bucket === 'EVENTS_ONLY' ? 'warning' :
+            row.scout_quality_bucket === 'MIGRATIONS_ONLY' ? 'warning' :
+            row.scout_quality_bucket === 'SCOUTING_DAILY_ONLY' ? 'default' :
+            row.scout_quality_bucket === 'CABINET_PAYMENTS_ONLY' ? 'default' :
+            'error';
+          
+          const tooltipText = [
+            `Scout ID: ${row.scout_id}`,
+            row.scout_name ? `Nombre: ${row.scout_name}` : '',
+            row.scout_quality_bucket ? `Calidad: ${row.scout_quality_bucket}` : '',
+            row.scout_source_table ? `Fuente: ${row.scout_source_table}` : '',
+            row.scout_attribution_date ? `Fecha: ${new Date(row.scout_attribution_date).toLocaleDateString('es-ES')}` : '',
+            row.scout_priority ? `Prioridad: ${row.scout_priority}` : '',
+          ].filter(Boolean).join('\n');
+          
+          return (
+            <div className="flex flex-col gap-1" title={tooltipText}>
+              <div className="flex items-center gap-1 flex-wrap">
+                <Badge variant={qualityBadgeVariant}>
+                  {row.scout_name || `Scout ${row.scout_id}`}
+                </Badge>
+                {row.scout_quality_bucket && (
+                  <Badge variant={qualityBadgeVariant === 'success' ? 'default' : qualityBadgeVariant} className="text-xs">
+                    {row.scout_quality_bucket.replace(/_/g, ' ')}
+                  </Badge>
+                )}
+              </div>
+              {row.scout_id && (
+                <div className="text-xs text-gray-500">ID: {row.scout_id}</div>
+              )}
+            </div>
+          );
+        }
+        return (
+          <div title="Scout que originó el registro (atribución canónica). Sin scout asignado.">
+            <Badge variant="error">Sin scout</Badge>
           </div>
         );
       },
@@ -320,7 +498,23 @@ export default function CobranzaYangoPage() {
         return <div className="flex flex-col gap-1">{claims}</div>;
       },
     },
-  ];
+  ], [router]);
+
+  // Handler para click en semana (preserva otros filtros)
+  const handleWeekClick = useCallback((weekStart: string) => {
+    setFilters(prev => ({
+      ...prev,
+      week_start: weekStart,
+    }));
+  }, []);
+
+  // Handler para limpiar filtro semana
+  const handleClearWeekFilter = useCallback(() => {
+    setFilters(prev => ({
+      ...prev,
+      week_start: '',
+    }));
+  }, []);
 
   return (
     <div className="px-4 py-6">
@@ -413,25 +607,312 @@ export default function CobranzaYangoPage() {
 
       {/* Summary Cards - Mostrando datos filtrados */}
       {data && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-          <StatCard
-            title="Total Deuda Yango (filtrado)"
-            value={`S/ ${(Number(data.summary?.total_debt_yango) || 0).toFixed(2)}`}
-          />
-          <StatCard
-            title="Total Esperado (filtrado)"
-            value={`S/ ${(Number(data.summary?.total_expected_yango) || 0).toFixed(2)}`}
-          />
-          <StatCard
-            title="Total Pagado (filtrado)"
-            value={`S/ ${(Number(data.summary?.total_paid_yango) || 0).toFixed(2)}`}
-          />
-          <StatCard
-            title="% Cobranza (filtrado)"
-            value={`${(Number(data.summary?.collection_percentage) || 0).toFixed(2)}%`}
-          />
+        <div className="mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+            <StatCard
+              title="Total Deuda Yango (filtrado)"
+              value={`S/ ${(Number(data.summary?.total_debt_yango) || 0).toFixed(2)}`}
+            />
+            <StatCard
+              title="Total Esperado (filtrado)"
+              value={`S/ ${(Number(data.summary?.total_expected_yango) || 0).toFixed(2)}`}
+            />
+            <StatCard
+              title="Total Pagado (filtrado)"
+              value={`S/ ${(Number(data.summary?.total_paid_yango) || 0).toFixed(2)}`}
+            />
+            <StatCard
+              title="% Cobranza (filtrado)"
+              value={`${(Number(data.summary?.collection_percentage) || 0).toFixed(2)}%`}
+            />
+          </div>
+          {/* KPIs de Atribución Scout (desde endpoint separado) */}
+          {loadingScoutMetrics ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <StatCard title="Cargando..." value="—" />
+              <StatCard title="Cargando..." value="—" />
+              <StatCard title="Cargando..." value="—" />
+            </div>
+          ) : scoutMetrics ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <StatCard
+                title="Drivers con Scout"
+                value={`${scoutMetrics.metrics.drivers_with_scout} (${scoutMetrics.metrics.pct_with_scout.toFixed(1)}%)`}
+              />
+              <StatCard
+                title="Drivers sin Scout"
+                value={`${scoutMetrics.metrics.drivers_without_scout}`}
+              />
+              <StatCard
+                title="Total Drivers (filtrado)"
+                value={`${scoutMetrics.metrics.total_drivers}`}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <StatCard
+                title="Drivers con Scout"
+                value={`${data.summary?.drivers_with_scout || 0} (${(data.summary?.pct_with_scout || 0).toFixed(1)}%)`}
+              />
+              <StatCard
+                title="Drivers sin Scout"
+                value={`${data.summary?.drivers_without_scout || 0}`}
+              />
+              <StatCard
+                title="Total Drivers (filtrado)"
+                value={`${data.summary?.total_drivers || 0}`}
+              />
+            </div>
+          )}
+          
+          {/* KPIs por Semana */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">KPIs por Semana (últimas 52 semanas)</h3>
+              {filters.week_start && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="info">
+                    Filtro activo: {new Date(filters.week_start).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  </Badge>
+                  <button
+                    onClick={handleClearWeekFilter}
+                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Limpiar filtro semana
+                  </button>
+                </div>
+              )}
+            </div>
+            {loadingWeeklyKpis ? (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center text-gray-500">
+                Cargando KPIs semanales...
+              </div>
+            ) : weeklyKpis && weeklyKpis.weeks.length > 0 ? (
+              <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Semana</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Drivers</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Con Scout</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% Scout</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deuda (S/)</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">M1</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">M5</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">M25</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pagado (S/)</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {weeklyKpis.weeks.map((week) => (
+                        <tr
+                          key={week.week_start}
+                          className={`hover:bg-gray-50 cursor-pointer ${filters.week_start === week.week_start ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`}
+                          onClick={() => handleWeekClick(week.week_start)}
+                        >
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                            {new Date(week.week_start).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">{week.total_rows}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">{week.with_scout}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">
+                            <Badge variant={week.pct_with_scout >= 90 ? 'success' : week.pct_with_scout >= 70 ? 'warning' : 'error'}>
+                              {week.pct_with_scout.toFixed(1)}%
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm font-semibold text-red-600">
+                            S/ {week.debt_sum.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">{week.reached_m1}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">{week.reached_m5}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">{week.reached_m25}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-green-600">
+                            S/ {week.paid_sum.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm">
+                            <button
+                              className="text-blue-600 hover:text-blue-800 underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleWeekClick(week.week_start);
+                              }}
+                            >
+                              Filtrar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center text-gray-500">
+                No hay datos semanales disponibles
+              </div>
+            )}
+          </div>
         </div>
       )}
+
+      {/* Brechas de Identidad (Recovery) */}
+      <div className="mb-6 bg-white border border-gray-200 rounded-lg p-6 shadow">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-gray-900">
+            🔍 Brechas de Identidad (Recovery)
+          </h2>
+          <button
+            onClick={() => setShowAlerts(!showAlerts)}
+            className="px-3 py-1 text-sm bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100"
+          >
+            {showAlerts ? 'Ocultar' : 'Ver'} Alertas ({identityGapAlerts?.total || 0})
+          </button>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Cada lead sin identidad puede ser plata no cobrable. Este módulo detecta y reintenta matching automáticamente.
+        </p>
+
+        {loadingIdentityGaps ? (
+          <div className="text-center py-8 text-gray-500">Cargando métricas de brechas...</div>
+        ) : identityGaps ? (
+          <>
+            {/* Cards de métricas */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gray-50 p-4 rounded shadow">
+                <div className="text-sm text-gray-600 mb-1">Total Leads</div>
+                <div className="text-2xl font-bold">{identityGaps.totals.total_leads.toLocaleString()}</div>
+              </div>
+              <div className="bg-red-50 p-4 rounded shadow border border-red-200">
+                <div className="text-sm text-red-700 mb-1">Unresolved</div>
+                <div className="text-2xl font-bold text-red-700">
+                  {identityGaps.totals.unresolved.toLocaleString()}
+                </div>
+                <div className="text-sm text-red-600 mt-1">
+                  ({identityGaps.totals.pct_unresolved.toFixed(1)}%)
+                </div>
+              </div>
+              <div className="bg-green-50 p-4 rounded shadow border border-green-200">
+                <div className="text-sm text-green-700 mb-1">Resolved</div>
+                <div className="text-2xl font-bold text-green-700">
+                  {identityGaps.totals.resolved.toLocaleString()}
+                </div>
+                <div className="text-sm text-green-600 mt-1">
+                  ({((identityGaps.totals.resolved / Math.max(identityGaps.totals.total_leads, 1)) * 100).toFixed(1)}%)
+                </div>
+              </div>
+              <div className="bg-orange-50 p-4 rounded shadow border border-orange-200">
+                <div className="text-sm text-orange-700 mb-1">High Risk</div>
+                <div className="text-2xl font-bold text-orange-700">
+                  {identityGaps.breakdown
+                    .filter(b => b.risk_level === 'high')
+                    .reduce((sum, b) => sum + b.count, 0)
+                    .toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            {/* Tabla de brechas */}
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Lead ID</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Lead Date</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Gap Reason</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Risk</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Days Open</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Trips 14d</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Person Key</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {identityGaps.items.slice(0, 20).map((item) => (
+                    <tr key={item.lead_id}>
+                      <td className="px-4 py-2 text-sm font-mono">{item.lead_id.substring(0, 12)}...</td>
+                      <td className="px-4 py-2 text-sm">
+                        {new Date(item.lead_date).toLocaleDateString('es-ES')}
+                      </td>
+                      <td className="px-4 py-2 text-sm">
+                        <Badge
+                          variant={
+                            item.gap_reason === 'resolved' ? 'success' :
+                            item.gap_reason === 'no_identity' ? 'error' :
+                            'warning'
+                          }
+                        >
+                          {item.gap_reason}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2 text-sm">
+                        <Badge
+                          variant={
+                            item.risk_level === 'high' ? 'error' :
+                            item.risk_level === 'medium' ? 'warning' :
+                            'default'
+                          }
+                        >
+                          {item.risk_level}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2 text-sm">{item.gap_age_days}</td>
+                      <td className="px-4 py-2 text-sm">{item.trips_14d}</td>
+                      <td className="px-4 py-2 text-sm font-mono text-xs">
+                        {item.person_key ? item.person_key.substring(0, 8) + '...' : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {identityGaps.items.length > 20 && (
+              <div className="mt-2 text-sm text-gray-500 text-center">
+                Mostrando 20 de {identityGaps.items.length} brechas. Usa los filtros de la API para ver más.
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-8 text-gray-500">No hay datos de brechas disponibles</div>
+        )}
+
+        {/* Modal/Sección de Alertas */}
+        {showAlerts && (
+          <div className="mt-6 border-t pt-6">
+            <h3 className="text-lg font-semibold mb-4">Alertas Activas</h3>
+            {loadingIdentityGapAlerts ? (
+              <div className="text-center py-4 text-gray-500">Cargando alertas...</div>
+            ) : identityGapAlerts && identityGapAlerts.items.length > 0 ? (
+              <div className="space-y-2">
+                {identityGapAlerts.items.map((alert) => (
+                  <div
+                    key={alert.lead_id}
+                    className={`p-3 rounded border ${
+                      alert.severity === 'high' ? 'bg-red-50 border-red-200' :
+                      alert.severity === 'medium' ? 'bg-orange-50 border-orange-200' :
+                      'bg-yellow-50 border-yellow-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium text-sm">
+                          Lead: {alert.lead_id.substring(0, 12)}... | {alert.alert_type}
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1">{alert.suggested_action}</div>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {alert.days_open} días abierta
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-gray-500">No hay alertas activas</div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Resumen: Filtrado vs Total */}
       {data && (
@@ -470,6 +951,16 @@ export default function CobranzaYangoPage() {
                     S/ {(Number(data.summary?.total_debt_yango) || 0).toFixed(2)}
                   </div>
                 </div>
+                <div>
+                  <div className="text-gray-600">Con Scout</div>
+                  <div className="text-lg font-bold text-green-600">{data.summary?.drivers_with_scout || 0}</div>
+                  <div className="text-xs text-gray-500">({(data.summary?.pct_with_scout || 0).toFixed(1)}%)</div>
+                </div>
+                <div>
+                  <div className="text-gray-600">Sin Scout</div>
+                  <div className="text-lg font-bold text-orange-600">{data.summary?.drivers_without_scout || 0}</div>
+                  <div className="text-xs text-gray-500">({((data.summary?.drivers_without_scout || 0) / Math.max(data.summary?.total_drivers || 1, 1) * 100).toFixed(1)}%)</div>
+                </div>
               </div>
             </div>
 
@@ -506,6 +997,16 @@ export default function CobranzaYangoPage() {
                       S/ {(Number(data.summary_total.total_debt_yango) || 0).toFixed(2)}
                     </div>
                   </div>
+                  <div>
+                    <div className="text-gray-700">Con Scout</div>
+                    <div className="text-lg font-bold text-green-600">{data.summary_total.drivers_with_scout}</div>
+                    <div className="text-xs text-gray-600">({(data.summary_total.pct_with_scout || 0).toFixed(1)}%)</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-700">Sin Scout</div>
+                    <div className="text-lg font-bold text-orange-600">{data.summary_total.drivers_without_scout}</div>
+                    <div className="text-xs text-gray-600">({((data.summary_total.drivers_without_scout || 0) / Math.max(data.summary_total.total_drivers || 1, 1) * 100).toFixed(1)}%)</div>
+                  </div>
                 </div>
               </div>
             )}
@@ -522,7 +1023,7 @@ export default function CobranzaYangoPage() {
             setOffset(0);
           }}
           onReset={() => {
-            setFilters({ only_with_debt: true, reached_milestone: '' });
+            setFilters({ only_with_debt: true, reached_milestone: '', scout_id: '', week_start: '' });
             setOffset(0);
           }}
         />

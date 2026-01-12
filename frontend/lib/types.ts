@@ -731,6 +731,8 @@ export interface DriverMatrixRow {
   lead_date: string | null;
   week_start: string | null;
   origin_tag: string | null;
+  funnel_status: string | null;
+  highest_milestone: number | null;
   connected_flag: boolean | null;
   connected_date: string | null;
   // Milestone M1
@@ -837,6 +839,57 @@ export interface CabinetFinancialRow {
   paid_amount_m25: number;
   total_paid_yango: number;
   amount_due_yango: number;
+  // Campos de scout attribution (display only)
+  scout_id: number | null;
+  scout_name: string | null;
+  scout_quality_bucket: string | null;
+  is_scout_resolved: boolean;
+  scout_source_table: string | null;
+  scout_attribution_date: string | null;
+  scout_priority: number | null;
+}
+
+export interface ScoutAttributionMetrics {
+  total_drivers: number;
+  drivers_with_scout: number;
+  drivers_without_scout: number;
+  pct_with_scout: number;
+  breakdown_by_quality: Record<string, number>;
+  breakdown_by_source: Record<string, number>;
+  drivers_without_scout_by_reason: Record<string, number>;
+  top_missing_examples: Array<{
+    driver_id: string;
+    lead_date: string | null;
+    reached_m1: boolean;
+    reached_m5: boolean;
+    reached_m25: boolean;
+    amount_due_yango: number;
+  }>;
+}
+
+export interface ScoutAttributionMetricsResponse {
+  status: string;
+  metrics: ScoutAttributionMetrics;
+  filters: Record<string, any>;
+}
+
+export interface WeeklyKpiRow {
+  week_start: string;
+  total_rows: number;
+  debt_sum: number;
+  with_scout: number;
+  pct_with_scout: number;
+  reached_m1: number;
+  reached_m5: number;
+  reached_m25: number;
+  paid_sum: number;
+  unpaid_sum: number;
+}
+
+export interface WeeklyKpisResponse {
+  status: string;
+  weeks: WeeklyKpiRow[];
+  filters: Record<string, any>;
 }
 
 export interface CabinetFinancialSummary {
@@ -850,6 +903,9 @@ export interface CabinetFinancialSummary {
   drivers_m1: number;
   drivers_m5: number;
   drivers_m25: number;
+  drivers_with_scout: number;
+  drivers_without_scout: number;
+  pct_with_scout: number;
 }
 
 export interface CabinetFinancialSummaryTotal {
@@ -863,6 +919,9 @@ export interface CabinetFinancialSummaryTotal {
   drivers_m1: number;
   drivers_m5: number;
   drivers_m25: number;
+  drivers_with_scout: number;
+  drivers_without_scout: number;
+  pct_with_scout: number;
 }
 
 export interface CabinetFinancialMeta {
@@ -1008,7 +1067,7 @@ export type OriginResolutionStatus = 'pending_review' | 'resolved_auto' | 'resol
 export type ViolationReason = 'missing_origin' | 'multiple_origins' | 'late_origin_link' | 'orphan_lead' | 'legacy_driver_unclassified';
 export type RecommendedAction = 'auto_link' | 'manual_review' | 'mark_legacy' | 'discard';
 export type AlertType = 'missing_origin' | 'multiple_origins' | 'legacy_unclassified' | 'orphan_lead';
-export type AlertSeverity = 'low' | 'medium' | 'high';
+export type OriginAlertSeverity = 'low' | 'medium' | 'high';
 export type AlertImpact = 'export' | 'collection' | 'reporting' | 'none';
 
 export interface OriginAuditRow {
@@ -1194,6 +1253,8 @@ export interface ScoutLiquidationBaseResponse {
   pagination: {
     page: number;
     page_size: number;
+    total: number;
+    total_pages: number;
   };
 }
 
@@ -1228,6 +1289,32 @@ export interface YangoCollectionWithScoutResponse {
     page_size: number;
     total: number;
     total_pages: number;
+  };
+}
+
+export interface CabinetLeadsDiagnostics {
+  table_exists: boolean;
+  table_row_count: number;
+  max_lead_date_in_table: string | null;
+  max_event_date_in_lead_events: string | null;
+  max_snapshot_date_in_identity_links: string | null;
+  recommended_start_date: string | null;
+  processed_external_ids_count: number;
+}
+
+export interface FunnelGapMetrics {
+  total_leads: number;
+  leads_with_identity: number;
+  leads_with_claims: number;
+  leads_without_identity: number;
+  leads_without_claims: number;
+  leads_without_both: number;
+  percentages: {
+    with_identity: number;
+    with_claims: number;
+    without_identity: number;
+    without_claims: number;
+    without_both: number;
   };
 }
 

@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, DateTime, String, JSON, Enum, Date, Boolean, TypeDecorator, Text, ForeignKey
+from sqlalchemy import Column, Integer, DateTime, String, JSON, Enum, Date, Boolean, TypeDecorator, Text, ForeignKey, CheckConstraint
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import ENUM, JSONB
+from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
 import enum
 from app.db import Base
 
@@ -77,3 +77,23 @@ class Alert(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
     run_id = Column(Integer, ForeignKey("ops.ingestion_runs.id"), nullable=True)
+
+
+class IdentityMatchingJob(Base):
+    __tablename__ = "identity_matching_jobs"
+    __table_args__ = (
+        CheckConstraint("source_type = 'cabinet'", name="chk_identity_matching_jobs_source_type"),
+        CheckConstraint("status IN ('pending', 'matched', 'failed')", name="chk_identity_matching_jobs_status"),
+        {"schema": "ops"}
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_type = Column(String, nullable=False)
+    source_id = Column(String, nullable=False)
+    status = Column(String, nullable=False, server_default='pending')
+    attempt_count = Column(Integer, nullable=False, server_default='0')
+    last_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    matched_person_key = Column(UUID(as_uuid=True), ForeignKey("canon.identity_registry.person_key", ondelete="SET NULL"), nullable=True)
+    fail_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

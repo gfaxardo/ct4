@@ -26,6 +26,14 @@ from app.schemas.ops_health_global import HealthGlobalResponse
 from app.schemas.ops_source_registry import SourceRegistryResponse, SourceRegistryRow
 from app.schemas.ops_source_registry import SourceRegistryResponse, SourceRegistryRow
 from app.api.v1 import ops_payments
+from app.schemas.identity_gap import (
+    IdentityGapResponse,
+    IdentityGapRow,
+    IdentityGapTotals,
+    IdentityGapBreakdown,
+    IdentityGapAlertsResponse,
+    IdentityGapAlertRow
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -1002,4 +1010,173 @@ def ingest_yango_payments(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500,
             detail=f"Error ejecutando ingesta de pagos Yango: {str(e)}"
+        )
+
+
+@router.get("/identity-gaps", response_model=IdentityGapResponse)
+def get_identity_gaps(
+    db: Session = Depends(get_db),
+    date_from: Optional[date] = Query(None, description="Fecha mínima de lead_date"),
+    date_to: Optional[date] = Query(None, description="Fecha máxima de lead_date"),
+    risk_level: Optional[str] = Query(None, description="Filtrar por risk_level: high, medium, low"),
+    gap_reason: Optional[str] = Query(None, description="Filtrar por gap_reason: no_identity, no_origin, activity_without_identity, no_activity, resolved"),
+    page: int = Query(1, ge=1, description="Número de página (1-indexed)"),
+    page_size: int = Query(100, ge=1, le=1000, description="Tamaño de página (máx 1000)")
+):
+    """
+    Obtiene análisis de brechas de identidad para leads Cabinet.
+    
+    Retorna:
+    - totals: Totales agregados (total_leads, unresolved, resolved, pct_unresolved)
+    - breakdown: Desglose por gap_reason y risk_level
+    - items: Lista paginada de leads con sus brechas
+    
+    Ejemplo curl:
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/ops/identity-gaps?page=1&page_size=100&risk_level=high"
+    ```
+    """
+    try:
+        offset = (page - 1) * page_size
+        
+        # Construir query base
+        query_str = "SELECT * FROM ops.v_identity_gap_analysis"
+        params = {}
+        conditions = []
+        
+        if date_from:
+            conditions.append("lead_date >= :date_from")
+            params["date_from"] = date_from
+        
+        if date_to:
+            conditions.append("lead_date <= :date_to")
+            params["date_to"] = date_to
+        
+        if risk_level:
+            conditions.append("risk_level = :risk_level")
+            params["risk_level"] = risk_level
+        
+        if gap_reason:
+            conditions.append("gap_reason = :gap_reason")
+            params["gap_reason"] = gap_reason
+        
+        if conditions:
+            query_str += " WHERE " + " AND ".join(conditions)
+        
+        # Contar total
+        count_query = f"SELECT COUNT(*) FROM ops.v_identity_gap_analysis"
+        if conditions:
+            count_query += " WHERE " + " AND ".join(conditions)
+        count_result = db.execute(text(count_query), params)
+        total = count_result.scalar() or 0
+        
+        # Obtener breakdown
+        breakdown_query = f"""
+            SELECT gap_reason, risk_level, COUNT(*) as count
+            FROM ops.v_identity_gap_analysis
+        """
+        if conditions:
+            breakdown_query += " WHERE " + " AND ".join(conditions)
+        breakdown_query += " GROUP BY gap_reason, risk_level"
+        breakdown_result = db.execute(text(breakdown_query), params)
+        breakdown_rows = breakdown_result.fetchall()
+        breakdown = [
+            IdentityGapBreakdown(
+                gap_reason=row.gap_reason,
+                risk_level=row.risk_level,
+                count=row.count
+            )
+            for row in breakdown_rows
+        ]
+        
+        # Obtener totals
+        totals_query = f"""
+            SELECT 
+                COUNT(*) as total_leads,
+                COUNT(*) FILTER (WHERE gap_reason != 'resolved') as unresolved,
+                COUNT(*) FILTER (WHERE gap_reason = 'resolved') as resolved
+            FROM ops.v_identity_gap_analysis
+        """
+        if conditions:
+            totals_query += " WHERE " + " AND ".join(conditions)
+        totals_result = db.execute(text(totals_query), params)
+        totals_row = totals_result.fetchone()
+        
+        totals = IdentityGapTotals(
+            total_leads=totals_row.total_leads or 0,
+            unresolved=totals_row.unresolved or 0,
+            resolved=totals_row.resolved or 0,
+            pct_unresolved=round(100.0 * (totals_row.unresolved or 0) / max(totals_row.total_leads or 1, 1), 2)
+        )
+        
+        # Obtener items paginados
+        query_str += " ORDER BY gap_age_days DESC, lead_date DESC LIMIT :limit OFFSET :offset"
+        params["limit"] = page_size
+        params["offset"] = offset
+        result = db.execute(text(query_str), params)
+        rows = result.fetchall()
+        
+        items = [
+            IdentityGapRow.model_validate(dict(row._mapping) if hasattr(row, '_mapping') else dict(row))
+            for row in rows
+        ]
+        
+        return IdentityGapResponse(
+            totals=totals,
+            breakdown=breakdown,
+            items=items,
+            meta={
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size
+            }
+        )
+    
+    except Exception as e:
+        logger.exception("get_identity_gaps failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo brechas de identidad: {str(e)}"
+        )
+
+
+@router.get("/identity-gaps/alerts", response_model=IdentityGapAlertsResponse)
+def get_identity_gap_alerts(
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene alertas activas de brechas de identidad.
+    
+    Retorna lista de alertas para leads con problemas críticos:
+    - over_24h_no_identity: Lead sin identidad por >24h
+    - over_7d_unresolved: Lead sin resolver por >7 días
+    - activity_no_identity: Lead con actividad pero sin person_key
+    
+    Ejemplo curl:
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/ops/identity-gaps/alerts"
+    ```
+    """
+    try:
+        query = text("SELECT * FROM ops.v_identity_gap_alerts ORDER BY severity DESC, days_open DESC")
+        result = db.execute(query)
+        rows = result.fetchall()
+        
+        items = [
+            IdentityGapAlertRow.model_validate(dict(row._mapping) if hasattr(row, '_mapping') else dict(row))
+            for row in rows
+        ]
+        
+        return IdentityGapAlertsResponse(
+            items=items,
+            total=len(items),
+            meta={}
+        )
+    
+    except Exception as e:
+        logger.exception("get_identity_gap_alerts failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo alertas de brechas: {str(e)}"
         )

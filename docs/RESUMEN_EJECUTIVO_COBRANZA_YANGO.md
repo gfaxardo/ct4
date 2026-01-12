@@ -11,6 +11,30 @@ Este documento explica el **racionamiento completo de la cobranza de Yango** des
 
 ---
 
+## 🎯 Vista Ejecutiva Principal: Cobranza Yango
+
+**La vista "Cobranza Yango - Cabinet Financial 14d" (`/pagos/cobranza-yango`) es EL CENTRO OPERATIVO PRINCIPAL de cobranza, control y futura conciliación de Yango.**
+
+### Características Principales:
+
+1. **Fuente Ejecutiva Única**: Esta es la única vista de "Cobranza Yango" visible en el menú principal. Todas las demás rutas relacionadas redirigen aquí.
+
+2. **Display-Only de Scout**: Muestra la atribución de scout (quién trajo el registro) para visibilidad y filtros, sin definir dinero ni corregir reglas.
+
+3. **Read-Only por Defecto**: Segura, auditable y exportable. No contiene acciones destructivas.
+
+4. **Vista Gemela de Conciliación**: Existe una vista gemela admin/operativa en `/pagos/cobranza-yango/conciliacion` para conciliación futura, sin ensuciar la vista principal.
+
+5. **Respeto Estricto a Capas Canónicas**: 
+   - Consume C3 (Claims - obligación de pago expected)
+   - Consume C4 (Pagos - dinero real / conciliación)
+   - NO recalcula reglas de negocio
+
+### Objetivo Funcional:
+**Responder sin ambigüedad: "¿Qué conductores generan pago de Yango, cuánto nos deben, por qué (milestone), y qué scout lo trajo?"**
+
+---
+
 ## 🎯 Visión General: El Funnel de Cobranza
 
 El sistema de cobranza Yango sigue este flujo:

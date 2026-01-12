@@ -106,6 +106,10 @@ import type {
   MvHealthResponse,
   PersonsBySourceResponse,
   DriversWithoutLeadsAnalysis,
+  OrphansMetricsResponse,
+  RunFixResponse,
+  CabinetLeadsDiagnostics,
+  FunnelGapMetrics,
 } from './types';
 
 export async function getIdentityStats(): Promise<IdentityStats> {
@@ -118,6 +122,26 @@ export async function getPersonsBySource(): Promise<PersonsBySourceResponse> {
 
 export async function getDriversWithoutLeadsAnalysis(): Promise<DriversWithoutLeadsAnalysis> {
   return fetchApi<DriversWithoutLeadsAnalysis>('/api/v1/identity/stats/drivers-without-leads');
+}
+
+export async function getOrphansMetrics(): Promise<OrphansMetricsResponse> {
+  return fetchApi<OrphansMetricsResponse>('/api/v1/identity/orphans/metrics');
+}
+
+export async function runOrphansFix(params?: {
+  execute?: boolean;
+  limit?: number;
+  output_dir?: string;
+}): Promise<RunFixResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.execute !== undefined) searchParams.set('execute', params.execute.toString());
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  if (params?.output_dir) searchParams.set('output_dir', params.output_dir);
+  
+  const query = searchParams.toString();
+  return fetchApi<RunFixResponse>(`/api/v1/identity/orphans/run-fix${query ? `?${query}` : ''}`, {
+    method: 'POST',
+  });
 }
 
 export async function getPersons(params?: {
@@ -255,6 +279,8 @@ import type {
   ScoutOpenItemsResponse,
   YangoSummaryResponse,
   YangoReceivableItemsResponse,
+  ScoutAttributionMetricsResponse,
+  WeeklyKpisResponse,
 } from './types';
 
 export async function getScoutSummary(params?: {
@@ -602,6 +628,7 @@ export async function getCabinetFinancial14d(params?: {
   only_with_debt?: boolean;
   min_debt?: number;
   reached_milestone?: 'm1' | 'm5' | 'm25';
+  scout_id?: number;
   limit?: number;
   offset?: number;
   include_summary?: boolean;
@@ -611,6 +638,7 @@ export async function getCabinetFinancial14d(params?: {
   if (params?.only_with_debt !== undefined) searchParams.set('only_with_debt', params.only_with_debt.toString());
   if (params?.min_debt !== undefined) searchParams.set('min_debt', params.min_debt.toString());
   if (params?.reached_milestone) searchParams.set('reached_milestone', params.reached_milestone);
+  if (params?.scout_id !== undefined) searchParams.set('scout_id', params.scout_id.toString());
   if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
   if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
   if (params?.include_summary !== undefined) searchParams.set('include_summary', params.include_summary.toString());
@@ -618,6 +646,87 @@ export async function getCabinetFinancial14d(params?: {
   
   const query = searchParams.toString();
   return fetchApi<CabinetFinancialResponse>(`/api/v1/ops/payments/cabinet-financial-14d${query ? `?${query}` : ''}`);
+}
+
+export async function getFunnelGapMetrics(): Promise<FunnelGapMetrics> {
+  return fetchApi<FunnelGapMetrics>('/api/v1/ops/payments/cabinet-financial-14d/funnel-gap');
+}
+
+export type { FunnelGapMetrics };
+
+export async function getCobranzaYangoScoutAttributionMetrics(params?: {
+  only_with_debt?: boolean;
+  min_debt?: number;
+  reached_milestone?: 'm1' | 'm5' | 'm25';
+  scout_id?: number;
+  use_materialized?: boolean;
+}): Promise<ScoutAttributionMetricsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.only_with_debt !== undefined) searchParams.set('only_with_debt', params.only_with_debt.toString());
+  if (params?.min_debt !== undefined) searchParams.set('min_debt', params.min_debt.toString());
+  if (params?.reached_milestone) searchParams.set('reached_milestone', params.reached_milestone);
+  if (params?.scout_id !== undefined) searchParams.set('scout_id', params.scout_id.toString());
+  if (params?.use_materialized !== undefined) searchParams.set('use_materialized', params.use_materialized.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<ScoutAttributionMetricsResponse>(`/api/v1/payments/yango/cabinet/cobranza-yango/scout-attribution-metrics${query ? `?${query}` : ''}`);
+}
+
+export async function getCobranzaYangoWeeklyKpis(params?: {
+  only_with_debt?: boolean;
+  min_debt?: number;
+  reached_milestone?: 'm1' | 'm5' | 'm25';
+  scout_id?: number;
+  scout_quality_bucket?: string;
+  week_start_from?: string;
+  week_start_to?: string;
+  limit_weeks?: number;
+  use_materialized?: boolean;
+}): Promise<WeeklyKpisResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.only_with_debt !== undefined) searchParams.set('only_with_debt', params.only_with_debt.toString());
+  if (params?.min_debt !== undefined) searchParams.set('min_debt', params.min_debt.toString());
+  if (params?.reached_milestone) searchParams.set('reached_milestone', params.reached_milestone);
+  if (params?.scout_id !== undefined) searchParams.set('scout_id', params.scout_id.toString());
+  if (params?.scout_quality_bucket) searchParams.set('scout_quality_bucket', params.scout_quality_bucket);
+  if (params?.week_start_from) searchParams.set('week_start_from', params.week_start_from);
+  if (params?.week_start_to) searchParams.set('week_start_to', params.week_start_to);
+  if (params?.limit_weeks !== undefined) searchParams.set('limit_weeks', params.limit_weeks.toString());
+  if (params?.use_materialized !== undefined) searchParams.set('use_materialized', params.use_materialized.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<WeeklyKpisResponse>(`/api/v1/payments/yango/cabinet/cobranza-yango/weekly-kpis${query ? `?${query}` : ''}`);
+}
+
+export async function exportCabinetFinancial14dCSV(params?: {
+  only_with_debt?: boolean;
+  min_debt?: number;
+  reached_milestone?: 'm1' | 'm5' | 'm25';
+  week_start?: string;
+  use_materialized?: boolean;
+}): Promise<Blob> {
+  const searchParams = new URLSearchParams();
+  if (params?.only_with_debt !== undefined) searchParams.set('only_with_debt', params.only_with_debt.toString());
+  if (params?.min_debt !== undefined) searchParams.set('min_debt', params.min_debt.toString());
+  if (params?.reached_milestone) searchParams.set('reached_milestone', params.reached_milestone);
+  if (params?.use_materialized !== undefined) searchParams.set('use_materialized', params.use_materialized.toString());
+  
+  const query = searchParams.toString();
+  const url = `${API_BASE_URL}/api/v1/ops/payments/cabinet-financial-14d/export${query ? `?${query}` : ''}`;
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const errorData = await response.json();
+      detail = errorData.detail || errorData.message;
+    } catch {
+      detail = response.statusText;
+    }
+    throw new ApiError(response.status, response.statusText, detail);
+  }
+  
+  return response.blob();
 }
 
 // ============================================================================
@@ -717,6 +826,8 @@ export interface CabinetLeadsUploadResponse {
     total_rows: number;
     errors_count: number;
     auto_process: boolean;
+    skipped_by_date?: number;
+    date_cutoff_used?: string | null;
   };
   errors: string[];
   run_id: number | null;
@@ -724,17 +835,44 @@ export interface CabinetLeadsUploadResponse {
 
 export async function uploadCabinetLeadsCSV(
   file: File,
-  autoProcess: boolean = true
+  autoProcess: boolean = true,
+  skipAlreadyProcessed: boolean = true
 ): Promise<CabinetLeadsUploadResponse> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('auto_process', autoProcess.toString());
   
-  return fetchApiFormData<CabinetLeadsUploadResponse>(
-    '/api/v1/cabinet-leads/upload-csv',
-    formData
-  );
+  // skip_already_processed es un query parameter, no form data
+  const searchParams = new URLSearchParams();
+  searchParams.set('skip_already_processed', skipAlreadyProcessed.toString());
+  
+  const url = `${API_BASE_URL}/api/v1/cabinet-leads/upload-csv?${searchParams.toString()}`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    body: formData,
+    // No incluir Content-Type header, el browser lo setea automáticamente con boundary
+  });
+
+  if (!response.ok) {
+    let detail: string | undefined;
+    try {
+      const errorData = await response.json();
+      detail = errorData.detail || errorData.message;
+    } catch {
+      detail = response.statusText;
+    }
+    throw new ApiError(response.status, response.statusText, detail);
+  }
+
+  return response.json();
 }
+
+export async function getCabinetLeadsDiagnostics(): Promise<CabinetLeadsDiagnostics> {
+  return fetchApi<CabinetLeadsDiagnostics>('/api/v1/cabinet-leads/diagnostics');
+}
+
+export type { CabinetLeadsDiagnostics };
 
 // ============================================================================
 // Identity Origin Audit API
@@ -854,6 +992,86 @@ export async function muteAlert(
 
 export async function getOriginAuditStats(): Promise<OriginAuditStats> {
   return fetchApi<OriginAuditStats>('/api/v1/identity/audit/stats');
+}
+
+// ============================================================================
+// Identity Gap Recovery API
+// ============================================================================
+
+export interface IdentityGapRow {
+  lead_id: string;
+  lead_date: string;
+  person_key: string | null;
+  has_identity: boolean;
+  has_origin: boolean;
+  has_driver_activity: boolean;
+  trips_14d: number;
+  gap_reason: string;
+  gap_age_days: number;
+  risk_level: string;
+}
+
+export interface IdentityGapTotals {
+  total_leads: number;
+  unresolved: number;
+  resolved: number;
+  pct_unresolved: number;
+}
+
+export interface IdentityGapBreakdown {
+  gap_reason: string;
+  risk_level: string;
+  count: number;
+}
+
+export interface IdentityGapResponse {
+  totals: IdentityGapTotals;
+  breakdown: IdentityGapBreakdown[];
+  items: IdentityGapRow[];
+  meta: {
+    page: number;
+    page_size: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
+export interface IdentityGapAlertRow {
+  lead_id: string;
+  alert_type: string;
+  severity: string;
+  days_open: number;
+  suggested_action: string;
+}
+
+export interface IdentityGapAlertsResponse {
+  items: IdentityGapAlertRow[];
+  total: number;
+  meta: Record<string, any>;
+}
+
+export async function getIdentityGaps(params?: {
+  date_from?: string;
+  date_to?: string;
+  risk_level?: 'high' | 'medium' | 'low';
+  gap_reason?: string;
+  page?: number;
+  page_size?: number;
+}): Promise<IdentityGapResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.date_from) searchParams.set('date_from', params.date_from);
+  if (params?.date_to) searchParams.set('date_to', params.date_to);
+  if (params?.risk_level) searchParams.set('risk_level', params.risk_level);
+  if (params?.gap_reason) searchParams.set('gap_reason', params.gap_reason);
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString());
+  if (params?.page_size !== undefined) searchParams.set('page_size', params.page_size.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<IdentityGapResponse>(`/api/v1/ops/identity-gaps${query ? `?${query}` : ''}`);
+}
+
+export async function getIdentityGapAlerts(): Promise<IdentityGapAlertsResponse> {
+  return fetchApi<IdentityGapAlertsResponse>('/api/v1/ops/identity-gaps/alerts');
 }
 
 // ============================================================================

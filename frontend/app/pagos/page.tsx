@@ -189,22 +189,12 @@ export default function PagosPage() {
       {/* Navegación a subrutas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <Link
-          href="/pagos/yango-cabinet"
-          className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border border-gray-200"
-        >
-          <h2 className="text-xl font-semibold mb-2">Reconciliación Yango</h2>
-          <p className="text-sm text-gray-600">
-            Reconciliación de pagos Yango por semana y milestone
-          </p>
-        </Link>
-
-        <Link
           href="/pagos/cobranza-yango"
-          className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border border-gray-200"
+          className="bg-blue-50 border-2 border-blue-300 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow"
         >
-          <h2 className="text-xl font-semibold mb-2">Cobranza Yango</h2>
-          <p className="text-sm text-gray-600">
-            Claims exigibles y estado de cobranza
+          <h2 className="text-xl font-bold mb-2 text-blue-900">💰 Cobranza Yango</h2>
+          <p className="text-sm text-gray-700 font-medium">
+            Vista ejecutiva principal: Claims exigibles, estado de cobranza y atribución de scout
           </p>
         </Link>
 
@@ -215,6 +205,16 @@ export default function PagosPage() {
           <h2 className="text-xl font-semibold mb-2">Claims Cabinet</h2>
           <p className="text-sm text-gray-600">
             Claims exigibles de Yango Cabinet con detalles
+          </p>
+        </Link>
+
+        <Link
+          href="/pagos/yango-cabinet"
+          className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow border border-gray-200"
+        >
+          <h2 className="text-xl font-semibold mb-2">Reconciliación</h2>
+          <p className="text-sm text-gray-600">
+            Reconciliación de pagos Yango por semana y milestone
           </p>
         </Link>
 

@@ -381,7 +381,11 @@ def get_liquidation_base(
             LIMIT :page_size OFFSET :offset
         """)
         
+        count_query = text("SELECT COUNT(*) FROM ops.v_scout_payment_base")
+        
         result = db.execute(query, {"page_size": page_size, "offset": offset})
+        count_result = db.execute(count_query)
+        total = count_result.scalar() or 0
         
         return {
             "items": [
@@ -402,6 +406,8 @@ def get_liquidation_base(
             "pagination": {
                 "page": page,
                 "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size if page_size > 0 else 0
             }
         }
     except Exception as e:

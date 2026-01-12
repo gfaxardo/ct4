@@ -21,11 +21,22 @@ from app.schemas.cabinet_financial import (
     CabinetFinancialResponse,
     CabinetFinancialSummary,
     CabinetFinancialSummaryTotal,
-    CabinetFinancialMeta
+    CabinetFinancialMeta,
+    ScoutAttributionMetrics,
+    ScoutAttributionMetricsResponse,
+    WeeklyKpiRow,
+    WeeklyKpisResponse
 )
+from functools import lru_cache
+from time import time
+from typing import Dict, Tuple
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Cache simple para métricas de scout (TTL 60s)
+_scout_metrics_cache: Dict[Tuple, Tuple[float, ScoutAttributionMetrics]] = {}
+CACHE_TTL = 60  # segundos
 
 
 class OrderByOption(str, Enum):
@@ -297,6 +308,8 @@ def get_cabinet_financial_14d(
     only_with_debt: bool = Query(False, description="Si true, solo drivers con deuda pendiente (amount_due_yango > 0)"),
     min_debt: Optional[float] = Query(None, ge=0, description="Filtra por deuda mínima (amount_due_yango >= min_debt)"),
     reached_milestone: Optional[str] = Query(None, description="Filtra por milestone alcanzado: 'm1', 'm5', 'm25'"),
+    scout_id: Optional[int] = Query(None, description="Filtra por Scout ID (atribución canónica)"),
+    week_start: Optional[date] = Query(None, description="Filtra por semana (lunes de la semana ISO)"),
     limit: int = Query(200, ge=1, le=1000, description="Límite de resultados (máx 1000). Default: 200."),
     offset: int = Query(0, ge=0, description="Offset para paginación"),
     include_summary: bool = Query(True, description="Incluir resumen ejecutivo en la respuesta"),
@@ -327,18 +340,36 @@ def get_cabinet_financial_14d(
     ```
     """
     try:
-        # Seleccionar vista (materializada o normal)
-        # Verificar si la vista materializada existe
+        # Seleccionar vista (materializada enriched o fallback)
+        # Prioridad: MV enriched > MV legacy > vista normal
         if use_materialized:
-            check_mv = db.execute(text("""
+            check_mv_enriched = db.execute(text("""
                 SELECT EXISTS (
                     SELECT 1 FROM pg_matviews 
                     WHERE schemaname = 'ops' 
-                    AND matviewname = 'mv_cabinet_financial_14d'
+                    AND matviewname = 'mv_yango_cabinet_cobranza_enriched_14d'
                 )
             """))
-            mv_exists = check_mv.scalar()
-            view_name = "ops.mv_cabinet_financial_14d" if mv_exists else "ops.v_cabinet_financial_14d"
+            mv_enriched_exists = check_mv_enriched.scalar()
+            
+            if mv_enriched_exists:
+                view_name = "ops.mv_yango_cabinet_cobranza_enriched_14d"
+                has_scout_fields = True
+            else:
+                # Fallback a MV legacy si existe
+                check_mv_legacy = db.execute(text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_matviews 
+                        WHERE schemaname = 'ops' 
+                        AND matviewname = 'mv_cabinet_financial_14d'
+                    )
+                """))
+                mv_legacy_exists = check_mv_legacy.scalar()
+                view_name = "ops.mv_cabinet_financial_14d" if mv_legacy_exists else "ops.v_cabinet_financial_14d"
+                has_scout_fields = False
+        else:
+            view_name = "ops.v_cabinet_financial_14d"
+            has_scout_fields = False
             
             # #region agent log
             import json
@@ -349,7 +380,7 @@ def get_cabinet_financial_14d(
                     "timestamp": int(datetime.now().timestamp() * 1000),
                     "location": "ops_payments.py:get_cabinet_financial_14d",
                     "message": "VIEW_SELECTED",
-                    "data": {"view_name": view_name, "mv_exists": mv_exists, "use_materialized": use_materialized},
+                    "data": {"view_name": view_name, "use_materialized": use_materialized},
                     "sessionId": "debug-session",
                     "runId": "api-request",
                     "hypothesisId": "H4"
@@ -359,8 +390,6 @@ def get_cabinet_financial_14d(
             except Exception:
                 pass
             # #endregion
-        else:
-            view_name = "ops.v_cabinet_financial_14d"
         
         # Construir WHERE dinámico
         where_conditions = []
@@ -390,41 +419,130 @@ def get_cabinet_financial_14d(
                     detail=f"reached_milestone debe ser 'm1', 'm5' o 'm25', recibido: {reached_milestone}"
                 )
         
+        # Agregar filtro por scout_id si se proporciona
+        if scout_id is not None:
+            params["scout_id"] = scout_id
+            where_conditions.append("scout_id = :scout_id")
+        
+        # Agregar filtro por week_start si se proporciona
+        if week_start is not None:
+            params["week_start"] = week_start
+            where_conditions.append("week_start = :week_start")
+        
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
-        # Query principal
-        query_sql = f"""
-            SELECT 
-                driver_id,
-                driver_name,
-                lead_date,
-                iso_week,
-                connected_flag,
-                connected_date,
-                total_trips_14d,
-                reached_m1_14d,
-                reached_m5_14d,
-                reached_m25_14d,
-                expected_amount_m1,
-                expected_amount_m5,
-                expected_amount_m25,
-                expected_total_yango,
-                claim_m1_exists,
-                claim_m1_paid,
-                claim_m5_exists,
-                claim_m5_paid,
-                claim_m25_exists,
-                claim_m25_paid,
-                paid_amount_m1,
-                paid_amount_m5,
-                paid_amount_m25,
-                total_paid_yango,
-                amount_due_yango
-            FROM {view_name}
-            WHERE {where_clause}
-            ORDER BY lead_date DESC NULLS LAST, driver_id
-            LIMIT :limit OFFSET :offset
-        """
+        # Verificar si la vista tiene campos de scout (MV enriched vs legacy)
+        has_scout_fields = "mv_yango_cabinet_cobranza_enriched_14d" in view_name
+        
+        if has_scout_fields:
+            # Query para MV enriched (ya incluye campos scout)
+            query_sql = f"""
+                SELECT 
+                    driver_id,
+                    driver_name,
+                    lead_date,
+                    iso_week,
+                    week_start,
+                    connected_flag,
+                    connected_date,
+                    total_trips_14d,
+                    reached_m1_14d,
+                    reached_m5_14d,
+                    reached_m25_14d,
+                    expected_amount_m1,
+                    expected_amount_m5,
+                    expected_amount_m25,
+                    expected_total_yango,
+                    claim_m1_exists,
+                    claim_m1_paid,
+                    claim_m5_exists,
+                    claim_m5_paid,
+                    claim_m25_exists,
+                    claim_m25_paid,
+                    paid_amount_m1,
+                    paid_amount_m5,
+                    paid_amount_m25,
+                    total_paid_yango,
+                    amount_due_yango,
+                    scout_id,
+                    scout_name,
+                    scout_quality_bucket,
+                    is_scout_resolved,
+                    scout_source_table,
+                    scout_attribution_date,
+                    scout_priority,
+                    person_key
+                FROM {view_name}
+                WHERE {where_clause}
+                ORDER BY lead_date DESC NULLS LAST, driver_id
+                LIMIT :limit OFFSET :offset
+            """
+        else:
+            # Query para MV legacy o vista normal (hacer JOIN en runtime)
+            query_sql = f"""
+                SELECT 
+                    cf.driver_id,
+                    cf.driver_name,
+                    cf.lead_date,
+                    cf.iso_week,
+                    DATE_TRUNC('week', cf.lead_date)::date AS week_start,
+                    cf.connected_flag,
+                    cf.connected_date,
+                    cf.total_trips_14d,
+                    cf.reached_m1_14d,
+                    cf.reached_m5_14d,
+                    cf.reached_m25_14d,
+                    cf.expected_amount_m1,
+                    cf.expected_amount_m5,
+                    cf.expected_amount_m25,
+                    cf.expected_total_yango,
+                    cf.claim_m1_exists,
+                    cf.claim_m1_paid,
+                    cf.claim_m5_exists,
+                    cf.claim_m5_paid,
+                    cf.claim_m25_exists,
+                    cf.claim_m25_paid,
+                    cf.paid_amount_m1,
+                    cf.paid_amount_m5,
+                    cf.paid_amount_m25,
+                    cf.total_paid_yango,
+                    cf.amount_due_yango,
+                    scout.scout_id,
+                    scout.scout_name,
+                    scout.scout_quality_bucket,
+                    scout.is_scout_resolved,
+                    scout.scout_source_table,
+                    scout.scout_attribution_date,
+                    scout.scout_priority,
+                    NULL::UUID AS person_key
+                FROM {view_name} cf
+                LEFT JOIN LATERAL (
+                    SELECT DISTINCT ON (driver_id, lead_date)
+                        scout_id,
+                        scout_name,
+                        scout_quality_bucket,
+                        is_scout_resolved,
+                        scout_source_table,
+                        scout_attribution_date,
+                        scout_priority
+                    FROM ops.v_yango_collection_with_scout
+                    WHERE driver_id = cf.driver_id
+                        AND lead_date = cf.lead_date
+                        AND scout_id IS NOT NULL
+                    ORDER BY driver_id, lead_date, 
+                        CASE scout_quality_bucket
+                            WHEN 'SATISFACTORY_LEDGER' THEN 1
+                            WHEN 'EVENTS_ONLY' THEN 2
+                            WHEN 'SCOUTING_DAILY_ONLY' THEN 3
+                            ELSE 4
+                        END,
+                        milestone_value
+                    LIMIT 1
+                ) scout ON true
+                WHERE {where_clause}
+                ORDER BY cf.lead_date DESC NULLS LAST, cf.driver_id
+                LIMIT :limit OFFSET :offset
+            """
         
         params["limit"] = limit
         params["offset"] = offset
@@ -466,28 +584,46 @@ def get_cabinet_financial_14d(
         
         # #region agent log
         try:
+            from datetime import datetime
+            import json
+            
+            # Contar drivers con scout vs sin scout
+            rows_with_scout = sum(1 for row in rows if getattr(row, 'scout_id', None) is not None)
+            rows_without_scout = len(rows) - rows_with_scout
+            rows_with_milestones = sum(1 for row in rows if getattr(row, 'reached_m1_14d', False) or getattr(row, 'reached_m5_14d', False) or getattr(row, 'reached_m25_14d', False))
+            rows_with_milestones_no_scout = sum(1 for row in rows if (getattr(row, 'reached_m1_14d', False) or getattr(row, 'reached_m5_14d', False) or getattr(row, 'reached_m25_14d', False)) and getattr(row, 'scout_id', None) is None)
+            
             log_entry = {
                 "id": f"log_{int(datetime.now().timestamp() * 1000)}",
                 "timestamp": int(datetime.now().timestamp() * 1000),
                 "location": "ops_payments.py:get_cabinet_financial_14d",
-                "message": "AFTER_QUERY",
-                "data": {"rows_returned": len(rows), "view_name": view_name},
+                "message": "AFTER_QUERY_SCOUT_ATTRIBUTION",
+                "data": {
+                    "rows_returned": len(rows),
+                    "view_name": view_name,
+                    "rows_with_scout": rows_with_scout,
+                    "rows_without_scout": rows_without_scout,
+                    "rows_with_milestones": rows_with_milestones,
+                    "rows_with_milestones_no_scout": rows_with_milestones_no_scout,
+                    "pct_with_scout": round((rows_with_scout / len(rows) * 100) if len(rows) > 0 else 0, 2)
+                },
                 "sessionId": "debug-session",
                 "runId": "api-request",
-                "hypothesisId": "H4"
+                "hypothesisId": "H1,H2,H3"
             }
             with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
                 f.write(json.dumps(log_entry) + "\n")
-        except Exception:
+        except Exception as e:
             pass
         # #endregion
         
-        # Convertir a schemas
+        # Convertir a schemas (incluyendo campos de scout)
         data = [CabinetFinancialRow(
             driver_id=row.driver_id,
             driver_name=getattr(row, 'driver_name', None),
             lead_date=row.lead_date,
             iso_week=getattr(row, 'iso_week', None),
+            week_start=getattr(row, 'week_start', None),
             connected_flag=row.connected_flag,
             connected_date=row.connected_date,
             total_trips_14d=row.total_trips_14d,
@@ -508,7 +644,14 @@ def get_cabinet_financial_14d(
             paid_amount_m5=row.paid_amount_m5,
             paid_amount_m25=row.paid_amount_m25,
             total_paid_yango=row.total_paid_yango,
-            amount_due_yango=row.amount_due_yango
+            amount_due_yango=row.amount_due_yango,
+            scout_id=getattr(row, 'scout_id', None),
+            scout_name=getattr(row, 'scout_name', None),
+            scout_quality_bucket=getattr(row, 'scout_quality_bucket', None),
+            is_scout_resolved=bool(getattr(row, 'is_scout_resolved', None) or False),
+            scout_source_table=getattr(row, 'scout_source_table', None),
+            scout_attribution_date=getattr(row, 'scout_attribution_date', None),
+            scout_priority=getattr(row, 'scout_priority', None)
         ) for row in rows]
         
         # COUNT para total
@@ -521,27 +664,134 @@ def get_cabinet_financial_14d(
         summary_total = None
         if include_summary:
             # Resumen con filtros aplicados
-            summary_sql = f"""
-                SELECT 
-                    COUNT(*) AS total_drivers,
-                    COUNT(CASE WHEN expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
-                    COUNT(CASE WHEN amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
-                    COALESCE(SUM(expected_total_yango), 0) AS total_expected_yango,
-                    COALESCE(SUM(total_paid_yango), 0) AS total_paid_yango,
-                    COALESCE(SUM(amount_due_yango), 0) AS total_debt_yango,
-                    CASE 
-                        WHEN SUM(expected_total_yango) > 0 
-                        THEN ROUND((SUM(total_paid_yango) / SUM(expected_total_yango)) * 100, 2)
-                        ELSE 0
-                    END AS collection_percentage,
-                    COUNT(CASE WHEN reached_m1_14d = true THEN 1 END) AS drivers_m1,
-                    COUNT(CASE WHEN reached_m5_14d = true THEN 1 END) AS drivers_m5,
-                    COUNT(CASE WHEN reached_m25_14d = true THEN 1 END) AS drivers_m25
-                FROM {view_name}
-                WHERE {where_clause}
-            """
-            summary_result = db.execute(text(summary_sql), {k: v for k, v in params.items() if k not in ['limit', 'offset']})
+            summary_params = {k: v for k, v in params.items() if k not in ['limit', 'offset']}
+            
+            if has_scout_fields:
+                # Query para MV enriched (campos scout ya incluidos)
+                summary_sql = f"""
+                    SELECT 
+                        COUNT(*) AS total_drivers,
+                        COUNT(CASE WHEN expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
+                        COUNT(CASE WHEN amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
+                        COALESCE(SUM(expected_total_yango), 0) AS total_expected_yango,
+                        COALESCE(SUM(total_paid_yango), 0) AS total_paid_yango,
+                        COALESCE(SUM(amount_due_yango), 0) AS total_debt_yango,
+                        CASE 
+                            WHEN SUM(expected_total_yango) > 0 
+                            THEN ROUND((SUM(total_paid_yango) / SUM(expected_total_yango)) * 100, 2)
+                            ELSE 0
+                        END AS collection_percentage,
+                        COUNT(CASE WHEN reached_m1_14d = true THEN 1 END) AS drivers_m1,
+                        COUNT(CASE WHEN reached_m5_14d = true THEN 1 END) AS drivers_m5,
+                        COUNT(CASE WHEN reached_m25_14d = true THEN 1 END) AS drivers_m25,
+                        COUNT(CASE WHEN scout_id IS NOT NULL THEN 1 END) AS drivers_with_scout,
+                        COUNT(CASE WHEN scout_id IS NULL THEN 1 END) AS drivers_without_scout,
+                        CASE 
+                            WHEN COUNT(*) > 0 
+                            THEN ROUND((COUNT(CASE WHEN scout_id IS NOT NULL THEN 1 END)::NUMERIC / COUNT(*)) * 100, 2)
+                            ELSE 0
+                        END AS pct_with_scout
+                    FROM {view_name}
+                    WHERE {where_clause}
+                """
+            else:
+                # Query para MV legacy o vista normal (JOIN en runtime)
+                summary_sql = f"""
+                    SELECT 
+                        COUNT(*) AS total_drivers,
+                        COUNT(CASE WHEN cf.expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
+                        COUNT(CASE WHEN cf.amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
+                        COALESCE(SUM(cf.expected_total_yango), 0) AS total_expected_yango,
+                        COALESCE(SUM(cf.total_paid_yango), 0) AS total_paid_yango,
+                        COALESCE(SUM(cf.amount_due_yango), 0) AS total_debt_yango,
+                        CASE 
+                            WHEN SUM(cf.expected_total_yango) > 0 
+                            THEN ROUND((SUM(cf.total_paid_yango) / SUM(cf.expected_total_yango)) * 100, 2)
+                            ELSE 0
+                        END AS collection_percentage,
+                        COUNT(CASE WHEN cf.reached_m1_14d = true THEN 1 END) AS drivers_m1,
+                        COUNT(CASE WHEN cf.reached_m5_14d = true THEN 1 END) AS drivers_m5,
+                        COUNT(CASE WHEN cf.reached_m25_14d = true THEN 1 END) AS drivers_m25,
+                        COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END) AS drivers_with_scout,
+                        COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS drivers_without_scout,
+                        CASE 
+                            WHEN COUNT(*) > 0 
+                            THEN ROUND((COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END)::NUMERIC / COUNT(*)) * 100, 2)
+                            ELSE 0
+                        END AS pct_with_scout
+                    FROM {view_name} cf
+                    LEFT JOIN LATERAL (
+                        SELECT DISTINCT ON (driver_id)
+                            scout_id
+                        FROM ops.v_yango_collection_with_scout
+                        WHERE driver_id = cf.driver_id
+                            AND scout_id IS NOT NULL
+                        ORDER BY driver_id, 
+                            CASE scout_quality_bucket
+                                WHEN 'SATISFACTORY_LEDGER' THEN 1
+                                WHEN 'EVENTS_ONLY' THEN 2
+                                WHEN 'SCOUTING_DAILY_ONLY' THEN 3
+                                ELSE 4
+                            END,
+                            milestone_value,
+                            lead_date DESC
+                        LIMIT 1
+                    ) scout ON true
+                    WHERE {where_clause}
+                """
+            
+            # #region agent log
+            try:
+                import json
+                from datetime import datetime
+                log_entry = {
+                    "id": f"log_{int(datetime.now().timestamp() * 1000)}",
+                    "timestamp": int(datetime.now().timestamp() * 1000),
+                    "location": "ops_payments.py:get_cabinet_financial_14d",
+                    "message": "BEFORE_SUMMARY_QUERY",
+                    "data": {
+                        "where_clause": where_clause,
+                        "only_with_debt": only_with_debt,
+                        "summary_params_keys": list(summary_params.keys())
+                    },
+                    "sessionId": "debug-session",
+                    "runId": "api-request",
+                    "hypothesisId": "H9"
+                }
+                with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+            except Exception:
+                pass
+            # #endregion
+            
+            summary_result = db.execute(text(summary_sql), summary_params)
             summary_row = summary_result.fetchone()
+            
+            # #region agent log
+            try:
+                import json
+                from datetime import datetime
+                log_entry = {
+                    "id": f"log_{int(datetime.now().timestamp() * 1000)}",
+                    "timestamp": int(datetime.now().timestamp() * 1000),
+                    "location": "ops_payments.py:get_cabinet_financial_14d",
+                    "message": "AFTER_SUMMARY_QUERY",
+                    "data": {
+                        "total_drivers": summary_row.total_drivers if summary_row else 0,
+                        "drivers_with_scout": summary_row.drivers_with_scout if summary_row else 0,
+                        "drivers_without_scout": summary_row.drivers_without_scout if summary_row else 0,
+                        "pct_with_scout": float(summary_row.pct_with_scout) if summary_row and summary_row.pct_with_scout else 0,
+                        "only_with_debt": only_with_debt
+                    },
+                    "sessionId": "debug-session",
+                    "runId": "api-request",
+                    "hypothesisId": "H9"
+                }
+                with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
+                    f.write(json.dumps(log_entry) + "\n")
+            except Exception:
+                pass
+            # #endregion
             
             if summary_row:
                 summary = CabinetFinancialSummary(
@@ -554,27 +804,54 @@ def get_cabinet_financial_14d(
                     collection_percentage=float(summary_row.collection_percentage),
                     drivers_m1=summary_row.drivers_m1,
                     drivers_m5=summary_row.drivers_m5,
-                    drivers_m25=summary_row.drivers_m25
+                    drivers_m25=summary_row.drivers_m25,
+                    drivers_with_scout=summary_row.drivers_with_scout,
+                    drivers_without_scout=summary_row.drivers_without_scout,
+                    pct_with_scout=float(summary_row.pct_with_scout)
                 )
             
             # Resumen total sin filtros (siempre calcular para contexto)
             summary_total_sql = f"""
                 SELECT 
                     COUNT(*) AS total_drivers,
-                    COUNT(CASE WHEN expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
-                    COUNT(CASE WHEN amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
-                    COALESCE(SUM(expected_total_yango), 0) AS total_expected_yango,
-                    COALESCE(SUM(total_paid_yango), 0) AS total_paid_yango,
-                    COALESCE(SUM(amount_due_yango), 0) AS total_debt_yango,
+                    COUNT(CASE WHEN cf.expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
+                    COUNT(CASE WHEN cf.amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
+                    COALESCE(SUM(cf.expected_total_yango), 0) AS total_expected_yango,
+                    COALESCE(SUM(cf.total_paid_yango), 0) AS total_paid_yango,
+                    COALESCE(SUM(cf.amount_due_yango), 0) AS total_debt_yango,
                     CASE 
-                        WHEN SUM(expected_total_yango) > 0 
-                        THEN ROUND((SUM(total_paid_yango) / SUM(expected_total_yango)) * 100, 2)
+                        WHEN SUM(cf.expected_total_yango) > 0 
+                        THEN ROUND((SUM(cf.total_paid_yango) / SUM(cf.expected_total_yango)) * 100, 2)
                         ELSE 0
                     END AS collection_percentage,
-                    COUNT(CASE WHEN reached_m1_14d = true THEN 1 END) AS drivers_m1,
-                    COUNT(CASE WHEN reached_m5_14d = true THEN 1 END) AS drivers_m5,
-                    COUNT(CASE WHEN reached_m25_14d = true THEN 1 END) AS drivers_m25
-                FROM {view_name}
+                    COUNT(CASE WHEN cf.reached_m1_14d = true THEN 1 END) AS drivers_m1,
+                    COUNT(CASE WHEN cf.reached_m5_14d = true THEN 1 END) AS drivers_m5,
+                    COUNT(CASE WHEN cf.reached_m25_14d = true THEN 1 END) AS drivers_m25,
+                    COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END) AS drivers_with_scout,
+                    COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS drivers_without_scout,
+                    CASE 
+                        WHEN COUNT(*) > 0 
+                        THEN ROUND((COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END)::NUMERIC / COUNT(*)) * 100, 2)
+                        ELSE 0
+                    END AS pct_with_scout
+                FROM {view_name} cf
+                LEFT JOIN LATERAL (
+                    SELECT DISTINCT ON (driver_id)
+                        scout_id
+                    FROM ops.v_yango_collection_with_scout
+                    WHERE driver_id = cf.driver_id
+                        AND scout_id IS NOT NULL
+                    ORDER BY driver_id, 
+                        CASE scout_quality_bucket
+                            WHEN 'SATISFACTORY_LEDGER' THEN 1
+                            WHEN 'EVENTS_ONLY' THEN 2
+                            WHEN 'SCOUTING_DAILY_ONLY' THEN 3
+                            ELSE 4
+                        END,
+                        milestone_value,
+                        lead_date DESC
+                    LIMIT 1
+                ) scout ON true
             """
             summary_total_result = db.execute(text(summary_total_sql))
             summary_total_row = summary_total_result.fetchone()
@@ -590,7 +867,10 @@ def get_cabinet_financial_14d(
                     collection_percentage=float(summary_total_row.collection_percentage),
                     drivers_m1=summary_total_row.drivers_m1,
                     drivers_m5=summary_total_row.drivers_m5,
-                    drivers_m25=summary_total_row.drivers_m25
+                    drivers_m25=summary_total_row.drivers_m25,
+                    drivers_with_scout=summary_total_row.drivers_with_scout,
+                    drivers_without_scout=summary_total_row.drivers_without_scout,
+                    pct_with_scout=float(summary_total_row.pct_with_scout)
                 )
         
         # Metadatos
@@ -629,6 +909,7 @@ def export_cabinet_financial_14d_csv(
     only_with_debt: bool = Query(False, description="Si true, solo drivers con deuda pendiente"),
     min_debt: Optional[float] = Query(None, ge=0, description="Filtra por deuda mínima"),
     reached_milestone: Optional[str] = Query(None, description="Filtra por milestone: 'm1', 'm5', 'm25'"),
+    week_start: Optional[date] = Query(None, description="Filtra por semana (lunes de la semana ISO)"),
     use_materialized: bool = Query(True, description="Usar vista materializada")
 ):
     """
@@ -640,19 +921,34 @@ def export_cabinet_financial_14d_csv(
     Hard cap: 200,000 filas máximo.
     """
     try:
-        # Seleccionar vista (materializada o normal)
+        # Seleccionar vista (prioridad: MV enriched > MV legacy > vista normal)
         if use_materialized:
-            check_mv = db.execute(text("""
+            check_mv_enriched = db.execute(text("""
                 SELECT EXISTS (
                     SELECT 1 FROM pg_matviews 
                     WHERE schemaname = 'ops' 
-                    AND matviewname = 'mv_cabinet_financial_14d'
+                    AND matviewname = 'mv_yango_cabinet_cobranza_enriched_14d'
                 )
             """))
-            mv_exists = check_mv.scalar()
-            view_name = "ops.mv_cabinet_financial_14d" if mv_exists else "ops.v_cabinet_financial_14d"
+            mv_enriched_exists = check_mv_enriched.scalar()
+            
+            if mv_enriched_exists:
+                view_name = "ops.mv_yango_cabinet_cobranza_enriched_14d"
+                has_scout_fields = True
+            else:
+                check_mv_legacy = db.execute(text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_matviews 
+                        WHERE schemaname = 'ops' 
+                        AND matviewname = 'mv_cabinet_financial_14d'
+                    )
+                """))
+                mv_legacy_exists = check_mv_legacy.scalar()
+                view_name = "ops.mv_cabinet_financial_14d" if mv_legacy_exists else "ops.v_cabinet_financial_14d"
+                has_scout_fields = False
         else:
             view_name = "ops.v_cabinet_financial_14d"
+            has_scout_fields = False
         
         # Construir WHERE dinámico (mismo que get_cabinet_financial_14d)
         where_conditions = []
@@ -667,17 +963,25 @@ def export_cabinet_financial_14d_csv(
         
         if reached_milestone:
             milestone_lower = reached_milestone.lower()
+            prefix = "" if has_scout_fields else "cf."
             if milestone_lower == 'm1':
-                where_conditions.append("reached_m1_14d = true AND reached_m5_14d = false")
+                where_conditions.append(f"{prefix}reached_m1_14d = true AND {prefix}reached_m5_14d = false")
             elif milestone_lower == 'm5':
-                where_conditions.append("reached_m5_14d = true AND reached_m25_14d = false")
+                where_conditions.append(f"{prefix}reached_m5_14d = true AND {prefix}reached_m25_14d = false")
             elif milestone_lower == 'm25':
-                where_conditions.append("reached_m25_14d = true")
+                where_conditions.append(f"{prefix}reached_m25_14d = true")
             else:
                 raise HTTPException(
                     status_code=400,
                     detail=f"reached_milestone debe ser 'm1', 'm5' o 'm25', recibido: {reached_milestone}"
                 )
+        
+        if week_start is not None:
+            params["week_start"] = week_start
+            if has_scout_fields:
+                where_conditions.append("week_start = :week_start")
+            else:
+                where_conditions.append("DATE_TRUNC('week', cf.lead_date)::date = :week_start")
         
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
@@ -696,38 +1000,107 @@ def export_cabinet_financial_14d_csv(
                 detail=f"Export excede límite de 200,000 filas. Total filtrado: {total}. Aplique filtros más restrictivos."
             )
         
-        # Query para exportar (todas las columnas con nombres amigables)
-        sql = f"""
-        SELECT 
-            driver_id AS "Driver ID",
-            driver_name AS "Conductor",
-            lead_date AS "Lead Date",
-            iso_week AS "Semana ISO",
-            connected_flag AS "Conectado",
-            connected_date AS "Fecha Conexion",
-            total_trips_14d AS "Viajes 14D",
-            reached_m1_14d AS "M1 Alcanzado",
-            reached_m5_14d AS "M5 Alcanzado",
-            reached_m25_14d AS "M25 Alcanzado",
-            expected_amount_m1 AS "Esperado M1 (S/)",
-            expected_amount_m5 AS "Esperado M5 (S/)",
-            expected_amount_m25 AS "Esperado M25 (S/)",
-            expected_total_yango AS "Esperado Total (S/)",
-            claim_m1_exists AS "Claim M1 Existe",
-            claim_m1_paid AS "Claim M1 Pagado",
-            claim_m5_exists AS "Claim M5 Existe",
-            claim_m5_paid AS "Claim M5 Pagado",
-            claim_m25_exists AS "Claim M25 Existe",
-            claim_m25_paid AS "Claim M25 Pagado",
-            paid_amount_m1 AS "Pagado M1 (S/)",
-            paid_amount_m5 AS "Pagado M5 (S/)",
-            paid_amount_m25 AS "Pagado M25 (S/)",
-            total_paid_yango AS "Pagado Total (S/)",
-            amount_due_yango AS "Deuda (S/)"
-        FROM {view_name}
-        WHERE {where_clause}
-        ORDER BY lead_date DESC NULLS LAST, driver_id
-        """
+        # Query para exportar (todas las columnas con nombres amigables, incluyendo scout)
+        if has_scout_fields:
+            sql = f"""
+            SELECT 
+                driver_id AS "Driver ID",
+                driver_name AS "Conductor",
+                lead_date AS "Lead Date",
+                iso_week AS "Semana ISO",
+                week_start AS "Semana Inicio",
+                connected_flag AS "Conectado",
+                connected_date AS "Fecha Conexion",
+                total_trips_14d AS "Viajes 14D",
+                reached_m1_14d AS "M1 Alcanzado",
+                reached_m5_14d AS "M5 Alcanzado",
+                reached_m25_14d AS "M25 Alcanzado",
+                expected_amount_m1 AS "Esperado M1 (S/)",
+                expected_amount_m5 AS "Esperado M5 (S/)",
+                expected_amount_m25 AS "Esperado M25 (S/)",
+                expected_total_yango AS "Esperado Total (S/)",
+                claim_m1_exists AS "Claim M1 Existe",
+                claim_m1_paid AS "Claim M1 Pagado",
+                claim_m5_exists AS "Claim M5 Existe",
+                claim_m5_paid AS "Claim M5 Pagado",
+                claim_m25_exists AS "Claim M25 Existe",
+                claim_m25_paid AS "Claim M25 Pagado",
+                paid_amount_m1 AS "Pagado M1 (S/)",
+                paid_amount_m5 AS "Pagado M5 (S/)",
+                paid_amount_m25 AS "Pagado M25 (S/)",
+                total_paid_yango AS "Pagado Total (S/)",
+                amount_due_yango AS "Deuda (S/)",
+                scout_id AS "Scout ID",
+                scout_name AS "Scout Nombre",
+                scout_quality_bucket AS "Calidad Scout",
+                scout_source_table AS "Scout Fuente",
+                scout_attribution_date AS "Scout Fecha Atribución",
+                scout_priority AS "Scout Prioridad"
+            FROM {view_name}
+            WHERE {where_clause}
+            ORDER BY lead_date DESC NULLS LAST, driver_id
+            """
+        else:
+            sql = f"""
+            SELECT 
+                cf.driver_id AS "Driver ID",
+                cf.driver_name AS "Conductor",
+                cf.lead_date AS "Lead Date",
+                cf.iso_week AS "Semana ISO",
+                DATE_TRUNC('week', cf.lead_date)::date AS "Semana Inicio",
+                cf.connected_flag AS "Conectado",
+                cf.connected_date AS "Fecha Conexion",
+                cf.total_trips_14d AS "Viajes 14D",
+                cf.reached_m1_14d AS "M1 Alcanzado",
+                cf.reached_m5_14d AS "M5 Alcanzado",
+                cf.reached_m25_14d AS "M25 Alcanzado",
+                cf.expected_amount_m1 AS "Esperado M1 (S/)",
+                cf.expected_amount_m5 AS "Esperado M5 (S/)",
+                cf.expected_amount_m25 AS "Esperado M25 (S/)",
+                cf.expected_total_yango AS "Esperado Total (S/)",
+                cf.claim_m1_exists AS "Claim M1 Existe",
+                cf.claim_m1_paid AS "Claim M1 Pagado",
+                cf.claim_m5_exists AS "Claim M5 Existe",
+                cf.claim_m5_paid AS "Claim M5 Pagado",
+                cf.claim_m25_exists AS "Claim M25 Existe",
+                cf.claim_m25_paid AS "Claim M25 Pagado",
+                cf.paid_amount_m1 AS "Pagado M1 (S/)",
+                cf.paid_amount_m5 AS "Pagado M5 (S/)",
+                cf.paid_amount_m25 AS "Pagado M25 (S/)",
+                cf.total_paid_yango AS "Pagado Total (S/)",
+                cf.amount_due_yango AS "Deuda (S/)",
+                scout.scout_id AS "Scout ID",
+                scout.scout_name AS "Scout Nombre",
+                scout.scout_quality_bucket AS "Calidad Scout",
+                scout.scout_source_table AS "Scout Fuente",
+                scout.scout_attribution_date AS "Scout Fecha Atribución",
+                scout.scout_priority AS "Scout Prioridad"
+            FROM {view_name} cf
+            LEFT JOIN LATERAL (
+                SELECT DISTINCT ON (driver_id, lead_date)
+                    scout_id,
+                    scout_name,
+                    scout_quality_bucket,
+                    scout_source_table,
+                    scout_attribution_date,
+                    scout_priority
+                FROM ops.v_yango_collection_with_scout
+                WHERE driver_id = cf.driver_id
+                    AND lead_date = cf.lead_date
+                    AND scout_id IS NOT NULL
+                ORDER BY driver_id, lead_date, 
+                    CASE scout_quality_bucket
+                        WHEN 'SATISFACTORY_LEDGER' THEN 1
+                        WHEN 'EVENTS_ONLY' THEN 2
+                        WHEN 'SCOUTING_DAILY_ONLY' THEN 3
+                        ELSE 4
+                    END,
+                    milestone_value
+                LIMIT 1
+            ) scout ON true
+            WHERE {where_clause}
+            ORDER BY cf.lead_date DESC NULLS LAST, cf.driver_id
+            """
         
         # Obtener datos
         result = db.execute(text(sql), params)
@@ -756,14 +1129,15 @@ def export_cabinet_financial_14d_csv(
                         row_dict[k] = v
                 writer.writerow(row_dict)
         else:
-            # CSV vacío con headers
+            # CSV vacío con headers (incluyendo scout)
             fieldnames = [
                 "Driver ID", "Conductor", "Lead Date", "Semana ISO", "Conectado",
                 "Fecha Conexion", "Viajes 14D", "M1 Alcanzado", "M5 Alcanzado", "M25 Alcanzado",
                 "Esperado M1 (S/)", "Esperado M5 (S/)", "Esperado M25 (S/)", "Esperado Total (S/)",
                 "Claim M1 Existe", "Claim M1 Pagado", "Claim M5 Existe", "Claim M5 Pagado",
                 "Claim M25 Existe", "Claim M25 Pagado", "Pagado M1 (S/)", "Pagado M5 (S/)",
-                "Pagado M25 (S/)", "Pagado Total (S/)", "Deuda (S/)"
+                "Pagado M25 (S/)", "Pagado Total (S/)", "Deuda (S/)",
+                "Scout ID", "Scout Nombre", "Calidad Scout", "Scout Fuente", "Scout Fecha Atribución", "Scout Prioridad"
             ]
             writer = csv.DictWriter(output, fieldnames=fieldnames)
             writer.writeheader()
@@ -818,6 +1192,500 @@ def export_cabinet_financial_14d_csv(
         raise HTTPException(
             status_code=500,
             detail=f"Error al exportar datos a CSV: {str(e)[:200]}"
+        )
+
+
+@router.get("/yango/cabinet/cobranza-yango/scout-attribution-metrics", response_model=ScoutAttributionMetricsResponse)
+def get_scout_attribution_metrics(
+    db: Session = Depends(get_db),
+    only_with_debt: bool = Query(False, description="Si true, solo drivers con deuda pendiente"),
+    min_debt: Optional[float] = Query(None, ge=0, description="Filtra por deuda mínima"),
+    reached_milestone: Optional[str] = Query(None, description="Filtra por milestone: 'm1', 'm5', 'm25'"),
+    scout_id: Optional[int] = Query(None, description="Filtra por Scout ID"),
+    use_materialized: bool = Query(True, description="Usar vista materializada")
+):
+    """
+    Obtiene métricas de atribución scout para Cobranza Yango.
+    Endpoint separado con cache de 60s para evitar cálculos pesados en cada request.
+    """
+    try:
+        # Generar clave de cache basada en filtros
+        cache_key = (
+            only_with_debt,
+            min_debt,
+            reached_milestone,
+            scout_id,
+            use_materialized
+        )
+        
+        # Verificar cache
+        current_time = time()
+        if cache_key in _scout_metrics_cache:
+            cached_time, cached_metrics = _scout_metrics_cache[cache_key]
+            if current_time - cached_time < CACHE_TTL:
+                return ScoutAttributionMetricsResponse(
+                    status="ok",
+                    metrics=cached_metrics,
+                    filters={
+                        "only_with_debt": only_with_debt,
+                        "min_debt": min_debt,
+                        "reached_milestone": reached_milestone,
+                        "scout_id": scout_id
+                    }
+                )
+        
+        # Seleccionar vista (prioridad: MV enriched > MV legacy > vista normal)
+        if use_materialized:
+            check_mv_enriched = db.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_matviews 
+                    WHERE schemaname = 'ops' 
+                    AND matviewname = 'mv_yango_cabinet_cobranza_enriched_14d'
+                )
+            """))
+            mv_enriched_exists = check_mv_enriched.scalar()
+            
+            if mv_enriched_exists:
+                view_name = "ops.mv_yango_cabinet_cobranza_enriched_14d"
+                has_scout_fields = True
+            else:
+                check_mv_legacy = db.execute(text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_matviews 
+                        WHERE schemaname = 'ops' 
+                        AND matviewname = 'mv_cabinet_financial_14d'
+                    )
+                """))
+                mv_legacy_exists = check_mv_legacy.scalar()
+                view_name = "ops.mv_cabinet_financial_14d" if mv_legacy_exists else "ops.v_cabinet_financial_14d"
+                has_scout_fields = False
+        else:
+            view_name = "ops.v_cabinet_financial_14d"
+            has_scout_fields = False
+        
+        # Construir WHERE conditions
+        params = {}
+        where_conditions = []
+        
+        if only_with_debt:
+            where_conditions.append("amount_due_yango > 0" if has_scout_fields else "cf.amount_due_yango > 0")
+        
+        if min_debt is not None:
+            params["min_debt"] = min_debt
+            where_conditions.append("amount_due_yango >= :min_debt" if has_scout_fields else "cf.amount_due_yango >= :min_debt")
+        
+        if reached_milestone:
+            milestone_lower = reached_milestone.lower()
+            if milestone_lower == "m1":
+                where_conditions.append("reached_m1_14d = true" if has_scout_fields else "cf.reached_m1_14d = true")
+            elif milestone_lower == "m5":
+                where_conditions.append("reached_m5_14d = true" if has_scout_fields else "cf.reached_m5_14d = true")
+            elif milestone_lower == "m25":
+                where_conditions.append("reached_m25_14d = true" if has_scout_fields else "cf.reached_m25_14d = true")
+        
+        if scout_id is not None:
+            params["scout_id"] = scout_id
+            where_conditions.append("scout_id = :scout_id" if has_scout_fields else "scout.scout_id = :scout_id")
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Query de métricas
+        if has_scout_fields:
+            metrics_sql = f"""
+                SELECT 
+                    COUNT(*) AS total_drivers,
+                    COUNT(CASE WHEN scout_id IS NOT NULL THEN 1 END) AS drivers_with_scout,
+                    COUNT(CASE WHEN scout_id IS NULL THEN 1 END) AS drivers_without_scout,
+                    CASE 
+                        WHEN COUNT(*) > 0 
+                        THEN ROUND((COUNT(CASE WHEN scout_id IS NOT NULL THEN 1 END)::NUMERIC / COUNT(*)) * 100, 2)
+                        ELSE 0
+                    END AS pct_with_scout,
+                    -- Breakdown por quality bucket
+                    COUNT(CASE WHEN scout_quality_bucket = 'SATISFACTORY_LEDGER' THEN 1 END) AS quality_ledger,
+                    COUNT(CASE WHEN scout_quality_bucket = 'EVENTS_ONLY' THEN 1 END) AS quality_events,
+                    COUNT(CASE WHEN scout_quality_bucket = 'MIGRATIONS_ONLY' THEN 1 END) AS quality_migrations,
+                    COUNT(CASE WHEN scout_quality_bucket = 'SCOUTING_DAILY_ONLY' THEN 1 END) AS quality_scouting,
+                    COUNT(CASE WHEN scout_quality_bucket = 'CABINET_PAYMENTS_ONLY' THEN 1 END) AS quality_cabinet,
+                    COUNT(CASE WHEN scout_quality_bucket = 'MISSING' THEN 1 END) AS quality_missing,
+                    -- Breakdown por source table
+                    COUNT(CASE WHEN scout_source_table = 'observational.lead_ledger' THEN 1 END) AS source_ledger,
+                    COUNT(CASE WHEN scout_source_table = 'observational.lead_events' THEN 1 END) AS source_events,
+                    COUNT(CASE WHEN scout_source_table LIKE '%migrations%' THEN 1 END) AS source_migrations,
+                    COUNT(CASE WHEN scout_source_table LIKE '%scouting_daily%' THEN 1 END) AS source_scouting,
+                    COUNT(CASE WHEN scout_source_table LIKE '%cabinet_payments%' THEN 1 END) AS source_cabinet,
+                    -- Drivers sin scout por razón
+                    COUNT(CASE WHEN scout_id IS NULL AND person_key IS NULL THEN 1 END) AS no_scout_missing_identity,
+                    COUNT(CASE WHEN scout_id IS NULL AND person_key IS NOT NULL THEN 1 END) AS no_scout_no_source_match
+                FROM {view_name}
+                WHERE {where_clause}
+            """
+        else:
+            # Fallback con JOIN LATERAL
+            metrics_sql = f"""
+                SELECT 
+                    COUNT(*) AS total_drivers,
+                    COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END) AS drivers_with_scout,
+                    COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS drivers_without_scout,
+                    CASE 
+                        WHEN COUNT(*) > 0 
+                        THEN ROUND((COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END)::NUMERIC / COUNT(*)) * 100, 2)
+                        ELSE 0
+                    END AS pct_with_scout,
+                    -- Breakdown por quality bucket (simplificado)
+                    COUNT(CASE WHEN scout.scout_quality_bucket = 'SATISFACTORY_LEDGER' THEN 1 END) AS quality_ledger,
+                    COUNT(CASE WHEN scout.scout_quality_bucket = 'EVENTS_ONLY' THEN 1 END) AS quality_events,
+                    COUNT(CASE WHEN scout.scout_quality_bucket = 'SCOUTING_DAILY_ONLY' THEN 1 END) AS quality_scouting,
+                    0 AS quality_migrations,
+                    0 AS quality_cabinet,
+                    COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS quality_missing,
+                    -- Breakdown por source (simplificado)
+                    COUNT(CASE WHEN scout.scout_source_table = 'observational.lead_ledger' THEN 1 END) AS source_ledger,
+                    COUNT(CASE WHEN scout.scout_source_table = 'observational.lead_events' THEN 1 END) AS source_events,
+                    0 AS source_migrations,
+                    COUNT(CASE WHEN scout.scout_source_table LIKE '%scouting_daily%' THEN 1 END) AS source_scouting,
+                    0 AS source_cabinet,
+                    -- Drivers sin scout por razón (simplificado)
+                    0 AS no_scout_missing_identity,
+                    COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS no_scout_no_source_match
+                FROM {view_name} cf
+                LEFT JOIN LATERAL (
+                    SELECT DISTINCT ON (driver_id)
+                        scout_id,
+                        scout_quality_bucket,
+                        scout_source_table
+                    FROM ops.v_yango_collection_with_scout
+                    WHERE driver_id = cf.driver_id
+                        AND scout_id IS NOT NULL
+                    ORDER BY driver_id, 
+                        CASE scout_quality_bucket
+                            WHEN 'SATISFACTORY_LEDGER' THEN 1
+                            WHEN 'EVENTS_ONLY' THEN 2
+                            WHEN 'SCOUTING_DAILY_ONLY' THEN 3
+                            ELSE 4
+                        END
+                    LIMIT 1
+                ) scout ON true
+                WHERE {where_clause}
+            """
+        
+        result = db.execute(text(metrics_sql), params)
+        row = result.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=500, detail="No se pudieron calcular las métricas")
+        
+        # Construir breakdowns
+        breakdown_by_quality = {
+            "SATISFACTORY_LEDGER": row.quality_ledger or 0,
+            "EVENTS_ONLY": row.quality_events or 0,
+            "MIGRATIONS_ONLY": row.quality_migrations or 0,
+            "SCOUTING_DAILY_ONLY": row.quality_scouting or 0,
+            "CABINET_PAYMENTS_ONLY": row.quality_cabinet or 0,
+            "MISSING": row.quality_missing or 0
+        }
+        
+        breakdown_by_source = {
+            "lead_ledger": row.source_ledger or 0,
+            "lead_events": row.source_events or 0,
+            "migrations": row.source_migrations or 0,
+            "scouting_daily": row.source_scouting or 0,
+            "cabinet_payments": row.source_cabinet or 0
+        }
+        
+        drivers_without_scout_by_reason = {
+            "missing_identity": row.no_scout_missing_identity or 0,
+            "no_source_match": row.no_scout_no_source_match or 0
+        }
+        
+        # Query para top_missing_examples: drivers con milestone pero sin scout
+        if has_scout_fields:
+            top_missing_sql = f"""
+                SELECT 
+                    driver_id,
+                    lead_date,
+                    reached_m1_14d,
+                    reached_m5_14d,
+                    reached_m25_14d,
+                    amount_due_yango
+                FROM {view_name}
+                WHERE {where_clause}
+                    AND scout_id IS NULL
+                    AND (reached_m1_14d = true OR reached_m5_14d = true OR reached_m25_14d = true)
+                ORDER BY amount_due_yango DESC NULLS LAST, lead_date DESC NULLS LAST
+                LIMIT 10
+            """
+        else:
+            top_missing_sql = f"""
+                SELECT 
+                    cf.driver_id,
+                    cf.lead_date,
+                    cf.reached_m1_14d,
+                    cf.reached_m5_14d,
+                    cf.reached_m25_14d,
+                    cf.amount_due_yango
+                FROM {view_name} cf
+                LEFT JOIN LATERAL (
+                    SELECT DISTINCT ON (driver_id)
+                        scout_id
+                    FROM ops.v_yango_collection_with_scout
+                    WHERE driver_id = cf.driver_id
+                        AND scout_id IS NOT NULL
+                    LIMIT 1
+                ) scout ON true
+                WHERE {where_clause}
+                    AND scout.scout_id IS NULL
+                    AND (cf.reached_m1_14d = true OR cf.reached_m5_14d = true OR cf.reached_m25_14d = true)
+                ORDER BY cf.amount_due_yango DESC NULLS LAST, cf.lead_date DESC NULLS LAST
+                LIMIT 10
+            """
+        
+        top_missing_result = db.execute(text(top_missing_sql), params)
+        top_missing_rows = top_missing_result.fetchall()
+        
+        top_missing_examples = [
+            {
+                "driver_id": r.driver_id,
+                "lead_date": r.lead_date.isoformat() if r.lead_date else None,
+                "reached_m1": bool(r.reached_m1_14d),
+                "reached_m5": bool(r.reached_m5_14d),
+                "reached_m25": bool(r.reached_m25_14d),
+                "amount_due_yango": float(r.amount_due_yango) if r.amount_due_yango else 0.0
+            }
+            for r in top_missing_rows
+        ]
+        
+        metrics = ScoutAttributionMetrics(
+            total_drivers=row.total_drivers or 0,
+            drivers_with_scout=row.drivers_with_scout or 0,
+            drivers_without_scout=row.drivers_without_scout or 0,
+            pct_with_scout=float(row.pct_with_scout) if row.pct_with_scout else 0.0,
+            breakdown_by_quality=breakdown_by_quality,
+            breakdown_by_source=breakdown_by_source,
+            drivers_without_scout_by_reason=drivers_without_scout_by_reason,
+            top_missing_examples=top_missing_examples
+        )
+        
+        # Guardar en cache
+        _scout_metrics_cache[cache_key] = (current_time, metrics)
+        
+        # Limpiar cache expirado (mantener solo últimos 100 entries)
+        if len(_scout_metrics_cache) > 100:
+            expired_keys = [k for k, (t, _) in _scout_metrics_cache.items() if current_time - t >= CACHE_TTL]
+            for k in expired_keys:
+                _scout_metrics_cache.pop(k, None)
+        
+        return ScoutAttributionMetricsResponse(
+            status="ok",
+            metrics=metrics,
+            filters={
+                "only_with_debt": only_with_debt,
+                "min_debt": min_debt,
+                "reached_milestone": reached_milestone,
+                "scout_id": scout_id
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en get_scout_attribution_metrics: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al calcular métricas de scout: {str(e)[:200]}"
+        )
+
+
+@router.get("/yango/cabinet/cobranza-yango/weekly-kpis", response_model=WeeklyKpisResponse)
+def get_weekly_kpis(
+    db: Session = Depends(get_db),
+    only_with_debt: bool = Query(False, description="Si true, solo drivers con deuda pendiente"),
+    min_debt: Optional[float] = Query(None, ge=0, description="Filtra por deuda mínima"),
+    reached_milestone: Optional[str] = Query(None, description="Filtra por milestone: 'm1', 'm5', 'm25'"),
+    scout_id: Optional[int] = Query(None, description="Filtra por Scout ID"),
+    scout_quality_bucket: Optional[str] = Query(None, description="Filtra por calidad de scout"),
+    week_start_from: Optional[date] = Query(None, description="Filtra desde semana (inclusive)"),
+    week_start_to: Optional[date] = Query(None, description="Filtra hasta semana (inclusive)"),
+    limit_weeks: int = Query(52, ge=1, le=200, description="Límite de semanas a retornar (default 52, últimas N semanas)"),
+    use_materialized: bool = Query(True, description="Usar vista materializada")
+):
+    """
+    Obtiene KPIs agregados por semana para Cobranza Yango.
+    Retorna métricas semanales ordenadas DESC (semanas más recientes primero).
+    """
+    try:
+        # Seleccionar vista (prioridad: MV enriched > MV legacy > vista normal)
+        if use_materialized:
+            check_mv_enriched = db.execute(text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_matviews 
+                    WHERE schemaname = 'ops' 
+                    AND matviewname = 'mv_yango_cabinet_cobranza_enriched_14d'
+                )
+            """))
+            mv_enriched_exists = check_mv_enriched.scalar()
+            
+            if mv_enriched_exists:
+                view_name = "ops.mv_yango_cabinet_cobranza_enriched_14d"
+                has_week_start = True
+            else:
+                check_mv_legacy = db.execute(text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_matviews 
+                        WHERE schemaname = 'ops' 
+                        AND matviewname = 'mv_cabinet_financial_14d'
+                    )
+                """))
+                mv_legacy_exists = check_mv_legacy.scalar()
+                view_name = "ops.mv_cabinet_financial_14d" if mv_legacy_exists else "ops.v_cabinet_financial_14d"
+                has_week_start = False
+        else:
+            view_name = "ops.v_cabinet_financial_14d"
+            has_week_start = False
+        
+        # Construir WHERE conditions
+        params = {}
+        where_conditions = []
+        
+        if only_with_debt:
+            where_conditions.append("amount_due_yango > 0" if has_week_start else "cf.amount_due_yango > 0")
+        
+        if min_debt is not None:
+            params["min_debt"] = min_debt
+            where_conditions.append("amount_due_yango >= :min_debt" if has_week_start else "cf.amount_due_yango >= :min_debt")
+        
+        if reached_milestone:
+            milestone_lower = reached_milestone.lower()
+            prefix = "" if has_week_start else "cf."
+            if milestone_lower == 'm1':
+                where_conditions.append(f"{prefix}reached_m1_14d = true AND {prefix}reached_m5_14d = false")
+            elif milestone_lower == 'm5':
+                where_conditions.append(f"{prefix}reached_m5_14d = true AND {prefix}reached_m25_14d = false")
+            elif milestone_lower == 'm25':
+                where_conditions.append(f"{prefix}reached_m25_14d = true")
+        
+        if scout_id is not None:
+            params["scout_id"] = scout_id
+            where_conditions.append("scout_id = :scout_id" if has_week_start else "scout.scout_id = :scout_id")
+        
+        if scout_quality_bucket is not None:
+            params["scout_quality_bucket"] = scout_quality_bucket
+            where_conditions.append("scout_quality_bucket = :scout_quality_bucket" if has_week_start else "scout.scout_quality_bucket = :scout_quality_bucket")
+        
+        if week_start_from is not None:
+            params["week_start_from"] = week_start_from
+            if has_week_start:
+                where_conditions.append("week_start >= :week_start_from")
+            else:
+                where_conditions.append("DATE_TRUNC('week', cf.lead_date)::date >= :week_start_from")
+        
+        if week_start_to is not None:
+            params["week_start_to"] = week_start_to
+            if has_week_start:
+                where_conditions.append("week_start <= :week_start_to")
+            else:
+                where_conditions.append("DATE_TRUNC('week', cf.lead_date)::date <= :week_start_to")
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Query de agregación semanal
+        if has_week_start:
+            metrics_sql = f"""
+                SELECT 
+                    week_start,
+                    COUNT(*) AS total_rows,
+                    SUM(amount_due_yango) AS debt_sum,
+                    COUNT(CASE WHEN scout_id IS NOT NULL THEN 1 END) AS with_scout,
+                    ROUND(COUNT(CASE WHEN scout_id IS NOT NULL THEN 1 END)::NUMERIC / NULLIF(COUNT(*), 0) * 100, 2) AS pct_with_scout,
+                    COUNT(CASE WHEN reached_m1_14d = true THEN 1 END) AS reached_m1,
+                    COUNT(CASE WHEN reached_m5_14d = true THEN 1 END) AS reached_m5,
+                    COUNT(CASE WHEN reached_m25_14d = true THEN 1 END) AS reached_m25,
+                    SUM(total_paid_yango) AS paid_sum,
+                    SUM(amount_due_yango) AS unpaid_sum
+                FROM {view_name}
+                WHERE {where_clause}
+                    AND week_start IS NOT NULL
+                GROUP BY week_start
+                ORDER BY week_start DESC
+                LIMIT :limit_weeks
+            """
+        else:
+            # Fallback: calcular week_start en runtime
+            metrics_sql = f"""
+                SELECT 
+                    DATE_TRUNC('week', cf.lead_date)::date AS week_start,
+                    COUNT(*) AS total_rows,
+                    SUM(cf.amount_due_yango) AS debt_sum,
+                    COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END) AS with_scout,
+                    ROUND(COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END)::NUMERIC / NULLIF(COUNT(*), 0) * 100, 2) AS pct_with_scout,
+                    COUNT(CASE WHEN cf.reached_m1_14d = true THEN 1 END) AS reached_m1,
+                    COUNT(CASE WHEN cf.reached_m5_14d = true THEN 1 END) AS reached_m5,
+                    COUNT(CASE WHEN cf.reached_m25_14d = true THEN 1 END) AS reached_m25,
+                    SUM(cf.total_paid_yango) AS paid_sum,
+                    SUM(cf.amount_due_yango) AS unpaid_sum
+                FROM {view_name} cf
+                LEFT JOIN LATERAL (
+                    SELECT DISTINCT ON (driver_id)
+                        scout_id
+                    FROM ops.v_yango_collection_with_scout
+                    WHERE driver_id = cf.driver_id
+                        AND scout_id IS NOT NULL
+                    ORDER BY driver_id, 
+                        CASE scout_quality_bucket
+                            WHEN 'SATISFACTORY_LEDGER' THEN 1
+                            WHEN 'EVENTS_ONLY' THEN 2
+                            WHEN 'SCOUTING_DAILY_ONLY' THEN 3
+                            ELSE 4
+                        END
+                    LIMIT 1
+                ) scout ON true
+                WHERE {where_clause}
+                    AND cf.lead_date IS NOT NULL
+                GROUP BY DATE_TRUNC('week', cf.lead_date)::date
+                ORDER BY week_start DESC
+                LIMIT :limit_weeks
+            """
+        
+        params["limit_weeks"] = limit_weeks
+        
+        result = db.execute(text(metrics_sql), params)
+        rows = result.fetchall()
+        
+        weeks = [WeeklyKpiRow(
+            week_start=row.week_start,
+            total_rows=row.total_rows or 0,
+            debt_sum=Decimal(str(row.debt_sum or 0)),
+            with_scout=row.with_scout or 0,
+            pct_with_scout=float(row.pct_with_scout) if row.pct_with_scout else 0.0,
+            reached_m1=row.reached_m1 or 0,
+            reached_m5=row.reached_m5 or 0,
+            reached_m25=row.reached_m25 or 0,
+            paid_sum=Decimal(str(row.paid_sum or 0)),
+            unpaid_sum=Decimal(str(row.unpaid_sum or 0))
+        ) for row in rows]
+        
+        return WeeklyKpisResponse(
+            status="ok",
+            weeks=weeks,
+            filters={
+                "only_with_debt": only_with_debt,
+                "min_debt": min_debt,
+                "reached_milestone": reached_milestone,
+                "scout_id": scout_id,
+                "scout_quality_bucket": scout_quality_bucket,
+                "week_start_from": week_start_from.isoformat() if week_start_from else None,
+                "week_start_to": week_start_to.isoformat() if week_start_to else None,
+                "limit_weeks": limit_weeks
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en get_weekly_kpis: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al calcular KPIs semanales: {str(e)[:200]}"
         )
 
 

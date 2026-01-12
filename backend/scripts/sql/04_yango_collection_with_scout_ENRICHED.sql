@@ -1,14 +1,14 @@
 -- ============================================================================
--- VISTA: ops.v_yango_collection_with_scout (ENRIQUECIDA - CANÓNICA)
+-- VISTA: ops.v_yango_collection_with_scout (ENRIQUECIDA)
 -- ============================================================================
--- Propósito: Extender vista de cobranza Yango con información de scout canónica
+-- Propósito: Extender vista de cobranza Yango con información de scout
 -- Fuente: ops.v_yango_cabinet_claims_for_collection (vista existente)
 -- Ejecución: Idempotente (DROP + CREATE)
 -- ============================================================================
--- CAMBIOS:
+-- CAMBIOS RESPECTO A LA VERSIÓN ORIGINAL:
 -- - Usa ops.v_scout_attribution (vista canónica multifuente) en lugar de solo lead_ledger
 -- - Enriquece scout_name desde ops.v_dim_scouts
--- - Agrega metadata de fuente (source_table, priority, attribution_date)
+-- - Agrega metadata de fuente (source_table, origin_tag, priority)
 -- ============================================================================
 
 DROP VIEW IF EXISTS ops.v_yango_collection_with_scout CASCADE;
@@ -47,7 +47,7 @@ SELECT
         WHEN sa.source_table = 'public.module_ct_migrations' THEN 'MIGRATIONS_ONLY'
         WHEN sa.source_table = 'public.module_ct_scouting_daily' OR sa.source_table = 'module_ct_scouting_daily' THEN 'SCOUTING_DAILY_ONLY'
         WHEN sa.source_table = 'public.module_ct_cabinet_payments' THEN 'CABINET_PAYMENTS_ONLY'
-        WHEN sa.scout_id IS NOT NULL THEN 'SCOUTING_DAILY_ONLY'  -- Fallback
+        WHEN sa.scout_id IS NOT NULL THEN 'SCOUTING_DAILY_ONLY'  -- Fallback: si hay scout_id pero source_table no matchea, asumir scouting_daily
         ELSE 'MISSING'
     END AS scout_quality_bucket,
     
@@ -69,10 +69,10 @@ LEFT JOIN ops.v_scout_attribution sa
     OR (sa.driver_id = y.driver_id AND y.person_key IS NULL AND sa.person_key IS NULL)
 -- Enriquecer con nombre del scout
 LEFT JOIN ops.v_dim_scouts ds
-    ON ds.scout_id = sa.scout_id
+    ON ds.scout_id = sa.scout_id;
 
 COMMENT ON VIEW ops.v_yango_collection_with_scout IS 
-'Vista de cobranza Yango extendida con información de scout canónica. Incluye scout_id, scout_name (desde module_ct_scouts_list), scout_quality_bucket y metadata de atribución. Usa ops.v_scout_attribution como fuente canónica que agrega todas las fuentes RAW (lead_ledger, lead_events, migrations, scouting_daily, cabinet_payments).';
+'Vista de cobranza Yango extendida con información de scout. Incluye scout_id, scout_name (desde module_ct_scouts_list), scout_quality_bucket y metadata de atribución. Usa ops.v_scout_attribution como fuente canónica que agrega todas las fuentes RAW (lead_ledger, lead_events, migrations, scouting_daily, cabinet_payments).';
 
 COMMENT ON COLUMN ops.v_yango_collection_with_scout.scout_id IS 
 'Scout ID asignado al driver. Fuente canónica: ops.v_scout_attribution (agrega múltiples fuentes con prioridad).';
@@ -86,15 +86,12 @@ COMMENT ON COLUMN ops.v_yango_collection_with_scout.scout_quality_bucket IS
 COMMENT ON COLUMN ops.v_yango_collection_with_scout.scout_source_table IS 
 'Tabla fuente de donde proviene el scout_id (para auditoría).';
 
-COMMENT ON COLUMN ops.v_yango_collection_with_scout.scout_priority IS 
-'Prioridad de la fuente de atribución (1=lead_ledger, 2=lead_events, 3=migrations, 4=scouting_daily, 5=cabinet_payments).';
-
 -- ============================================================================
 -- QUERY DE VERIFICACIÓN: Cobertura de scout en cobranza Yango
 -- ============================================================================
 
 SELECT 
-    'COBERTURA SCOUT EN COBRANZA YANGO' AS metric,
+    'COBERTURA SCOUT EN COBRANZA YANGO (ENRIQUECIDA)' AS metric,
     COUNT(*) AS total_claims,
     COUNT(*) FILTER (WHERE is_scout_resolved = true) AS claims_with_scout,
     COUNT(*) FILTER (WHERE is_scout_resolved = false) AS claims_without_scout,
@@ -119,4 +116,3 @@ FROM ops.v_yango_collection_with_scout
 WHERE is_scout_resolved = true
 GROUP BY scout_source_table
 ORDER BY claim_count DESC;
-

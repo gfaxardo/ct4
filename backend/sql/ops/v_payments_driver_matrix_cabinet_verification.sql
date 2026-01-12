@@ -256,4 +256,3 @@ FROM ops.v_payments_driver_matrix_cabinet
 WHERE m5_without_m1_flag = true OR m25_without_m5_flag = true
 ORDER BY milestone_inconsistency_notes, driver_name
 LIMIT 20;
-

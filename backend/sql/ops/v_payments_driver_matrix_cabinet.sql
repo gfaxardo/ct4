@@ -257,7 +257,20 @@ driver_milestones AS (
         ops_sanity.connection_within_14d_flag,
         ops_sanity.connection_date_within_14d,
         ops_sanity.trips_completed_14d_from_lead,
-        ops_sanity.first_trip_date_within_14d
+        ops_sanity.first_trip_date_within_14d,
+        -- Scout attribution (agregado)
+        sa.scout_id,
+        ds.raw_name AS scout_name,
+        CASE 
+            WHEN sa.source_table = 'observational.lead_ledger' THEN 'SATISFACTORY_LEDGER'
+            WHEN sa.source_table = 'observational.lead_events' THEN 'EVENTS_ONLY'
+            WHEN sa.source_table = 'public.module_ct_migrations' THEN 'MIGRATIONS_ONLY'
+            WHEN sa.source_table = 'public.module_ct_scouting_daily' OR sa.source_table = 'module_ct_scouting_daily' THEN 'SCOUTING_DAILY_ONLY'
+            WHEN sa.source_table = 'public.module_ct_cabinet_payments' THEN 'CABINET_PAYMENTS_ONLY'
+            WHEN sa.scout_id IS NOT NULL THEN 'SCOUTING_DAILY_ONLY'
+            ELSE 'MISSING'
+        END AS scout_quality_bucket,
+        CASE WHEN sa.scout_id IS NOT NULL THEN true ELSE false END AS is_scout_resolved
     FROM deterministic_milestones_agg dma
     FULL OUTER JOIN claims_agg ca
         ON ca.driver_id = dma.driver_id
@@ -276,6 +289,14 @@ driver_milestones AS (
         ON fs.driver_id = COALESCE(ca.driver_id, dma.driver_id)
     LEFT JOIN ops.v_cabinet_ops_14d_sanity ops_sanity
         ON ops_sanity.driver_id = COALESCE(ca.driver_id, dma.driver_id)
+    LEFT JOIN ops.v_scout_attribution sa
+        ON (sa.person_key = COALESCE(ca.person_key, ocd.person_key) 
+            AND COALESCE(ca.person_key, ocd.person_key) IS NOT NULL)
+        OR (sa.driver_id = COALESCE(ca.driver_id, dma.driver_id, ocd.driver_id) 
+            AND COALESCE(ca.person_key, ocd.person_key) IS NULL 
+            AND sa.person_key IS NULL)
+    LEFT JOIN ops.v_dim_scouts ds
+        ON ds.scout_id = sa.scout_id
     GROUP BY 
         COALESCE(ca.driver_id, dma.driver_id, ocd.driver_id),
         ca.person_key,
@@ -339,6 +360,11 @@ SELECT
     scout_due_flag,
     scout_paid_flag,
     scout_amount,
+    -- Scout attribution (agregado)
+    scout_id,
+    scout_name,
+    scout_quality_bucket,
+    is_scout_resolved,
     -- Flags de inconsistencia de milestones
     m5_without_m1_flag,
     m25_without_m5_flag,
@@ -441,6 +467,19 @@ COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.scout_paid_flag IS
 
 COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.scout_amount IS 
 'TODO: Monto de pagos scout para el driver. Fuente potencial: ops.scout_payment_rules + ops.v_scout_liquidation_paid_items. Si no existe, dejar NULL y documentar con TODO.';
+
+-- Scout attribution (agregado)
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.scout_id IS 
+'Scout ID asignado al driver. Fuente canónica: ops.v_scout_attribution (agrega múltiples fuentes con prioridad).';
+
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.scout_name IS 
+'Nombre del scout desde module_ct_scouts_list (raw_name).';
+
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.scout_quality_bucket IS 
+'Calidad de la atribución scout basada en la fuente: SATISFACTORY_LEDGER (lead_ledger), EVENTS_ONLY, MIGRATIONS_ONLY, SCOUTING_DAILY_ONLY, CABINET_PAYMENTS_ONLY, MISSING.';
+
+COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.is_scout_resolved IS 
+'Flag indicando si el scout está resuelto (true si hay scout_id de cualquier fuente, false si no).';
 
 -- Columnas operativas de sanity check (ventana de 14 días)
 COMMENT ON COLUMN ops.v_payments_driver_matrix_cabinet.connection_within_14d_flag IS 

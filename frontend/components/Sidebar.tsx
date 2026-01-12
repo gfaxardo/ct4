@@ -22,31 +22,14 @@ const navItems: NavItem[] = [
     icon: '📊',
   },
   {
-    label: 'Identidad',
-    href: '#',
-    icon: '👥',
-    children: [
-      { label: 'Personas', href: '/persons', icon: '' },
-      { label: 'Unmatched', href: '/unmatched', icon: '' },
-      { label: 'Runs', href: '/runs', icon: '' },
-    ],
-  },
-  {
     label: 'Pagos',
     href: '#',
     icon: '💰',
     children: [
+      { label: 'Cobranza Yango', href: '/pagos/cobranza-yango', icon: '' },
+      { label: 'Claims Cabinet', href: '/pagos/yango-cabinet-claims', icon: '' },
+      { label: 'Reconciliación', href: '/pagos/yango-cabinet', icon: '' },
       { label: 'Elegibilidad', href: '/pagos', icon: '' },
-      {
-        label: 'Yango',
-        href: '#',
-        icon: '',
-        children: [
-          { label: 'Reconciliación', href: '/pagos/yango-cabinet', icon: '' },
-          { label: 'Cobranza Yango', href: '/pagos/cobranza-yango', icon: '' },
-          { label: 'Claims Cabinet', href: '/pagos/yango-cabinet-claims', icon: '' },
-        ],
-      },
       { label: 'Resumen por Conductor', href: '/pagos/resumen-conductor', icon: '' },
       { label: 'Driver Matrix', href: '/pagos/driver-matrix', icon: '' },
       { label: 'Claims', href: '/pagos/claims', icon: '', pending: true },
@@ -57,23 +40,24 @@ const navItems: NavItem[] = [
     href: '#',
     icon: '🎯',
     children: [
-      { label: 'Salud de Atribución', href: '/scouts/attribution-health', icon: '' },
+      { label: 'Atribución', href: '/scouts/attribution-health', icon: '' },
+      { label: 'Liquidaciones', href: '/scouts/liquidation', icon: '' },
       { label: 'Conflictos', href: '/scouts/conflicts', icon: '' },
       { label: 'Backlog', href: '/scouts/backlog', icon: '' },
-      { label: 'Cobranza Yango', href: '/scouts/cobranza-yango', icon: '' },
-      { label: 'Liquidación Base', href: '/scouts/liquidation', icon: '' },
     ],
   },
   {
-    label: 'Liquidaciones',
+    label: 'Identidad',
     href: '#',
-    icon: '💵',
+    icon: '👥',
     children: [
-      { label: 'Scouts', href: '/liquidaciones', icon: '' },
+      { label: 'Personas', href: '/persons', icon: '' },
+      { label: 'Unmatched', href: '/unmatched', icon: '' },
+      { label: 'Auditoría / Runs', href: '/runs', icon: '' },
     ],
   },
   {
-    label: 'Ops',
+    label: 'Ops / Health',
     href: '#',
     icon: '⚙️',
     children: [
