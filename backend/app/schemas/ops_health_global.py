@@ -24,7 +24,3 @@ class HealthGlobalResponse(BaseModel):
 
 
 
-
-
-
-

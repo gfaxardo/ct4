@@ -7,7 +7,7 @@ Solo opera sobre C0 (Identidad) y C1 (Funnel).
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import text, and_, or_, func
+from sqlalchemy import text
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
@@ -174,8 +174,6 @@ def resolve_origin_violation(
     Resuelve una violación de origen.
     Puede crear o actualizar el registro en canon.identity_origin.
     """
-    from app.services.origin_determination import OriginDeterminationService
-    
     # Obtener o crear registro de origen
     origin = db.query(IdentityOrigin).filter(
         IdentityOrigin.person_key == person_key

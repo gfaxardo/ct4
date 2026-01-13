@@ -32,5 +32,3 @@ class CabinetLeadsUploadResponse(BaseModel):
             }
         }
 
-
-

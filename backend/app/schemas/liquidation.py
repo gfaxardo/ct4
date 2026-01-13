@@ -47,7 +47,3 @@ class ScoutMarkPaidResponse(BaseModel):
 
 
 
-
-
-
-

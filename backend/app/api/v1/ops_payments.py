@@ -39,7 +39,6 @@ from app.schemas.kpi_red_recovery import (
     KpiRedRecoveryMetricsResponse,
     KpiRedRecoveryMetricsDaily,
 )
-from functools import lru_cache
 from time import time
 from typing import Dict, Tuple
 
