@@ -1494,4 +1494,3 @@ class LeadAttributionService:
 #    WHERE decision_status = 'conflict' AND attributed_scout_id IS NOT NULL;
 #    -- Esta query debería retornar 0 filas
 #
-

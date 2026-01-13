@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, text
+from sqlalchemy import and_, text
 from sqlalchemy.exc import OperationalError, DisconnectionError, PendingRollbackError
 from uuid import UUID, uuid4
 from app.models.canon import IdentityRegistry, IdentityLink, IdentityUnmatched, ConfidenceLevel, UnmatchedStatus
