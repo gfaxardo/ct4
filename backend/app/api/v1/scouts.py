@@ -4,9 +4,8 @@ Endpoints para Scout Attribution Observability
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Optional, List
-from datetime import date, datetime
-from uuid import UUID
+from typing import Optional
+from datetime import date
 import logging
 
 from app.db import get_db
