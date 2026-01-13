@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import csv
 import io
 import logging
@@ -40,10 +40,10 @@ def parse_timestamp(value: str) -> Optional[datetime]:
         for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d']:
             try:
                 return datetime.strptime(value_clean, fmt)
-            except:
+            except ValueError:
                 continue
         return None
-    except:
+    except (ValueError, AttributeError):
         return None
 
 
@@ -53,7 +53,7 @@ def parse_date(value: str) -> Optional[date]:
         return None
     try:
         return datetime.strptime(value.strip(), '%Y-%m-%d').date()
-    except:
+    except (ValueError, AttributeError):
         return None
 
 
@@ -164,7 +164,6 @@ def get_cabinet_leads_diagnostics(db: Session = Depends(get_db)):
         if dates_to_consider:
             max_processed = max(dates_to_consider)
             # Recomendar empezar desde el día siguiente al último procesado
-            from datetime import timedelta
             recommended = max_processed + timedelta(days=1)
             diagnostics["recommended_start_date"] = str(recommended)
         elif diagnostics["max_lead_date_in_table"]:
@@ -202,7 +201,7 @@ async def upload_cabinet_leads_csv(
         # Intentar UTF-8 con BOM primero, luego UTF-8 normal
         try:
             text_content = contents.decode('utf-8-sig')
-        except:
+        except UnicodeDecodeError:
             text_content = contents.decode('utf-8')
         
         csv_reader = csv.DictReader(io.StringIO(text_content))
@@ -256,7 +255,7 @@ async def upload_cabinet_leads_csv(
                             if lead_date < date_cutoff:
                                 skipped_by_date += 1
                                 continue  # Saltar este registro, ya está procesado
-                    except:
+                    except (ValueError, TypeError, AttributeError):
                         pass  # Si no se puede parsear la fecha, procesarlo de todas formas
                 
                 # Mapear valores
@@ -376,19 +375,19 @@ def get_date_range_from_csv(csv_content: str) -> tuple[Optional[date], Optional[
         for row in csv_reader:
             lead_date_str = row.get('lead_created_at')
             if lead_date_str:
-                try:
-                    timestamp_val = parse_timestamp(lead_date_str)
-                    if timestamp_val:
-                        # Convertir timestamp a date
-                        if isinstance(timestamp_val, datetime):
-                            date_val = timestamp_val.date()
-                        elif isinstance(timestamp_val, date):
-                            date_val = timestamp_val
-                        else:
-                            continue
-                        dates.append(date_val)
-                except:
-                    continue
+                    try:
+                        timestamp_val = parse_timestamp(lead_date_str)
+                        if timestamp_val:
+                            # Convertir timestamp a date
+                            if isinstance(timestamp_val, datetime):
+                                date_val = timestamp_val.date()
+                            elif isinstance(timestamp_val, date):
+                                date_val = timestamp_val
+                            else:
+                                continue
+                            dates.append(date_val)
+                    except (ValueError, TypeError, AttributeError):
+                        continue
         
         if dates:
             date_from = min(dates)
