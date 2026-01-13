@@ -26,6 +26,8 @@
 -- - lead_date, connected_date: observational.v_conversion_metrics
 -- - Viajes: public.summary_daily (count_orders_completed)
 -- - Claims/pagos: ops.v_claims_payment_status_cabinet
+-- - FIX (2026-01-XX): También incluye drivers desde ops.v_cabinet_leads_limbo que tienen
+--   identity+driver+trips pero NO están en v_conversion_metrics ni v_payment_calculation
 -- ============================================================================
 
 -- DROP VIEW si existe para permitir cambios en el orden de columnas
@@ -58,7 +60,35 @@ payment_calc_base AS (
         AND lead_date IS NOT NULL
     ORDER BY driver_id, lead_date DESC
 ),
--- Combinar conversion_base con payment_calc_base (drivers con lead_date desde payment_calc pero no en conversion_metrics)
+-- Agregar drivers desde v_cabinet_leads_limbo que tienen identity+driver+trips pero NO están en v_conversion_metrics ni v_payment_calculation
+-- FIX: Incluir drivers que tienen identity y milestones pero no están en las vistas canónicas
+limbo_base AS (
+    -- Drivers con identity+driver+trips desde v_cabinet_leads_limbo que no están en conversion_metrics ni payment_calc
+    SELECT DISTINCT ON (driver_id)
+        driver_id,
+        lead_date,
+        NULL::date AS first_connection_date
+    FROM ops.v_cabinet_leads_limbo
+    WHERE person_key IS NOT NULL
+        AND driver_id IS NOT NULL
+        AND trips_14d > 0
+        AND lead_date IS NOT NULL
+        -- Excluir drivers que ya están en conversion_base o payment_calc_base
+        AND NOT EXISTS (
+            SELECT 1 
+            FROM observational.v_conversion_metrics vcm
+            WHERE vcm.driver_id = ops.v_cabinet_leads_limbo.driver_id
+                AND vcm.origin_tag = 'cabinet'
+        )
+        AND NOT EXISTS (
+            SELECT 1 
+            FROM ops.v_payment_calculation vpc
+            WHERE vpc.driver_id = ops.v_cabinet_leads_limbo.driver_id
+                AND vpc.origin_tag = 'cabinet'
+        )
+    ORDER BY driver_id, lead_date DESC
+),
+-- Combinar conversion_base con payment_calc_base y limbo_base
 all_drivers_base AS (
     SELECT 
         cb.driver_id,
@@ -78,6 +108,25 @@ all_drivers_base AS (
         SELECT 1 
         FROM conversion_base cb2 
         WHERE cb2.driver_id = pc.driver_id
+    )
+    
+    UNION
+    
+    -- Agregar drivers desde limbo que tienen identity+driver+trips pero no están en conversion_base ni payment_calc
+    SELECT 
+        lb.driver_id,
+        lb.lead_date,
+        lb.first_connection_date
+    FROM limbo_base lb
+    WHERE NOT EXISTS (
+        SELECT 1 
+        FROM conversion_base cb3 
+        WHERE cb3.driver_id = lb.driver_id
+    )
+    AND NOT EXISTS (
+        SELECT 1 
+        FROM payment_calc_base pc2 
+        WHERE pc2.driver_id = lb.driver_id
     )
 ),
 summary_daily_normalized AS (
@@ -233,7 +282,7 @@ COMMENT ON COLUMN ops.v_cabinet_financial_14d.driver_name IS
 'Nombre completo del conductor desde public.drivers.full_name. NULL si no existe en drivers.';
 
 COMMENT ON COLUMN ops.v_cabinet_financial_14d.lead_date IS 
-'Fecha de lead desde observational.v_conversion_metrics (origen del driver en cabinet).';
+'Fecha de lead desde observational.v_conversion_metrics, ops.v_payment_calculation, o ops.v_cabinet_leads_limbo (origen del driver en cabinet).';
 
 COMMENT ON COLUMN ops.v_cabinet_financial_14d.iso_week IS 
 'Semana ISO en formato YYYY-WW calculada desde lead_date. NULL si lead_date es NULL.';

@@ -1,0 +1,132 @@
+{
+  "timestamp": "2026-01-13",
+  "summary": {
+    "total_gaps": 87,
+    "total_amount": 2915.0,
+    "gaps_m1": 52,
+    "gaps_m5": 29,
+    "gaps_m25": 6
+  },
+  "by_week_milestone": [
+    {
+      "week_start": "2026-01-05",
+      "milestone_value": 1,
+      "gaps_count": 13,
+      "total_amount": 325.0
+    },
+    {
+      "week_start": "2026-01-05",
+      "milestone_value": 5,
+      "gaps_count": 4,
+      "total_amount": 140.0
+    },
+    {
+      "week_start": "2025-12-29",
+      "milestone_value": 1,
+      "gaps_count": 4,
+      "total_amount": 100.0
+    },
+    {
+      "week_start": "2025-12-29",
+      "milestone_value": 5,
+      "gaps_count": 2,
+      "total_amount": 70.0
+    },
+    {
+      "week_start": "2025-12-22",
+      "milestone_value": 1,
+      "gaps_count": 7,
+      "total_amount": 175.0
+    },
+    {
+      "week_start": "2025-12-22",
+      "milestone_value": 5,
+      "gaps_count": 5,
+      "total_amount": 175.0
+    },
+    {
+      "week_start": "2025-12-22",
+      "milestone_value": 25,
+      "gaps_count": 1,
+      "total_amount": 100.0
+    },
+    {
+      "week_start": "2025-12-15",
+      "milestone_value": 1,
+      "gaps_count": 6,
+      "total_amount": 150.0
+    },
+    {
+      "week_start": "2025-12-15",
+      "milestone_value": 5,
+      "gaps_count": 4,
+      "total_amount": 140.0
+    },
+    {
+      "week_start": "2025-12-15",
+      "milestone_value": 25,
+      "gaps_count": 1,
+      "total_amount": 100.0
+    },
+    {
+      "week_start": "2025-11-24",
+      "milestone_value": 1,
+      "gaps_count": 2,
+      "total_amount": 50.0
+    },
+    {
+      "week_start": "2025-11-24",
+      "milestone_value": 5,
+      "gaps_count": 2,
+      "total_amount": 70.0
+    },
+    {
+      "week_start": "2025-11-17",
+      "milestone_value": 1,
+      "gaps_count": 9,
+      "total_amount": 225.0
+    },
+    {
+      "week_start": "2025-11-17",
+      "milestone_value": 5,
+      "gaps_count": 5,
+      "total_amount": 175.0
+    },
+    {
+      "week_start": "2025-11-10",
+      "milestone_value": 1,
+      "gaps_count": 7,
+      "total_amount": 175.0
+    },
+    {
+      "week_start": "2025-11-10",
+      "milestone_value": 5,
+      "gaps_count": 5,
+      "total_amount": 175.0
+    },
+    {
+      "week_start": "2025-11-10",
+      "milestone_value": 25,
+      "gaps_count": 3,
+      "total_amount": 300.0
+    },
+    {
+      "week_start": "2025-11-03",
+      "milestone_value": 1,
+      "gaps_count": 4,
+      "total_amount": 100.0
+    },
+    {
+      "week_start": "2025-11-03",
+      "milestone_value": 5,
+      "gaps_count": 2,
+      "total_amount": 70.0
+    },
+    {
+      "week_start": "2025-11-03",
+      "milestone_value": 25,
+      "gaps_count": 1,
+      "total_amount": 100.0
+    }
+  ]
+}

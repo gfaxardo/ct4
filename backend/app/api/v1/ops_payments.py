@@ -25,7 +25,15 @@ from app.schemas.cabinet_financial import (
     ScoutAttributionMetrics,
     ScoutAttributionMetricsResponse,
     WeeklyKpiRow,
-    WeeklyKpisResponse
+    WeeklyKpisResponse,
+    CabinetLimboRow,
+    CabinetLimboResponse,
+    CabinetLimboSummary,
+    CabinetLimboMeta,
+    CabinetClaimsGapRow,
+    CabinetClaimsGapResponse,
+    CabinetClaimsGapSummary,
+    CabinetClaimsGapMeta
 )
 from app.schemas.kpi_red_recovery import (
     KpiRedRecoveryMetricsResponse,
@@ -482,7 +490,8 @@ def get_cabinet_financial_14d(
                 LIMIT :limit OFFSET :offset
             """
         else:
-            # Query para MV legacy o vista normal (hacer JOIN en runtime)
+            # Query para MV legacy o vista normal (SIN JOIN de scout - campos scout solo disponibles en MV enriched)
+            # OPTIMIZACIÓN: Omitir JOIN costoso con v_yango_collection_with_scout cuando no se usa MV enriched
             query_sql = f"""
                 SELECT 
                     cf.driver_id,
@@ -511,38 +520,15 @@ def get_cabinet_financial_14d(
                     cf.paid_amount_m25,
                     cf.total_paid_yango,
                     cf.amount_due_yango,
-                    scout.scout_id,
-                    scout.scout_name,
-                    scout.scout_quality_bucket,
-                    scout.is_scout_resolved,
-                    scout.scout_source_table,
-                    scout.scout_attribution_date,
-                    scout.scout_priority,
+                    NULL::INTEGER AS scout_id,
+                    NULL::TEXT AS scout_name,
+                    NULL::TEXT AS scout_quality_bucket,
+                    NULL::BOOLEAN AS is_scout_resolved,
+                    NULL::TEXT AS scout_source_table,
+                    NULL::DATE AS scout_attribution_date,
+                    NULL::INTEGER AS scout_priority,
                     NULL::UUID AS person_key
                 FROM {view_name} cf
-                LEFT JOIN LATERAL (
-                    SELECT DISTINCT ON (driver_id, lead_date)
-                        scout_id,
-                        scout_name,
-                        scout_quality_bucket,
-                        is_scout_resolved,
-                        scout_source_table,
-                        scout_attribution_date,
-                        scout_priority
-                    FROM ops.v_yango_collection_with_scout
-                    WHERE driver_id = cf.driver_id
-                        AND lead_date = cf.lead_date
-                        AND scout_id IS NOT NULL
-                    ORDER BY driver_id, lead_date, 
-                        CASE scout_quality_bucket
-                            WHEN 'SATISFACTORY_LEDGER' THEN 1
-                            WHEN 'EVENTS_ONLY' THEN 2
-                            WHEN 'SCOUTING_DAILY_ONLY' THEN 3
-                            ELSE 4
-                        END,
-                        milestone_value
-                    LIMIT 1
-                ) scout ON true
                 WHERE {where_clause}
                 ORDER BY COALESCE(cf.week_start, DATE_TRUNC('week', cf.lead_date)::date) DESC NULLS LAST, cf.lead_date DESC NULLS LAST, cf.driver_id
                 LIMIT :limit OFFSET :offset
@@ -699,7 +685,7 @@ def get_cabinet_financial_14d(
                     WHERE {where_clause}
                 """
             else:
-                # Query para MV legacy o vista normal (JOIN en runtime)
+                # Query para MV legacy o vista normal (SIN JOIN de scout - campos scout solo disponibles en MV enriched)
                 summary_sql = f"""
                     SELECT 
                         COUNT(*) AS total_drivers,
@@ -716,31 +702,10 @@ def get_cabinet_financial_14d(
                         COUNT(CASE WHEN cf.reached_m1_14d = true THEN 1 END) AS drivers_m1,
                         COUNT(CASE WHEN cf.reached_m5_14d = true THEN 1 END) AS drivers_m5,
                         COUNT(CASE WHEN cf.reached_m25_14d = true THEN 1 END) AS drivers_m25,
-                        COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END) AS drivers_with_scout,
-                        COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS drivers_without_scout,
-                        CASE 
-                            WHEN COUNT(*) > 0 
-                            THEN ROUND((COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END)::NUMERIC / COUNT(*)) * 100, 2)
-                            ELSE 0
-                        END AS pct_with_scout
+                        0 AS drivers_with_scout,
+                        COUNT(*) AS drivers_without_scout,
+                        0.0 AS pct_with_scout
                     FROM {view_name} cf
-                    LEFT JOIN LATERAL (
-                        SELECT DISTINCT ON (driver_id)
-                            scout_id
-                        FROM ops.v_yango_collection_with_scout
-                        WHERE driver_id = cf.driver_id
-                            AND scout_id IS NOT NULL
-                        ORDER BY driver_id, 
-                            CASE scout_quality_bucket
-                                WHEN 'SATISFACTORY_LEDGER' THEN 1
-                                WHEN 'EVENTS_ONLY' THEN 2
-                                WHEN 'SCOUTING_DAILY_ONLY' THEN 3
-                                ELSE 4
-                            END,
-                            milestone_value,
-                            lead_date DESC
-                        LIMIT 1
-                    ) scout ON true
                     WHERE {where_clause}
                 """
             
@@ -815,48 +780,56 @@ def get_cabinet_financial_14d(
                 )
             
             # Resumen total sin filtros (siempre calcular para contexto)
-            summary_total_sql = f"""
-                SELECT 
-                    COUNT(*) AS total_drivers,
-                    COUNT(CASE WHEN cf.expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
-                    COUNT(CASE WHEN cf.amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
-                    COALESCE(SUM(cf.expected_total_yango), 0) AS total_expected_yango,
-                    COALESCE(SUM(cf.total_paid_yango), 0) AS total_paid_yango,
-                    COALESCE(SUM(cf.amount_due_yango), 0) AS total_debt_yango,
-                    CASE 
-                        WHEN SUM(cf.expected_total_yango) > 0 
-                        THEN ROUND((SUM(cf.total_paid_yango) / SUM(cf.expected_total_yango)) * 100, 2)
-                        ELSE 0
-                    END AS collection_percentage,
-                    COUNT(CASE WHEN cf.reached_m1_14d = true THEN 1 END) AS drivers_m1,
-                    COUNT(CASE WHEN cf.reached_m5_14d = true THEN 1 END) AS drivers_m5,
-                    COUNT(CASE WHEN cf.reached_m25_14d = true THEN 1 END) AS drivers_m25,
-                    COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END) AS drivers_with_scout,
-                    COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS drivers_without_scout,
-                    CASE 
-                        WHEN COUNT(*) > 0 
-                        THEN ROUND((COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END)::NUMERIC / COUNT(*)) * 100, 2)
-                        ELSE 0
-                    END AS pct_with_scout
-                FROM {view_name} cf
-                LEFT JOIN LATERAL (
-                    SELECT DISTINCT ON (driver_id)
-                        scout_id
-                    FROM ops.v_yango_collection_with_scout
-                    WHERE driver_id = cf.driver_id
-                        AND scout_id IS NOT NULL
-                    ORDER BY driver_id, 
-                        CASE scout_quality_bucket
-                            WHEN 'SATISFACTORY_LEDGER' THEN 1
-                            WHEN 'EVENTS_ONLY' THEN 2
-                            WHEN 'SCOUTING_DAILY_ONLY' THEN 3
-                            ELSE 4
-                        END,
-                        milestone_value,
-                        lead_date DESC
-                    LIMIT 1
-                ) scout ON true
-            """
+            if has_scout_fields:
+                # Query para MV enriched (campos scout ya incluidos)
+                summary_total_sql = f"""
+                    SELECT 
+                        COUNT(*) AS total_drivers,
+                        COUNT(CASE WHEN cf.expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
+                        COUNT(CASE WHEN cf.amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
+                        COALESCE(SUM(cf.expected_total_yango), 0) AS total_expected_yango,
+                        COALESCE(SUM(cf.total_paid_yango), 0) AS total_paid_yango,
+                        COALESCE(SUM(cf.amount_due_yango), 0) AS total_debt_yango,
+                        CASE 
+                            WHEN SUM(cf.expected_total_yango) > 0 
+                            THEN ROUND((SUM(cf.total_paid_yango) / SUM(cf.expected_total_yango)) * 100, 2)
+                            ELSE 0
+                        END AS collection_percentage,
+                        COUNT(CASE WHEN cf.reached_m1_14d = true THEN 1 END) AS drivers_m1,
+                        COUNT(CASE WHEN cf.reached_m5_14d = true THEN 1 END) AS drivers_m5,
+                        COUNT(CASE WHEN cf.reached_m25_14d = true THEN 1 END) AS drivers_m25,
+                        COUNT(CASE WHEN cf.scout_id IS NOT NULL THEN 1 END) AS drivers_with_scout,
+                        COUNT(CASE WHEN cf.scout_id IS NULL THEN 1 END) AS drivers_without_scout,
+                        CASE 
+                            WHEN COUNT(*) > 0 
+                            THEN ROUND((COUNT(CASE WHEN cf.scout_id IS NOT NULL THEN 1 END)::NUMERIC / COUNT(*)) * 100, 2)
+                            ELSE 0
+                        END AS pct_with_scout
+                    FROM {view_name} cf
+                """
+            else:
+                # Query para MV legacy o vista normal (SIN JOIN de scout - campos scout solo disponibles en MV enriched)
+                summary_total_sql = f"""
+                    SELECT 
+                        COUNT(*) AS total_drivers,
+                        COUNT(CASE WHEN cf.expected_total_yango > 0 THEN 1 END) AS drivers_with_expected,
+                        COUNT(CASE WHEN cf.amount_due_yango > 0 THEN 1 END) AS drivers_with_debt,
+                        COALESCE(SUM(cf.expected_total_yango), 0) AS total_expected_yango,
+                        COALESCE(SUM(cf.total_paid_yango), 0) AS total_paid_yango,
+                        COALESCE(SUM(cf.amount_due_yango), 0) AS total_debt_yango,
+                        CASE 
+                            WHEN SUM(cf.expected_total_yango) > 0 
+                            THEN ROUND((SUM(cf.total_paid_yango) / SUM(cf.expected_total_yango)) * 100, 2)
+                            ELSE 0
+                        END AS collection_percentage,
+                        COUNT(CASE WHEN cf.reached_m1_14d = true THEN 1 END) AS drivers_m1,
+                        COUNT(CASE WHEN cf.reached_m5_14d = true THEN 1 END) AS drivers_m5,
+                        COUNT(CASE WHEN cf.reached_m25_14d = true THEN 1 END) AS drivers_m25,
+                        0 AS drivers_with_scout,
+                        COUNT(*) AS drivers_without_scout,
+                        0.0 AS pct_with_scout
+                    FROM {view_name} cf
+                """
             summary_total_result = db.execute(text(summary_total_sql))
             summary_total_row = summary_total_result.fetchone()
             
@@ -2027,5 +2000,702 @@ def get_claims_audit_summary(
         raise HTTPException(
             status_code=500,
             detail=f"Error obteniendo auditoría de claims: {str(e)[:200]}"
+        )
+
+
+@router.get("/cabinet-financial-14d/limbo", response_model=CabinetLimboResponse)
+def get_cabinet_limbo(
+    db: Session = Depends(get_db),
+    limbo_stage: Optional[str] = Query(None, description="Filtra por limbo_stage: NO_IDENTITY, NO_DRIVER, NO_TRIPS_14D, TRIPS_NO_CLAIM, OK"),
+    week_start: Optional[date] = Query(None, description="Filtra por semana (lunes de la semana ISO)"),
+    lead_date_from: Optional[date] = Query(None, description="Filtra por lead_date desde"),
+    lead_date_to: Optional[date] = Query(None, description="Filtra por lead_date hasta"),
+    limit: int = Query(100, ge=1, le=1000, description="Límite de resultados (máx 1000). Default: 100."),
+    offset: int = Query(0, ge=0, description="Offset para paginación")
+):
+    """
+    Obtiene leads de cabinet en limbo (LEAD-FIRST).
+    
+    Esta vista muestra TODOS los leads de cabinet (incluyendo limbo) con su etapa exacta
+    en el embudo. Identifica leads que no avanzan.
+    
+    Filtros:
+    - limbo_stage: Filtra por etapa de limbo
+    - week_start: Filtra por semana (lunes de la semana ISO)
+    - lead_date_from/to: Filtra por rango de fechas
+    - limit/offset: Paginación
+    
+    Respuesta incluye:
+    - meta: Metadatos de paginación
+    - summary: Resumen de leads en limbo por etapa
+    - data: Lista de leads con información de limbo
+    
+    Ejemplo curl:
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/ops/payments/cabinet-financial-14d/limbo?limbo_stage=NO_IDENTITY&limit=50"
+    ```
+    """
+    try:
+        # Construir WHERE dinámico
+        where_conditions = []
+        params = {}
+        
+        if limbo_stage:
+            valid_stages = ['NO_IDENTITY', 'NO_DRIVER', 'NO_TRIPS_14D', 'TRIPS_NO_CLAIM', 'OK']
+            if limbo_stage not in valid_stages:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"limbo_stage debe ser uno de: {', '.join(valid_stages)}"
+                )
+            where_conditions.append("limbo_stage = :limbo_stage")
+            params["limbo_stage"] = limbo_stage
+        
+        if week_start:
+            where_conditions.append("week_start = :week_start")
+            params["week_start"] = week_start
+        
+        if lead_date_from:
+            where_conditions.append("lead_date >= :lead_date_from")
+            params["lead_date_from"] = lead_date_from
+        
+        if lead_date_to:
+            where_conditions.append("lead_date <= :lead_date_to")
+            params["lead_date_to"] = lead_date_to
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Query para total (sin limit/offset)
+        count_query = text(f"""
+            SELECT COUNT(*) 
+            FROM ops.v_cabinet_leads_limbo
+            WHERE {where_clause}
+        """)
+        total_result = db.execute(count_query, params)
+        total = total_result.scalar() or 0
+        
+        # Query para datos (con limit/offset y orden)
+        data_query = text(f"""
+            SELECT 
+                lead_id,
+                lead_source_pk,
+                lead_date,
+                week_start,
+                park_phone,
+                asset_plate_number,
+                lead_name,
+                person_key::text AS person_key,
+                driver_id,
+                trips_14d,
+                window_end_14d,
+                reached_m1_14d,
+                reached_m5_14d,
+                reached_m25_14d,
+                expected_amount_14d,
+                has_claim_m1,
+                has_claim_m5,
+                has_claim_m25,
+                limbo_stage,
+                limbo_reason_detail
+            FROM ops.v_cabinet_leads_limbo
+            WHERE {where_clause}
+            ORDER BY week_start DESC, lead_date DESC, lead_id
+            LIMIT :limit OFFSET :offset
+        """)
+        params["limit"] = limit
+        params["offset"] = offset
+        
+        result = db.execute(data_query, params)
+        rows = result.fetchall()
+        
+        # Convertir a dict
+        data = []
+        for row in rows:
+            data.append({
+                "lead_id": row.lead_id,
+                "lead_source_pk": row.lead_source_pk,
+                "lead_date": row.lead_date,
+                "week_start": row.week_start,
+                "park_phone": row.park_phone,
+                "asset_plate_number": row.asset_plate_number,
+                "lead_name": row.lead_name,
+                "person_key": row.person_key,
+                "driver_id": row.driver_id,
+                "trips_14d": row.trips_14d or 0,
+                "window_end_14d": row.window_end_14d,
+                "reached_m1_14d": row.reached_m1_14d or False,
+                "reached_m5_14d": row.reached_m5_14d or False,
+                "reached_m25_14d": row.reached_m25_14d or False,
+                "expected_amount_14d": row.expected_amount_14d or 0,
+                "has_claim_m1": row.has_claim_m1 or False,
+                "has_claim_m5": row.has_claim_m5 or False,
+                "has_claim_m25": row.has_claim_m25 or False,
+                "limbo_stage": row.limbo_stage,
+                "limbo_reason_detail": row.limbo_reason_detail
+            })
+        
+        # Query para summary (conteos por limbo_stage)
+        summary_query = text(f"""
+            SELECT 
+                COUNT(*) AS total_leads,
+                COUNT(*) FILTER (WHERE limbo_stage = 'NO_IDENTITY') AS limbo_no_identity,
+                COUNT(*) FILTER (WHERE limbo_stage = 'NO_DRIVER') AS limbo_no_driver,
+                COUNT(*) FILTER (WHERE limbo_stage = 'NO_TRIPS_14D') AS limbo_no_trips_14d,
+                COUNT(*) FILTER (WHERE limbo_stage = 'TRIPS_NO_CLAIM') AS limbo_trips_no_claim,
+                COUNT(*) FILTER (WHERE limbo_stage = 'OK') AS limbo_ok
+            FROM ops.v_cabinet_leads_limbo
+            WHERE {where_clause}
+        """)
+        summary_result = db.execute(summary_query, params)
+        summary_row = summary_result.fetchone()
+        
+        summary = CabinetLimboSummary(
+            total_leads=summary_row.total_leads or 0,
+            limbo_no_identity=summary_row.limbo_no_identity or 0,
+            limbo_no_driver=summary_row.limbo_no_driver or 0,
+            limbo_no_trips_14d=summary_row.limbo_no_trips_14d or 0,
+            limbo_trips_no_claim=summary_row.limbo_trips_no_claim or 0,
+            limbo_ok=summary_row.limbo_ok or 0
+        )
+        
+        meta = CabinetLimboMeta(
+            limit=limit,
+            offset=offset,
+            returned=len(data),
+            total=total
+        )
+        
+        return CabinetLimboResponse(
+            meta=meta,
+            summary=summary,
+            data=[CabinetLimboRow(**row) for row in data]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error obteniendo leads en limbo: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo leads en limbo: {str(e)[:200]}"
+        )
+
+
+@router.get("/cabinet-financial-14d/limbo/export")
+def export_cabinet_limbo_csv(
+    db: Session = Depends(get_db),
+    limbo_stage: Optional[str] = Query(None, description="Filtra por limbo_stage"),
+    week_start: Optional[date] = Query(None, description="Filtra por semana"),
+    lead_date_from: Optional[date] = Query(None, description="Filtra por lead_date desde"),
+    lead_date_to: Optional[date] = Query(None, description="Filtra por lead_date hasta"),
+    limit: int = Query(10000, ge=1, le=50000, description="Límite de resultados para export (máx 50000)")
+):
+    """
+    Exporta leads en limbo a CSV.
+    """
+    try:
+        from fastapi.responses import StreamingResponse
+        import io
+        import csv
+        
+        # Construir WHERE dinámico (mismo que get_cabinet_limbo)
+        where_conditions = []
+        params = {}
+        
+        if limbo_stage:
+            valid_stages = ['NO_IDENTITY', 'NO_DRIVER', 'NO_TRIPS_14D', 'TRIPS_NO_CLAIM', 'OK']
+            if limbo_stage not in valid_stages:
+                raise HTTPException(status_code=400, detail=f"limbo_stage debe ser uno de: {', '.join(valid_stages)}")
+            where_conditions.append("limbo_stage = :limbo_stage")
+            params["limbo_stage"] = limbo_stage
+        
+        if week_start:
+            where_conditions.append("week_start = :week_start")
+            params["week_start"] = week_start
+        
+        if lead_date_from:
+            where_conditions.append("lead_date >= :lead_date_from")
+            params["lead_date_from"] = lead_date_from
+        
+        if lead_date_to:
+            where_conditions.append("lead_date <= :lead_date_to")
+            params["lead_date_to"] = lead_date_to
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        params["limit"] = limit
+        
+        # Query para datos
+        data_query = text(f"""
+            SELECT 
+                lead_id,
+                lead_source_pk,
+                lead_date,
+                week_start,
+                park_phone,
+                asset_plate_number,
+                lead_name,
+                person_key::text AS person_key,
+                driver_id,
+                trips_14d,
+                window_end_14d,
+                reached_m1_14d,
+                reached_m5_14d,
+                reached_m25_14d,
+                expected_amount_14d,
+                has_claim_m1,
+                has_claim_m5,
+                has_claim_m25,
+                limbo_stage,
+                limbo_reason_detail
+            FROM ops.v_cabinet_leads_limbo
+            WHERE {where_clause}
+            ORDER BY week_start DESC, lead_date DESC, lead_id
+            LIMIT :limit
+        """)
+        
+        result = db.execute(data_query, params)
+        rows = result.fetchall()
+        
+        # Crear CSV en memoria
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Headers
+        writer.writerow([
+            'lead_id', 'lead_source_pk', 'lead_date', 'week_start',
+            'park_phone', 'asset_plate_number', 'lead_name',
+            'person_key', 'driver_id', 'trips_14d', 'window_end_14d',
+            'reached_m1_14d', 'reached_m5_14d', 'reached_m25_14d',
+            'expected_amount_14d', 'has_claim_m1', 'has_claim_m5', 'has_claim_m25',
+            'limbo_stage', 'limbo_reason_detail'
+        ])
+        
+        # Data
+        for row in rows:
+            writer.writerow([
+                row.lead_id,
+                row.lead_source_pk,
+                row.lead_date.isoformat() if row.lead_date else '',
+                row.week_start.isoformat() if row.week_start else '',
+                row.park_phone or '',
+                row.asset_plate_number or '',
+                row.lead_name or '',
+                row.person_key or '',
+                row.driver_id or '',
+                row.trips_14d or 0,
+                row.window_end_14d.isoformat() if row.window_end_14d else '',
+                row.reached_m1_14d or False,
+                row.reached_m5_14d or False,
+                row.reached_m25_14d or False,
+                float(row.expected_amount_14d) if row.expected_amount_14d else 0,
+                row.has_claim_m1 or False,
+                row.has_claim_m5 or False,
+                row.has_claim_m25 or False,
+                row.limbo_stage,
+                row.limbo_reason_detail or ''
+            ])
+        
+        output.seek(0)
+        
+        from datetime import datetime
+        filename = f"cabinet_limbo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error exportando leads en limbo: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error exportando leads en limbo: {str(e)[:200]}"
+        )
+
+
+@router.get("/cabinet-financial-14d/claims-gap", response_model=CabinetClaimsGapResponse)
+def get_cabinet_claims_gap(
+    db: Session = Depends(get_db),
+    gap_reason: Optional[str] = Query(None, description="Filtra por gap_reason"),
+    week_start: Optional[date] = Query(None, description="Filtra por semana (lunes de la semana ISO)"),
+    lead_date_from: Optional[date] = Query(None, description="Filtra por lead_date desde"),
+    lead_date_to: Optional[date] = Query(None, description="Filtra por lead_date hasta"),
+    milestone_value: Optional[int] = Query(None, description="Filtra por milestone_value (1, 5, 25)"),
+    limit: int = Query(100, ge=1, le=1000, description="Límite de resultados (máx 1000). Default: 100."),
+    offset: int = Query(0, ge=0, description="Offset para paginación")
+):
+    """
+    Obtiene gaps de claims de cabinet 14d (CLAIM-FIRST).
+    
+    Esta vista identifica drivers con milestones alcanzados dentro de ventana 14d
+    pero SIN claim correspondiente.
+    
+    Filtros:
+    - gap_reason: Filtra por razón del gap
+    - week_start: Filtra por semana (lunes de la semana ISO)
+    - lead_date_from/to: Filtra por rango de fechas
+    - milestone_value: Filtra por milestone (1, 5, 25)
+    - limit/offset: Paginación
+    
+    Respuesta incluye:
+    - meta: Metadatos de paginación
+    - summary: Resumen de gaps por razón y milestone
+    - data: Lista de gaps con información detallada
+    
+    Ejemplo curl:
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/ops/payments/cabinet-financial-14d/claims-gap?gap_reason=MILESTONE_ACHIEVED_NO_CLAIM&limit=50"
+    ```
+    """
+    try:
+        # Construir WHERE dinámico
+        where_conditions = []
+        params = {}
+        
+        if gap_reason:
+            valid_reasons = ['CLAIM_NOT_GENERATED', 'OK', 'NO_IDENTITY', 'NO_DRIVER', 'INSUFFICIENT_TRIPS', 'OTHER']
+            if gap_reason not in valid_reasons:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"gap_reason debe ser uno de: {', '.join(valid_reasons)}"
+                )
+            where_conditions.append("gap_reason = :gap_reason")
+            params["gap_reason"] = gap_reason
+        
+        if week_start:
+            where_conditions.append("week_start = :week_start")
+            params["week_start"] = week_start
+        
+        if lead_date_from:
+            where_conditions.append("lead_date >= :lead_date_from")
+            params["lead_date_from"] = lead_date_from
+        
+        if lead_date_to:
+            where_conditions.append("lead_date <= :lead_date_to")
+            params["lead_date_to"] = lead_date_to
+        
+        if milestone_value:
+            if milestone_value not in [1, 5, 25]:
+                raise HTTPException(status_code=400, detail="milestone_value debe ser 1, 5 o 25")
+            where_conditions.append("milestone_value = :milestone_value")
+            params["milestone_value"] = milestone_value
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Query para total (sin limit/offset)
+        count_query = text(f"""
+            SELECT COUNT(*) 
+            FROM ops.v_cabinet_claims_gap_14d
+            WHERE {where_clause}
+        """)
+        total_result = db.execute(count_query, params)
+        total = total_result.scalar() or 0
+        
+        # Query para datos (con limit/offset y orden)
+        data_query = text(f"""
+            SELECT 
+                lead_id,
+                lead_source_pk,
+                driver_id,
+                person_key::text AS person_key,
+                lead_date,
+                week_start,
+                milestone_value,
+                trips_14d,
+                milestone_achieved,
+                expected_amount,
+                claim_expected,
+                claim_exists,
+                claim_status,
+                gap_reason
+            FROM ops.v_cabinet_claims_gap_14d
+            WHERE {where_clause}
+            ORDER BY week_start DESC, lead_date DESC, milestone_value DESC
+            LIMIT :limit OFFSET :offset
+        """)
+        params["limit"] = limit
+        params["offset"] = offset
+        
+        result = db.execute(data_query, params)
+        rows = result.fetchall()
+        
+        # Convertir a dict
+        data = []
+        for row in rows:
+            data.append({
+                "lead_id": row.lead_id,
+                "lead_source_pk": row.lead_source_pk,
+                "driver_id": row.driver_id,
+                "person_key": row.person_key,
+                "lead_date": row.lead_date.isoformat() if row.lead_date else None,
+                "week_start": row.week_start.isoformat() if row.week_start else None,
+                "milestone_value": row.milestone_value,
+                "trips_14d": row.trips_14d or 0,
+                "milestone_achieved": row.milestone_achieved or False,
+                "expected_amount": float(row.expected_amount) if row.expected_amount else 0,
+                "claim_expected": row.claim_expected or False,
+                "claim_exists": row.claim_exists or False,
+                "claim_status": row.claim_status,
+                "gap_reason": row.gap_reason
+            })
+        
+        # Query para summary (conteos por gap_reason y milestone_value)
+        summary_query = text(f"""
+            SELECT 
+                COUNT(*) AS total_gaps,
+                COUNT(*) FILTER (WHERE gap_reason = 'CLAIM_NOT_GENERATED') AS gaps_milestone_achieved_no_claim,
+                COUNT(*) FILTER (WHERE gap_reason = 'OK') AS gaps_claim_exists,
+                COUNT(*) FILTER (WHERE gap_reason = 'INSUFFICIENT_TRIPS') AS gaps_milestone_not_achieved,
+                COUNT(*) FILTER (WHERE milestone_value = 1) AS gaps_m1,
+                COUNT(*) FILTER (WHERE milestone_value = 5) AS gaps_m5,
+                COUNT(*) FILTER (WHERE milestone_value = 25) AS gaps_m25,
+                SUM(expected_amount) AS total_expected_amount
+            FROM ops.v_cabinet_claims_gap_14d
+            WHERE {where_clause}
+        """)
+        summary_result = db.execute(summary_query, params)
+        summary_row = summary_result.fetchone()
+        
+        summary = CabinetClaimsGapSummary(
+            total_gaps=summary_row.total_gaps or 0,
+            gaps_milestone_achieved_no_claim=summary_row.gaps_milestone_achieved_no_claim or 0,
+            gaps_claim_exists=summary_row.gaps_claim_exists or 0,
+            gaps_milestone_not_achieved=summary_row.gaps_milestone_not_achieved or 0,
+            gaps_m1=summary_row.gaps_m1 or 0,
+            gaps_m5=summary_row.gaps_m5 or 0,
+            gaps_m25=summary_row.gaps_m25 or 0,
+            total_expected_amount=summary_row.total_expected_amount or 0
+        )
+        
+        meta = CabinetClaimsGapMeta(
+            limit=limit,
+            offset=offset,
+            returned=len(data),
+            total=total
+        )
+        
+        return CabinetClaimsGapResponse(
+            meta=meta,
+            summary=summary,
+            data=[CabinetClaimsGapRow(**row) for row in data]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error obteniendo gaps de claims: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo gaps de claims: {str(e)[:200]}"
+        )
+
+
+@router.get("/cabinet-financial-14d/claims-gap/summary", response_model=Dict)
+def get_cabinet_claims_gap_summary(
+    db: Session = Depends(get_db),
+    week_start: Optional[date] = Query(None, description="Filtra por semana (opcional)")
+):
+    """
+    Obtiene resumen de gaps de claims de cabinet 14d.
+    
+    Devuelve:
+    - counts por gap_reason
+    - counts por milestone
+    - monto_total_expected_missing (sum expected_amount donde CLAIM_NOT_GENERATED)
+    - monto_total_expected_ok
+    - por semana si week_start no null (opcional)
+    """
+    try:
+        where_clause = "1=1"
+        params = {}
+        
+        if week_start:
+            where_clause = "week_start = :week_start"
+            params["week_start"] = week_start
+        
+        query = text(f"""
+            SELECT 
+                COUNT(*) AS total_gaps,
+                COUNT(*) FILTER (WHERE gap_reason = 'CLAIM_NOT_GENERATED') AS gaps_claim_not_generated,
+                COUNT(*) FILTER (WHERE gap_reason = 'OK') AS gaps_ok,
+                COUNT(*) FILTER (WHERE gap_reason = 'NO_IDENTITY') AS gaps_no_identity,
+                COUNT(*) FILTER (WHERE gap_reason = 'NO_DRIVER') AS gaps_no_driver,
+                COUNT(*) FILTER (WHERE gap_reason = 'INSUFFICIENT_TRIPS') AS gaps_insufficient_trips,
+                COUNT(*) FILTER (WHERE milestone_value = 1) AS gaps_m1,
+                COUNT(*) FILTER (WHERE milestone_value = 5) AS gaps_m5,
+                COUNT(*) FILTER (WHERE milestone_value = 25) AS gaps_m25,
+                SUM(expected_amount) FILTER (WHERE gap_reason = 'CLAIM_NOT_GENERATED') AS monto_total_expected_missing,
+                SUM(expected_amount) FILTER (WHERE gap_reason = 'OK') AS monto_total_expected_ok
+            FROM ops.v_cabinet_claims_gap_14d
+            WHERE {where_clause}
+        """)
+        
+        result = db.execute(query, params)
+        row = result.fetchone()
+        
+        return {
+            "total_gaps": row.total_gaps or 0,
+            "gaps_claim_not_generated": row.gaps_claim_not_generated or 0,
+            "gaps_ok": row.gaps_ok or 0,
+            "gaps_no_identity": row.gaps_no_identity or 0,
+            "gaps_no_driver": row.gaps_no_driver or 0,
+            "gaps_insufficient_trips": row.gaps_insufficient_trips or 0,
+            "gaps_m1": row.gaps_m1 or 0,
+            "gaps_m5": row.gaps_m5 or 0,
+            "gaps_m25": row.gaps_m25 or 0,
+            "monto_total_expected_missing": float(row.monto_total_expected_missing) if row.monto_total_expected_missing else 0,
+            "monto_total_expected_ok": float(row.monto_total_expected_ok) if row.monto_total_expected_ok else 0,
+            "week_start": week_start.isoformat() if week_start else None
+        }
+        
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error obteniendo summary de gaps: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo summary de gaps: {str(e)[:200]}"
+        )
+
+
+@router.get("/cabinet-financial-14d/claims-gap/export")
+def export_cabinet_claims_gap_csv(
+    db: Session = Depends(get_db),
+    gap_reason: Optional[str] = Query(None, description="Filtra por gap_reason"),
+    week_start: Optional[date] = Query(None, description="Filtra por semana"),
+    lead_date_from: Optional[date] = Query(None, description="Filtra por lead_date desde"),
+    lead_date_to: Optional[date] = Query(None, description="Filtra por lead_date hasta"),
+    milestone_value: Optional[int] = Query(None, description="Filtra por milestone_value"),
+    limit: int = Query(10000, ge=1, le=50000, description="Límite de resultados para export (máx 50000)")
+):
+    """
+    Exporta gaps de claims a CSV.
+    """
+    try:
+        from fastapi.responses import StreamingResponse
+        import io
+        import csv
+        
+        # Construir WHERE dinámico (mismo que get_cabinet_claims_gap)
+        where_conditions = []
+        params = {}
+        
+        if gap_reason:
+            where_conditions.append("gap_reason = :gap_reason")
+            params["gap_reason"] = gap_reason
+        
+        if week_start:
+            where_conditions.append("week_start = :week_start")
+            params["week_start"] = week_start
+        
+        if lead_date_from:
+            where_conditions.append("lead_date >= :lead_date_from")
+            params["lead_date_from"] = lead_date_from
+        
+        if lead_date_to:
+            where_conditions.append("lead_date <= :lead_date_to")
+            params["lead_date_to"] = lead_date_to
+        
+        if milestone_value:
+            where_conditions.append("milestone_value = :milestone_value")
+            params["milestone_value"] = milestone_value
+        
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        params["limit"] = limit
+        
+        # Query para datos
+        data_query = text(f"""
+            SELECT 
+                lead_id,
+                lead_source_pk,
+                driver_id,
+                person_key::text AS person_key,
+                lead_date,
+                week_start,
+                milestone_value,
+                trips_14d,
+                milestone_achieved,
+                expected_amount,
+                claim_expected,
+                claim_exists,
+                claim_status,
+                gap_reason
+            FROM ops.v_cabinet_claims_gap_14d
+            WHERE {where_clause}
+            ORDER BY week_start DESC, lead_date DESC, milestone_value DESC
+            LIMIT :limit
+        """)
+        
+        result = db.execute(data_query, params)
+        rows = result.fetchall()
+        
+        # Crear CSV en memoria
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Headers
+        writer.writerow([
+            'lead_id', 'lead_source_pk', 'driver_id', 'person_key', 'lead_date', 'week_start',
+            'milestone_value', 'trips_14d', 'milestone_achieved', 'expected_amount',
+            'claim_expected', 'claim_exists', 'claim_status', 'gap_reason'
+        ])
+        
+        # Data
+        for row in rows:
+            writer.writerow([
+                row.lead_id,
+                row.lead_source_pk,
+                row.driver_id or '',
+                row.person_key or '',
+                row.lead_date.isoformat() if row.lead_date else '',
+                row.week_start.isoformat() if row.week_start else '',
+                row.milestone_value,
+                row.trips_14d or 0,
+                row.milestone_achieved or False,
+                float(row.expected_amount) if row.expected_amount else 0,
+                row.claim_expected or False,
+                row.claim_exists or False,
+                row.claim_status,
+                row.gap_reason
+            ])
+        
+        output.seek(0)
+        
+        from datetime import datetime
+        filename = f"cabinet_claims_gap_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error exportando gaps de claims: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error exportando gaps de claims: {str(e)[:200]}"
         )
 

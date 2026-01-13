@@ -627,6 +627,8 @@ export async function getCabinetIdentityRecoveryImpact14d(params?: {
 import type {
   OpsDriverMatrixResponse,
   CabinetFinancialResponse,
+  CabinetLimboResponse,
+  CabinetClaimsGapResponse,
 } from './types';
 
 export async function getOpsDriverMatrix(params?: {
@@ -730,6 +732,119 @@ export async function getCobranzaYangoWeeklyKpis(params?: {
   
   const query = searchParams.toString();
   return fetchApi<WeeklyKpisResponse>(`/api/v1/payments/yango/cabinet/cobranza-yango/weekly-kpis${query ? `?${query}` : ''}`);
+}
+
+export async function getCabinetLimbo(params?: {
+  limbo_stage?: 'NO_IDENTITY' | 'NO_DRIVER' | 'NO_TRIPS_14D' | 'TRIPS_NO_CLAIM' | 'OK';
+  week_start?: string;
+  lead_date_from?: string;
+  lead_date_to?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<CabinetLimboResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.limbo_stage) searchParams.set('limbo_stage', params.limbo_stage);
+  if (params?.week_start) searchParams.set('week_start', params.week_start);
+  if (params?.lead_date_from) searchParams.set('lead_date_from', params.lead_date_from);
+  if (params?.lead_date_to) searchParams.set('lead_date_to', params.lead_date_to);
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<CabinetLimboResponse>(`/api/v1/ops/payments/cabinet-financial-14d/limbo${query ? `?${query}` : ''}`);
+}
+
+export async function exportCabinetLimboCSV(params?: {
+  limbo_stage?: 'NO_IDENTITY' | 'NO_DRIVER' | 'NO_TRIPS_14D' | 'TRIPS_NO_CLAIM' | 'OK';
+  week_start?: string;
+  lead_date_from?: string;
+  lead_date_to?: string;
+  limit?: number;
+}): Promise<Blob> {
+  const searchParams = new URLSearchParams();
+  if (params?.limbo_stage) searchParams.set('limbo_stage', params.limbo_stage);
+  if (params?.week_start) searchParams.set('week_start', params.week_start);
+  if (params?.lead_date_from) searchParams.set('lead_date_from', params.lead_date_from);
+  if (params?.lead_date_to) searchParams.set('lead_date_to', params.lead_date_to);
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  
+  const query = searchParams.toString();
+  const url = `${API_BASE_URL}/api/v1/ops/payments/cabinet-financial-14d/limbo/export${query ? `?${query}` : ''}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new ApiError(response.status, response.statusText, await response.text());
+  }
+  return response.blob();
+}
+
+export async function getCabinetClaimsGapSummary(params?: {
+  week_start?: string;
+}): Promise<{
+  total_gaps: number;
+  gaps_claim_not_generated: number;
+  gaps_ok: number;
+  gaps_no_identity: number;
+  gaps_no_driver: number;
+  gaps_insufficient_trips: number;
+  gaps_m1: number;
+  gaps_m5: number;
+  gaps_m25: number;
+  monto_total_expected_missing: number;
+  monto_total_expected_ok: number;
+  week_start?: string | null;
+}> {
+  const searchParams = new URLSearchParams();
+  if (params?.week_start) searchParams.set('week_start', params.week_start);
+  
+  const query = searchParams.toString();
+  return fetchApi(`/api/v1/ops/payments/cabinet-financial-14d/claims-gap/summary${query ? `?${query}` : ''}`);
+}
+
+export async function getCabinetClaimsGap(params?: {
+  gap_reason?: string;
+  week_start?: string;
+  lead_date_from?: string;
+  lead_date_to?: string;
+  milestone_value?: number;
+  limit?: number;
+  offset?: number;
+}): Promise<CabinetClaimsGapResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.gap_reason) searchParams.set('gap_reason', params.gap_reason);
+  if (params?.week_start) searchParams.set('week_start', params.week_start);
+  if (params?.lead_date_from) searchParams.set('lead_date_from', params.lead_date_from);
+  if (params?.lead_date_to) searchParams.set('lead_date_to', params.lead_date_to);
+  if (params?.milestone_value !== undefined) searchParams.set('milestone_value', params.milestone_value.toString());
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<CabinetClaimsGapResponse>(`/api/v1/ops/payments/cabinet-financial-14d/claims-gap${query ? `?${query}` : ''}`);
+}
+
+export async function exportCabinetClaimsGapCSV(params?: {
+  gap_reason?: string;
+  week_start?: string;
+  lead_date_from?: string;
+  lead_date_to?: string;
+  milestone_value?: number;
+  limit?: number;
+}): Promise<Blob> {
+  const searchParams = new URLSearchParams();
+  if (params?.gap_reason) searchParams.set('gap_reason', params.gap_reason);
+  if (params?.week_start) searchParams.set('week_start', params.week_start);
+  if (params?.lead_date_from) searchParams.set('lead_date_from', params.lead_date_from);
+  if (params?.lead_date_to) searchParams.set('lead_date_to', params.lead_date_to);
+  if (params?.milestone_value !== undefined) searchParams.set('milestone_value', params.milestone_value.toString());
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
+  
+  const query = searchParams.toString();
+  const url = `${API_BASE_URL}/api/v1/ops/payments/cabinet-financial-14d/claims-gap/export${query ? `?${query}` : ''}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new ApiError(response.status, response.statusText, await response.text());
+  }
+  return response.blob();
 }
 
 export async function exportCabinetFinancial14dCSV(params?: {

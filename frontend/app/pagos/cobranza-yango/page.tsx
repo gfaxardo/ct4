@@ -29,6 +29,8 @@ import DataTable from '@/components/DataTable';
 import Filters from '@/components/Filters';
 import Pagination from '@/components/Pagination';
 import Badge from '@/components/Badge';
+import CabinetLimboSection from '@/components/CabinetLimboSection';
+import CabinetClaimsGapSection from '@/components/CabinetClaimsGapSection';
 
 export default function CobranzaYangoPage() {
   const router = useRouter();
@@ -1141,6 +1143,16 @@ export default function CobranzaYangoPage() {
           onPageChange={(newOffset) => setOffset(newOffset)}
         />
       )}
+
+      {/* Sección Leads en Limbo */}
+      <div className="mt-8">
+        <CabinetLimboSection />
+      </div>
+
+      {/* Sección Claims Gap */}
+      <div className="mt-8">
+        <CabinetClaimsGapSection />
+      </div>
     </div>
   );
 }

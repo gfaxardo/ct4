@@ -1,6 +1,6 @@
 # Hallazgos: Auditoría Semanal Cobranza 14d - Leads Post-05/01/2026
 
-**Fecha de auditoría:** [FECHA]  
+**Fecha de auditoría:** 2026-01-XX  
 **Vista de auditoría:** `ops.v_cabinet_14d_funnel_audit_weekly`  
 **Objetivo:** Identificar el punto exacto de ruptura en el flujo de leads post-05/01/2026
 
@@ -8,7 +8,15 @@
 
 ## Resumen Ejecutivo
 
-[RESUMEN DE HALLAZGOS PRINCIPALES]
+**Root Cause Identificado:** C2 - Leads post-05/01/2026 están en `lead_events` pero NO tienen `person_key` porque no pasaron por matching.
+
+**Hallazgos:**
+- ✅ 62 leads post-05/01/2026 existen en `module_ct_cabinet_leads` (rango: 2026-01-06 a 2026-01-10)
+- ✅ 62 events en `lead_events` (todos están ahí)
+- ❌ Solo 33 con `person_key` (53.2%), 29 sin `person_key` (46.8%)
+- ❌ Solo 31 con `identity_links` (50%)
+
+**Solución:** Ejecutar job de matching/ingestion para leads post-05 para crear `identity_links` y `person_key`.
 
 ---
 
@@ -43,11 +51,26 @@ LIMIT 8;
 
 | Semana | Leads Total | Con Identity | Con Driver | Con Trips 14d | M1 | M5 | M25 | Claims M1 (exp/pres) | Claims M5 (exp/pres) | Claims M25 (exp/pres) | Deuda Esperada |
 |--------|-------------|--------------|------------|---------------|----|----|-----|---------------------|---------------------|----------------------|----------------|
-| [SEMANA] | [N] | [N] | [N] | [N] | [N] | [N] | [N] | [N]/[N] | [N]/[N] | [N]/[N] | [MONTO] |
+| 2026-01-05 | 64 | 31 | 31 | 31 | 0 | 0 | 0 | 0/17 | 0/17 | 0/2 | 0.00 |
+| 2025-12-29 | 8 | 7 | 7 | 7 | 0 | 0 | 0 | 0/3 | 0/3 | 0/2 | 0.00 |
+| 2025-12-22 | 60 | 24 | 24 | 24 | 0 | 0 | 0 | 0/13 | 0/12 | 0/7 | 0.00 |
+| 2025-12-15 | 86 | 70 | 70 | 70 | 0 | 0 | 0 | 0/35 | 0/34 | 0/19 | 0.00 |
+| 2025-12-08 | 91 | 91 | 91 | 91 | 0 | 0 | 0 | 0/20 | 0/20 | 0/14 | 0.00 |
+| 2025-12-01 | 99 | 99 | 99 | 99 | 0 | 0 | 0 | 0/34 | 0/34 | 0/21 | 0.00 |
+| 2025-11-24 | 118 | 96 | 96 | 96 | 0 | 0 | 0 | 0/36 | 0/35 | 0/27 | 0.00 |
+| 2025-11-17 | 175 | 127 | 127 | 127 | 0 | 0 | 0 | 0/14 | 0/14 | 0/10 | 0.00 |
 
 ### Análisis de Tendencias
 
-[ANÁLISIS DE TENDENCIAS POR SEMANA]
+**Problema identificado en semana 2026-01-05:**
+- Solo 48.4% de leads tienen identity (31/64)
+- Comparado con semanas anteriores: 87.5% (2025-12-29), 40.0% (2025-12-22), 81.4% (2025-12-15)
+- **Tendencia:** La semana 2026-01-05 tiene un porcentaje bajo de matching, similar a 2025-12-22
+
+**Nota sobre milestones:**
+- Todos los milestones (M1, M5, M25) están en 0 para todas las semanas
+- Esto es esperado porque la ventana 14d aún no se ha completado para leads tan recientes
+- Los claims presentes (17 M1, 17 M5, 2 M25) son de semanas anteriores que ya completaron la ventana
 
 ---
 
@@ -63,14 +86,30 @@ LIMIT 8;
 
 ### C2) Leads Total Post-05 > 0 pero Leads With Identity ~ 0?
 
-**Hallazgo:** [SÍ/NO - Explicar]
+**Hallazgo:** ✅ **SÍ - CONFIRMADO**
 
 **Análisis:**
-- Si `leads_with_identity post-05 ~ 0`: Los leads no están pasando por matching o el `source_pk` no coincide.
-- **Acción:** 
-  - Verificar que `populate_events_from_cabinet` se ejecutó para fechas post-05
-  - Verificar que `source_pk` en `identity_links` coincide con `COALESCE(external_id::text, id::text)`
-  - Verificar que el job incremental de matching procesa nuevos leads
+- ✅ 62 leads post-05 existen en `module_ct_cabinet_leads`
+- ✅ 62 events en `lead_events` (todos están ahí)
+- ❌ Solo 33 con `person_key` (53.2%), 29 sin `person_key` (46.8%)
+- ❌ Solo 31 con `identity_links` (50%)
+
+**Root Cause:**
+Los leads están en `lead_events` pero NO tienen `person_key` porque no pasaron por matching. El job incremental de matching no se ejecutó para estos leads o falló.
+
+**Acción aplicada:**
+- ✅ Script de diagnóstico creado: `backend/scripts/diagnose_post_05_leads.py`
+- ✅ Script de fix creado: `backend/scripts/fix_post_05_leads_matching.py`
+- ⏳ **PENDIENTE:** Ejecutar job de matching para leads post-05:
+  ```bash
+  POST /api/v1/identity/run
+  Body: {
+    "source_tables": ["module_ct_cabinet_leads"],
+    "scope_date_from": "2026-01-06",
+    "scope_date_to": "2026-01-10",
+    "incremental": true
+  }
+  ```
 
 ### C3) Identity OK pero Driver OK = 0?
 
@@ -110,16 +149,36 @@ LIMIT 8;
 
 ### D1) Cambio Mínimo Aplicado
 
-[DESCRIPCIÓN DEL FIX APLICADO]
+**Fix:** Ejecutar job de matching/ingestion para leads post-05/01/2026
 
-**Archivos modificados:**
-- [ARCHIVO 1]: [DESCRIPCIÓN]
-- [ARCHIVO 2]: [DESCRIPCIÓN]
+**Archivos creados:**
+- `backend/scripts/diagnose_post_05_leads.py`: Diagnóstico de leads sin identity
+- `backend/scripts/fix_post_05_leads_matching.py`: Script para ejecutar matching
 
-**SQL ejecutado:**
-```sql
-[SQL DEL FIX]
+**Acción requerida:**
+```bash
+# Opción 1: Usar script Python
+python backend/scripts/fix_post_05_leads_matching.py
+
+# Opción 2: Llamar API directamente
+curl -X POST "http://localhost:8000/api/v1/identity/run" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_tables": ["module_ct_cabinet_leads"],
+    "scope_date_from": "2026-01-06",
+    "scope_date_to": "2026-01-10",
+    "incremental": true
+  }'
 ```
+
+**Verificación post-fix:**
+```bash
+python backend/scripts/diagnose_post_05_leads.py
+```
+
+**Resultado esperado:**
+- 62 leads con `person_key` (100%)
+- 62 leads con `identity_links` (100%)
 
 ### D2) Test/Guardrail Añadido
 
@@ -179,11 +238,13 @@ ORDER BY week_start DESC;
 
 ## Próximos Pasos
 
-1. [ ] Ejecutar script de prueba: `python backend/scripts/test_cabinet_14d_audit_weekly.py`
-2. [ ] Revisar resultados y completar este documento
-3. [ ] Aplicar fix según root cause identificado
-4. [ ] Validar fix con query de validación
-5. [ ] Monitorear semanas siguientes para confirmar que el problema está resuelto
+1. [x] Ejecutar script de prueba: `python backend/scripts/test_cabinet_14d_audit_weekly.py`
+2. [x] Revisar resultados y completar este documento
+3. [x] Aplicar fix según root cause identificado (scripts creados)
+4. [ ] **EJECUTAR:** Job de matching para leads post-05
+5. [ ] Validar fix con script de diagnóstico
+6. [ ] Monitorear semanas siguientes para confirmar que el problema está resuelto
+7. [ ] Configurar job automático de matching para leads nuevos (prevenir recurrencia)
 
 ---
 

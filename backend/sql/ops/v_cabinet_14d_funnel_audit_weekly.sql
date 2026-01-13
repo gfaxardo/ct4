@@ -2,11 +2,16 @@
 -- Vista: ops.v_cabinet_14d_funnel_audit_weekly
 -- ============================================================================
 -- PROPÓSITO:
--- Auditoría semanal del embudo de Cobranza 14d por lead_date.
--- Identifica el punto exacto de ruptura en el flujo de leads post-05/01/2026.
+-- Auditoría semanal del embudo de Cobranza 14d por LEAD_DATE_CANONICO.
+-- Identifica el punto exacto de ruptura en el flujo de leads.
 -- ============================================================================
 -- GRANO:
--- 1 fila por week_start (semana ISO truncada desde lead_date)
+-- 1 fila por week_start (semana ISO truncada desde LEAD_DATE_CANONICO)
+-- ============================================================================
+-- REGLAS CANÓNICAS:
+-- - LEAD_DATE_CANONICO: lead_created_at::date (fecha cero operativa del lead)
+-- - week_start: DATE_TRUNC('week', LEAD_DATE_CANONICO)::date (lunes ISO)
+-- - Ventana 14d: [LEAD_DATE_CANONICO, LEAD_DATE_CANONICO + INTERVAL '14 days')
 -- ============================================================================
 -- COLUMNAS:
 -- - week_start: inicio de semana (date_trunc('week', lead_date)::date)
@@ -18,16 +23,22 @@
 -- - claims_expected_m1/m5/m25: claims que deberían existir según milestones
 -- - claims_present_m1/m5/m25: claims que realmente existen en v_claims_payment_status_cabinet
 -- - debt_expected_total: monto esperado total por semana
+-- - limbo_no_identity/no_driver/no_trips_14d/trips_no_claim/ok: conteos por limbo_stage
 -- ============================================================================
 
-CREATE OR REPLACE VIEW ops.v_cabinet_14d_funnel_audit_weekly AS
+-- DROP VIEW si existe para permitir cambios en columnas
+DROP VIEW IF EXISTS ops.v_cabinet_14d_funnel_audit_weekly CASCADE;
+
+CREATE VIEW ops.v_cabinet_14d_funnel_audit_weekly AS
 WITH leads_base AS (
-    -- Base: todos los leads de cabinet con lead_created_at
+    -- Base: todos los leads de cabinet con LEAD_DATE_CANONICO (lead_created_at::date)
     SELECT 
         COALESCE(external_id::text, id::text) AS source_pk,
         id,
         external_id,
+        -- LEAD_DATE_CANONICO: lead_created_at::date (fecha cero operativa)
         lead_created_at::date AS lead_date,
+        -- week_start derivado de LEAD_DATE_CANONICO (lunes ISO)
         DATE_TRUNC('week', lead_created_at::date)::date AS week_start
     FROM public.module_ct_cabinet_leads
     WHERE lead_created_at IS NOT NULL
@@ -141,18 +152,31 @@ milestones_expected_by_week AS (
 ),
 claims_present_by_week AS (
     -- Claims que realmente existen en v_claims_payment_status_cabinet
+    -- NOTA: v_claims_payment_status_cabinet ya está filtrada para cabinet, no necesita origin_tag
     SELECT 
         DATE_TRUNC('week', c.lead_date)::date AS week_start,
         COUNT(DISTINCT CASE WHEN c.milestone_value = 1 THEN c.driver_id END) AS claims_present_m1,
         COUNT(DISTINCT CASE WHEN c.milestone_value = 5 THEN c.driver_id END) AS claims_present_m5,
         COUNT(DISTINCT CASE WHEN c.milestone_value = 25 THEN c.driver_id END) AS claims_present_m25
     FROM ops.v_claims_payment_status_cabinet c
-    WHERE c.origin_tag = 'cabinet'
-        AND c.lead_date IS NOT NULL
+    WHERE c.lead_date IS NOT NULL
     GROUP BY DATE_TRUNC('week', c.lead_date)::date
+),
+limbo_counts_by_week AS (
+    -- Conteos de limbo por semana desde v_cabinet_leads_limbo
+    SELECT 
+        week_start,
+        COUNT(*) FILTER (WHERE limbo_stage = 'NO_IDENTITY') AS limbo_no_identity,
+        COUNT(*) FILTER (WHERE limbo_stage = 'NO_DRIVER') AS limbo_no_driver,
+        COUNT(*) FILTER (WHERE limbo_stage = 'NO_TRIPS_14D') AS limbo_no_trips_14d,
+        COUNT(*) FILTER (WHERE limbo_stage = 'TRIPS_NO_CLAIM') AS limbo_trips_no_claim,
+        COUNT(*) FILTER (WHERE limbo_stage = 'OK') AS limbo_ok
+    FROM ops.v_cabinet_leads_limbo
+    WHERE week_start IS NOT NULL
+    GROUP BY week_start
 )
 SELECT 
-    COALESCE(lbw.week_start, lwi.week_start, lwd.week_start, dwt.week_start, me.week_start, cp.week_start) AS week_start,
+    COALESCE(lbw.week_start, lwi.week_start, lwd.week_start, dwt.week_start, me.week_start, cp.week_start, limbo_counts.week_start) AS week_start,
     -- Leads totales
     COALESCE(lbw.leads_total, 0) AS leads_total,
     COALESCE(lbw.leads_distinct_pk, 0) AS leads_distinct_pk,
@@ -181,6 +205,12 @@ SELECT
     (COALESCE(me.claims_expected_m1, 0) - COALESCE(cp.claims_present_m1, 0)) AS claims_missing_m1,
     (COALESCE(me.claims_expected_m5, 0) - COALESCE(cp.claims_present_m5, 0)) AS claims_missing_m5,
     (COALESCE(me.claims_expected_m25, 0) - COALESCE(cp.claims_present_m25, 0)) AS claims_missing_m25,
+    -- Limbo counts por stage (desde v_cabinet_leads_limbo)
+    COALESCE(limbo_counts.limbo_no_identity, 0) AS limbo_no_identity,
+    COALESCE(limbo_counts.limbo_no_driver, 0) AS limbo_no_driver,
+    COALESCE(limbo_counts.limbo_no_trips_14d, 0) AS limbo_no_trips_14d,
+    COALESCE(limbo_counts.limbo_trips_no_claim, 0) AS limbo_trips_no_claim,
+    COALESCE(limbo_counts.limbo_ok, 0) AS limbo_ok,
     -- Tasa de conversión (porcentajes)
     CASE 
         WHEN COALESCE(lbw.leads_total, 0) > 0 
@@ -203,6 +233,7 @@ FULL OUTER JOIN leads_with_driver_by_week lwd ON lwd.week_start = COALESCE(lbw.w
 FULL OUTER JOIN drivers_with_trips_14d_by_week dwt ON dwt.week_start = COALESCE(lbw.week_start, lwi.week_start, lwd.week_start)
 FULL OUTER JOIN milestones_expected_by_week me ON me.week_start = COALESCE(lbw.week_start, lwi.week_start, lwd.week_start, dwt.week_start)
 FULL OUTER JOIN claims_present_by_week cp ON cp.week_start = COALESCE(lbw.week_start, lwi.week_start, lwd.week_start, dwt.week_start, me.week_start)
+FULL OUTER JOIN limbo_counts_by_week limbo_counts ON limbo_counts.week_start = COALESCE(lbw.week_start, lwi.week_start, lwd.week_start, dwt.week_start, me.week_start, cp.week_start)
 ORDER BY week_start DESC;
 
 -- ============================================================================
@@ -273,3 +304,18 @@ COMMENT ON COLUMN ops.v_cabinet_14d_funnel_audit_weekly.pct_with_driver IS
 
 COMMENT ON COLUMN ops.v_cabinet_14d_funnel_audit_weekly.pct_with_trips_14d IS 
 'Porcentaje de leads con driver que tienen trips 14d (drivers_with_trips_14d / leads_with_driver * 100).';
+
+COMMENT ON COLUMN ops.v_cabinet_14d_funnel_audit_weekly.limbo_no_identity IS 
+'Conteo de leads en limbo NO_IDENTITY por semana (desde ops.v_cabinet_leads_limbo).';
+
+COMMENT ON COLUMN ops.v_cabinet_14d_funnel_audit_weekly.limbo_no_driver IS 
+'Conteo de leads en limbo NO_DRIVER por semana (desde ops.v_cabinet_leads_limbo).';
+
+COMMENT ON COLUMN ops.v_cabinet_14d_funnel_audit_weekly.limbo_no_trips_14d IS 
+'Conteo de leads en limbo NO_TRIPS_14D por semana (desde ops.v_cabinet_leads_limbo).';
+
+COMMENT ON COLUMN ops.v_cabinet_14d_funnel_audit_weekly.limbo_trips_no_claim IS 
+'Conteo de leads en limbo TRIPS_NO_CLAIM por semana (desde ops.v_cabinet_leads_limbo).';
+
+COMMENT ON COLUMN ops.v_cabinet_14d_funnel_audit_weekly.limbo_ok IS 
+'Conteo de leads OK (completos) por semana (desde ops.v_cabinet_leads_limbo).';

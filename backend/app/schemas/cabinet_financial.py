@@ -138,3 +138,102 @@ class WeeklyKpisResponse(BaseModel):
     weeks: list[WeeklyKpiRow] = Field(..., description="Lista de KPIs por semana")
     filters: dict = Field(default_factory=dict, description="Filtros aplicados")
 
+
+class CabinetLimboRow(BaseModel):
+    """Fila individual de la vista limbo (LEAD-FIRST)"""
+    lead_id: int = Field(..., description="ID del lead (module_ct_cabinet_leads.id)")
+    lead_source_pk: str = Field(..., description="Source PK canónico (COALESCE(external_id::text, id::text))")
+    lead_date: date = Field(..., description="Fecha de creación del lead (lead_created_at::date)")
+    week_start: date = Field(..., description="Inicio de semana ISO (date_trunc('week', lead_date)::date)")
+    park_phone: Optional[str] = Field(None, description="Teléfono del parque")
+    asset_plate_number: Optional[str] = Field(None, description="Placa del vehículo")
+    lead_name: Optional[str] = Field(None, description="Nombre del lead (concatenación de first_name, middle_name, last_name)")
+    person_key: Optional[str] = Field(None, description="Person key desde identity_links (UUID como string)")
+    driver_id: Optional[str] = Field(None, description="Driver ID resuelto desde person_key")
+    trips_14d: int = Field(..., description="Total de viajes completados dentro de ventana 14d")
+    window_end_14d: date = Field(..., description="Fin de ventana 14d (lead_date + 14 days)")
+    reached_m1_14d: bool = Field(..., description="Flag indicando si alcanzó M1 dentro de ventana 14d")
+    reached_m5_14d: bool = Field(..., description="Flag indicando si alcanzó M5 dentro de ventana 14d")
+    reached_m25_14d: bool = Field(..., description="Flag indicando si alcanzó M25 dentro de ventana 14d")
+    expected_amount_14d: Decimal = Field(..., description="Monto esperado acumulativo según milestones alcanzados")
+    has_claim_m1: bool = Field(..., description="Flag indicando si existe claim M1")
+    has_claim_m5: bool = Field(..., description="Flag indicando si existe claim M5")
+    has_claim_m25: bool = Field(..., description="Flag indicando si existe claim M25")
+    limbo_stage: str = Field(..., description="Etapa de limbo: NO_IDENTITY, NO_DRIVER, NO_TRIPS_14D, TRIPS_NO_CLAIM, OK")
+    limbo_reason_detail: str = Field(..., description="Detalle textual de por qué el lead está en esa etapa")
+
+    class Config:
+        from_attributes = True
+
+
+class CabinetLimboSummary(BaseModel):
+    """Resumen de leads en limbo"""
+    total_leads: int = Field(..., description="Total de leads (con filtros aplicados)")
+    limbo_no_identity: int = Field(..., description="Leads en limbo NO_IDENTITY")
+    limbo_no_driver: int = Field(..., description="Leads en limbo NO_DRIVER")
+    limbo_no_trips_14d: int = Field(..., description="Leads en limbo NO_TRIPS_14D")
+    limbo_trips_no_claim: int = Field(..., description="Leads en limbo TRIPS_NO_CLAIM")
+    limbo_ok: int = Field(..., description="Leads OK (completos)")
+
+
+class CabinetLimboMeta(BaseModel):
+    """Metadatos de paginación para limbo"""
+    limit: int = Field(..., description="Límite de resultados")
+    offset: int = Field(..., description="Offset para paginación")
+    returned: int = Field(..., description="Número de resultados devueltos")
+    total: int = Field(..., description="Total de resultados disponibles")
+
+
+class CabinetLimboResponse(BaseModel):
+    """Respuesta del endpoint de vista limbo"""
+    meta: CabinetLimboMeta = Field(..., description="Metadatos de paginación")
+    summary: CabinetLimboSummary = Field(..., description="Resumen de leads en limbo")
+    data: list[CabinetLimboRow] = Field(..., description="Lista de leads en limbo")
+
+
+class CabinetClaimsGapRow(BaseModel):
+    """Fila individual de la vista claims gap"""
+    lead_id: int = Field(..., description="ID del lead")
+    lead_source_pk: str = Field(..., description="Source PK canónico")
+    driver_id: Optional[str] = Field(None, description="Driver ID")
+    person_key: Optional[str] = Field(None, description="Person key (UUID como string)")
+    lead_date: date = Field(..., description="LEAD_DATE_CANONICO (lead_created_at::date)")
+    week_start: date = Field(..., description="Inicio de semana ISO")
+    milestone_value: int = Field(..., description="Milestone alcanzado: 1, 5, o 25")
+    trips_14d: int = Field(..., description="Total de viajes en ventana 14d")
+    milestone_achieved: bool = Field(..., description="Flag indicando si milestone fue alcanzado")
+    expected_amount: Decimal = Field(..., description="Monto esperado según milestone")
+    claim_expected: bool = Field(..., description="Flag indicando si se espera un claim")
+    claim_exists: bool = Field(..., description="Flag indicando si el claim existe")
+    claim_status: str = Field(..., description="Estado: MISSING, EXISTS, INVALID")
+    gap_reason: str = Field(..., description="Razón del gap")
+
+    class Config:
+        from_attributes = True
+
+
+class CabinetClaimsGapSummary(BaseModel):
+    """Resumen de gaps de claims"""
+    total_gaps: int = Field(..., description="Total de gaps (con filtros aplicados)")
+    gaps_milestone_achieved_no_claim: int = Field(..., description="Gaps con milestone alcanzado pero sin claim")
+    gaps_claim_exists: int = Field(..., description="Gaps con claim existente (no es gap real)")
+    gaps_milestone_not_achieved: int = Field(..., description="Gaps con milestone no alcanzado")
+    gaps_m1: int = Field(..., description="Gaps M1")
+    gaps_m5: int = Field(..., description="Gaps M5")
+    gaps_m25: int = Field(..., description="Gaps M25")
+    total_expected_amount: Decimal = Field(..., description="Monto total esperado de gaps")
+
+
+class CabinetClaimsGapMeta(BaseModel):
+    """Metadatos de paginación para claims gap"""
+    limit: int = Field(..., description="Límite de resultados")
+    offset: int = Field(..., description="Offset para paginación")
+    returned: int = Field(..., description="Número de resultados devueltos")
+    total: int = Field(..., description="Total de resultados disponibles")
+
+
+class CabinetClaimsGapResponse(BaseModel):
+    """Respuesta del endpoint de claims gap"""
+    meta: CabinetClaimsGapMeta = Field(..., description="Metadatos de paginación")
+    summary: CabinetClaimsGapSummary = Field(..., description="Resumen de gaps")
+    data: list[CabinetClaimsGapRow] = Field(..., description="Lista de gaps")
