@@ -26,12 +26,19 @@
 CREATE OR REPLACE VIEW ops.v_cabinet_funnel_status AS
 WITH driver_identity AS (
     -- Resolver person_key por driver_id desde identity_links
+    -- EXCLUIR drivers en cuarentena (excepto purged/resolved)
     SELECT DISTINCT ON (il.source_pk)
         il.source_pk AS driver_id,
         il.person_key
     FROM canon.identity_links il
     WHERE il.source_table = 'drivers'
         AND il.source_pk IS NOT NULL
+        -- Excluir drivers en cuarentena activa (quarantined)
+        AND il.source_pk NOT IN (
+            SELECT driver_id 
+            FROM canon.driver_orphan_quarantine 
+            WHERE status = 'quarantined'
+        )
     ORDER BY il.source_pk, il.linked_at DESC
 ),
 driver_origin AS (
@@ -79,6 +86,7 @@ driver_milestones AS (
 ),
 all_drivers AS (
     -- Base: todos los drivers que aparecen en alguna fuente
+    -- EXCLUIR drivers en cuarentena activa (quarantined)
     SELECT DISTINCT driver_id
     FROM (
         SELECT driver_id FROM driver_identity
@@ -89,6 +97,11 @@ all_drivers AS (
         UNION
         SELECT driver_id FROM driver_milestones
     ) combined
+    WHERE driver_id NOT IN (
+        SELECT driver_id 
+        FROM canon.driver_orphan_quarantine 
+        WHERE status = 'quarantined'
+    )
 )
 SELECT 
     ad.driver_id,

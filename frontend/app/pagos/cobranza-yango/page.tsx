@@ -779,7 +779,7 @@ export default function CobranzaYangoPage() {
         ) : identityGaps ? (
           <>
             {/* Cards de métricas */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div className="bg-gray-50 p-4 rounded shadow">
                 <div className="text-sm text-gray-600 mb-1">Total Leads</div>
                 <div className="text-2xl font-bold">{identityGaps.totals.total_leads.toLocaleString()}</div>
@@ -809,6 +809,86 @@ export default function CobranzaYangoPage() {
                     .filter(b => b.risk_level === 'high')
                     .reduce((sum, b) => sum + b.count, 0)
                     .toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            {/* Métricas de Recovery Job */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="bg-blue-50 p-4 rounded shadow border border-blue-200">
+                <div className="text-sm text-blue-700 mb-1">Matched Last 24h</div>
+                <div className="text-2xl font-bold text-blue-700">
+                  {identityGaps.totals.matched_last_24h.toLocaleString()}
+                </div>
+                <div className="text-xs text-blue-600 mt-1">
+                  Leads matcheados por el job
+                </div>
+              </div>
+              <div className={`p-4 rounded shadow border ${
+                identityGaps.totals.job_freshness_hours === null 
+                  ? 'bg-red-50 border-red-200' 
+                  : identityGaps.totals.job_freshness_hours > 24 
+                    ? 'bg-orange-50 border-orange-200' 
+                    : 'bg-green-50 border-green-200'
+              }`}>
+                <div className={`text-sm mb-1 ${
+                  identityGaps.totals.job_freshness_hours === null 
+                    ? 'text-red-700' 
+                    : identityGaps.totals.job_freshness_hours > 24 
+                      ? 'text-orange-700' 
+                      : 'text-green-700'
+                }`}>
+                  Job Freshness
+                </div>
+                <div className={`text-2xl font-bold ${
+                  identityGaps.totals.job_freshness_hours === null 
+                    ? 'text-red-700' 
+                    : identityGaps.totals.job_freshness_hours > 24 
+                      ? 'text-orange-700' 
+                      : 'text-green-700'
+                }`}>
+                  {identityGaps.totals.job_freshness_hours === null 
+                    ? 'NUNCA' 
+                    : `${identityGaps.totals.job_freshness_hours.toFixed(1)}h`}
+                </div>
+                <div className={`text-xs mt-1 ${
+                  identityGaps.totals.job_freshness_hours === null 
+                    ? 'text-red-600' 
+                    : identityGaps.totals.job_freshness_hours > 24 
+                      ? 'text-orange-600' 
+                      : 'text-green-600'
+                }`}>
+                  {identityGaps.totals.job_freshness_hours === null 
+                    ? 'Job nunca ha corrido' 
+                    : identityGaps.totals.job_freshness_hours > 24 
+                      ? '⚠️ STALE (>24h)' 
+                      : '✅ OK (<24h)'}
+                </div>
+                {identityGaps.totals.last_job_run && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    {new Date(identityGaps.totals.last_job_run).toLocaleString('es-ES')}
+                  </div>
+                )}
+              </div>
+              <div className="bg-purple-50 p-4 rounded shadow border border-purple-200">
+                <div className="text-sm text-purple-700 mb-1">Estado del Recovery</div>
+                <div className="text-lg font-bold text-purple-700">
+                  {identityGaps.totals.matched_last_24h > 0 
+                    ? '✅ ACTIVO' 
+                    : identityGaps.totals.job_freshness_hours === null 
+                      ? '❌ NO CONFIGURADO' 
+                      : identityGaps.totals.unresolved > 0 
+                        ? '⚠️ SIN SEÑAL' 
+                        : '✅ COMPLETO'}
+                </div>
+                <div className="text-xs text-purple-600 mt-1">
+                  {identityGaps.totals.matched_last_24h > 0 
+                    ? 'Job está procesando y matcheando' 
+                    : identityGaps.totals.job_freshness_hours === null 
+                      ? 'Configurar scheduler (ver runbook)' 
+                      : identityGaps.totals.unresolved > 0 
+                        ? 'Job corre pero no encuentra matches' 
+                        : 'Todos los leads están resueltos'}
                 </div>
               </div>
             </div>

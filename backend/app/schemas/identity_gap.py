@@ -3,7 +3,7 @@ Schemas para Identity Gap & Recovery
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 
 
@@ -14,9 +14,8 @@ class IdentityGapRow(BaseModel):
     person_key: Optional[UUID] = Field(None, description="Person key asignado (NULL si no tiene identidad)")
     has_identity: bool = Field(..., description="TRUE si tiene person_key asignado")
     has_origin: bool = Field(..., description="TRUE si tiene registro en canon.identity_origin")
-    has_driver_activity: bool = Field(..., description="TRUE si tiene actividad en summary_daily")
     trips_14d: int = Field(..., description="Total de viajes completados dentro de la ventana de 14 días")
-    gap_reason: str = Field(..., description="Razón de la brecha: no_identity, no_origin, activity_without_identity, no_activity, resolved")
+    gap_reason: str = Field(..., description="Razón de la brecha: no_identity, no_origin, inconsistent_origin, resolved")
     gap_age_days: int = Field(..., description="Días desde lead_date hasta hoy")
     risk_level: str = Field(..., description="Nivel de riesgo: high, medium, low")
 
@@ -27,6 +26,9 @@ class IdentityGapTotals(BaseModel):
     unresolved: int = Field(..., description="Total de leads unresolved")
     resolved: int = Field(..., description="Total de leads resolved")
     pct_unresolved: float = Field(..., description="Porcentaje de leads unresolved")
+    matched_last_24h: int = Field(0, description="Leads matcheados en últimas 24h")
+    last_job_run: Optional[str] = Field(None, description="Último run del job (ISO datetime)")
+    job_freshness_hours: Optional[float] = Field(None, description="Horas desde último run (None si nunca corrió)")
 
 
 class IdentityGapBreakdown(BaseModel):

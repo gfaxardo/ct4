@@ -77,78 +77,84 @@ class AlertImpact(str, enum.Enum):
     NONE = "none"
 
 
-class OrphanStatus(str, enum.Enum):
-    QUARANTINED = "quarantined"
-    RESOLVED_RELINKED = "resolved_relinked"
-
-
-class OrphanStatusEnum(TypeDecorator):
-    """TypeDecorator para mapear OrphanStatus a valores en minúsculas en PostgreSQL."""
-
-    impl = ENUM
-    cache_ok = True
-
-    def __init__(self):
-        # Usar el enum existente en la DB (orphanstatus) sin recrearlo
-        super().__init__(
-            "quarantined",
-            "resolved_relinked",
-            name="orphanstatus",
-            create_type=False,
-            native_enum=False,
-        )
-
-    def process_bind_param(self, value, dialect):
-        if value is None:
-            return None
-        if isinstance(value, OrphanStatus):
-            return value.value
-        return str(value)
-
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return None
-        try:
-            return OrphanStatus(value)
-        except ValueError:
-            return value
-
-
 class OrphanDetectedReason(str, enum.Enum):
     NO_LEAD_NO_EVENTS = "no_lead_no_events"
     NO_LEAD_HAS_EVENTS_REPAIR_FAILED = "no_lead_has_events_repair_failed"
+    LEGACY_DRIVER_WITHOUT_ORIGIN = "legacy_driver_without_origin"
+    MANUAL_DETECTION = "manual_detection"
+
+
+class OrphanStatus(str, enum.Enum):
+    QUARANTINED = "quarantined"
+    RESOLVED_RELINKED = "resolved_relinked"
+    RESOLVED_CREATED_LEAD = "resolved_created_lead"
+    PURGED = "purged"
 
 
 class OrphanDetectedReasonEnum(TypeDecorator):
-    """TypeDecorator para mapear OrphanDetectedReason a valores en minúsculas en PostgreSQL."""
-
+    """TypeDecorator para manejar OrphanDetectedReason enum correctamente"""
     impl = ENUM
     cache_ok = True
-
+    
     def __init__(self):
-        # Usar el enum existente en la DB (no crear) con valores en minúsculas
         super().__init__(
-            "no_lead_no_events",
-            "no_lead_has_events_repair_failed",
-            name="orphan_detected_reason",
-            create_type=False,
-            native_enum=False,
+            'no_lead_no_events', 
+            'no_lead_has_events_repair_failed', 
+            'legacy_driver_without_origin', 
+            'manual_detection', 
+            name='orphan_detected_reason', 
+            create_type=False
         )
-
+    
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
         if isinstance(value, OrphanDetectedReason):
             return value.value
-        return str(value)
-
+        return value
+    
     def process_result_value(self, value, dialect):
         if value is None:
             return None
-        try:
-            return OrphanDetectedReason(value)
-        except ValueError:
-            return value
+        if isinstance(value, str):
+            try:
+                return OrphanDetectedReason(value)
+            except ValueError:
+                return value
+        return value
+
+
+class OrphanStatusEnum(TypeDecorator):
+    """TypeDecorator para manejar OrphanStatus enum correctamente"""
+    impl = ENUM
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(
+            'quarantined',
+            'resolved_relinked',
+            'resolved_created_lead',
+            'purged',
+            name='orphan_status',
+            create_type=False
+        )
+    
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, OrphanStatus):
+            return value.value
+        return value
+    
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return OrphanStatus(value)
+            except ValueError:
+                return value
+        return value
 
 
 class IdentityRegistry(Base):
@@ -270,12 +276,12 @@ class DriverOrphanQuarantine(Base):
     __table_args__ = {"schema": "canon"}
 
     driver_id = Column(String, primary_key=True)
-    person_key = Column(PGUUID(as_uuid=True), ForeignKey("canon.identity_registry.person_key"), nullable=True)
+    person_key = Column(PGUUID(as_uuid=True), ForeignKey("canon.identity_registry.person_key", ondelete="SET NULL"), nullable=True)
     detected_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     detected_reason = Column(OrphanDetectedReasonEnum(), nullable=False)
     creation_rule = Column(String, nullable=True)
     evidence_json = Column(JSONB, nullable=True)
-    status = Column(OrphanStatusEnum(), nullable=False, server_default=OrphanStatus.QUARANTINED.value)
+    status = Column(OrphanStatusEnum(), server_default='quarantined', nullable=False)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     resolution_notes = Column(Text, nullable=True)
 

@@ -215,3 +215,5 @@ Los KPIs "sin Claim" se muestran con fondo amarillo (variant="warning") para ind
 
 
 
+
+

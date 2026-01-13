@@ -185,6 +185,8 @@ SELECT
         THEN TO_CHAR(m.lead_date, 'IYYY-IW')
         ELSE NULL
     END AS iso_week,
+    -- week_start: inicio de semana ISO (lunes)
+    DATE_TRUNC('week', m.lead_date)::date AS week_start,
     -- 2) connected_flag y connected_date
     (m.first_connection_date IS NOT NULL) AS connected_flag,
     m.first_connection_date AS connected_date,
@@ -235,6 +237,9 @@ COMMENT ON COLUMN ops.v_cabinet_financial_14d.lead_date IS
 
 COMMENT ON COLUMN ops.v_cabinet_financial_14d.iso_week IS 
 'Semana ISO en formato YYYY-WW calculada desde lead_date. NULL si lead_date es NULL.';
+
+COMMENT ON COLUMN ops.v_cabinet_financial_14d.week_start IS 
+'Inicio de semana ISO (lunes) calculado desde lead_date usando DATE_TRUNC(''week'', lead_date)::date. NULL si lead_date es NULL.';
 
 COMMENT ON COLUMN ops.v_cabinet_financial_14d.connected_flag IS 
 'Flag indicando si el driver se conectó (first_connection_date IS NOT NULL). Fuente: observational.v_conversion_metrics.';

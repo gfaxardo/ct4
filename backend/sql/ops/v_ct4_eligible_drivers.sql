@@ -37,6 +37,7 @@
 CREATE OR REPLACE VIEW ops.v_ct4_eligible_drivers AS
 WITH conversion_metrics_base AS (
     -- Fuente canónica de origin_tag: observational.v_conversion_metrics
+    -- EXCLUIR drivers en cuarentena activa (quarantined)
     SELECT DISTINCT
         cm.person_key,
         cm.origin_tag,
@@ -45,9 +46,15 @@ WITH conversion_metrics_base AS (
     FROM observational.v_conversion_metrics cm
     WHERE cm.origin_tag IN ('cabinet', 'fleet_migration')
         AND cm.driver_id IS NOT NULL
+        AND cm.driver_id NOT IN (
+            SELECT driver_id 
+            FROM canon.driver_orphan_quarantine 
+            WHERE status = 'quarantined'
+        )
 ),
 identity_links_info AS (
     -- Información de identidad desde canon.identity_links (source_table='drivers')
+    -- EXCLUIR drivers en cuarentena activa (quarantined)
     SELECT 
         il.person_key,
         il.source_pk AS driver_id,
@@ -58,6 +65,11 @@ identity_links_info AS (
         MAX(il.linked_at) AS latest_linked_at
     FROM canon.identity_links il
     WHERE il.source_table = 'drivers'
+        AND il.source_pk NOT IN (
+            SELECT driver_id 
+            FROM canon.driver_orphan_quarantine 
+            WHERE status = 'quarantined'
+        )
     GROUP BY il.person_key, il.source_pk, il.confidence_level, il.match_rule, il.match_score
 ),
 ledger_identity_status AS (

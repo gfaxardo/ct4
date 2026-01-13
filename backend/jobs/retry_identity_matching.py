@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Configuración
 MAX_ATTEMPTS = 5
-BATCH_SIZE = 100
+BATCH_SIZE = 500  # Procesar en lotes de 500
 DEFAULT_CONFIDENCE = 95.0
 
 
@@ -62,30 +62,72 @@ class IdentityMatchingRetryJob:
         }
         
         try:
-            # Obtener leads unresolved de la vista
-            leads = self._get_unresolved_leads(limit, date_from, date_to, gap_reason, risk_level)
-            logger.info(f"Encontrados {len(leads)} leads unresolved para procesar")
+            start_time = datetime.utcnow()
             
-            for lead in leads:
-                try:
-                    result = self._process_lead(lead)
-                    stats["processed"] += 1
-                    
-                    if result["status"] == "matched":
-                        stats["matched"] += 1
-                    elif result["status"] == "failed":
-                        stats["failed"] += 1
-                    elif result["status"] == "pending":
-                        stats["pending"] += 1
-                    else:
-                        stats["skipped"] += 1
+            # Obtener leads unresolved de la vista (sin limit para procesar en batches)
+            all_leads = self._get_unresolved_leads(None, date_from, date_to, gap_reason, risk_level)
+            total_leads = len(all_leads)
+            
+            if limit:
+                all_leads = all_leads[:limit]
+                total_leads = min(len(all_leads), limit)
+            
+            logger.info(f"Encontrados {total_leads} leads unresolved para procesar (batch_size={BATCH_SIZE})")
+            
+            # Procesar en batches
+            for batch_start in range(0, len(all_leads), BATCH_SIZE):
+                batch_end = min(batch_start + BATCH_SIZE, len(all_leads))
+                batch = all_leads[batch_start:batch_end]
+                batch_num = (batch_start // BATCH_SIZE) + 1
+                total_batches = (len(all_leads) + BATCH_SIZE - 1) // BATCH_SIZE
+                
+                logger.info(f"Procesando batch {batch_num}/{total_batches} ({len(batch)} leads)")
+                
+                batch_stats = {
+                    "matched": 0,
+                    "failed": 0,
+                    "pending": 0,
+                    "skipped": 0,
+                    "errors": []
+                }
+                
+                for lead in batch:
+                    try:
+                        result = self._process_lead(lead)
+                        stats["processed"] += 1
                         
+                        if result["status"] == "matched":
+                            stats["matched"] += 1
+                            batch_stats["matched"] += 1
+                        elif result["status"] == "failed":
+                            stats["failed"] += 1
+                            batch_stats["failed"] += 1
+                        elif result["status"] == "pending":
+                            stats["pending"] += 1
+                            batch_stats["pending"] += 1
+                        else:
+                            stats["skipped"] += 1
+                            batch_stats["skipped"] += 1
+                            
+                    except Exception as e:
+                        logger.error(f"Error procesando lead {lead.get('lead_id')}: {e}", exc_info=True)
+                        error_msg = f"Lead {lead.get('lead_id')}: {str(e)}"
+                        stats["errors"].append(error_msg)
+                        batch_stats["errors"].append(error_msg)
+                        stats["processed"] += 1
+                
+                # Commit después de cada batch
+                try:
+                    self.db.commit()
+                    logger.info(f"Batch {batch_num} completado: matched={batch_stats['matched']}, failed={batch_stats['failed']}, pending={batch_stats['pending']}, skipped={batch_stats['skipped']}")
                 except Exception as e:
-                    logger.error(f"Error procesando lead {lead.get('lead_id')}: {e}", exc_info=True)
-                    stats["errors"].append(f"Lead {lead.get('lead_id')}: {str(e)}")
-                    stats["processed"] += 1
+                    logger.error(f"Error en commit del batch {batch_num}: {e}", exc_info=True)
+                    self.db.rollback()
+                    stats["errors"].append(f"Batch {batch_num} commit error: {str(e)}")
             
-            logger.info(f"Job completado: {stats}")
+            elapsed = (datetime.utcnow() - start_time).total_seconds()
+            logger.info(f"Job completado en {elapsed:.1f}s: processed={stats['processed']}, matched={stats['matched']}, failed={stats['failed']}, pending={stats['pending']}, skipped={stats['skipped']}")
+            stats["elapsed_seconds"] = round(elapsed, 2)
             return stats
             
         except Exception as e:
@@ -156,8 +198,10 @@ class IdentityMatchingRetryJob:
         ]
     
     def _process_lead(self, lead: Dict[str, Any]) -> Dict[str, Any]:
-        """Procesa un lead individual: crea/actualiza job y intenta matching"""
+        """Procesa un lead individual: crea/actualiza job y intenta matching o crea origin"""
         lead_id = lead["lead_id"]
+        gap_reason = lead.get("gap_reason")
+        person_key_existing = lead.get("person_key")
         
         # Asegurar existencia de job (upsert)
         job = self.db.query(IdentityMatchingJob).filter(
@@ -183,7 +227,45 @@ class IdentityMatchingRetryJob:
         if job.status == "failed" and job.attempt_count >= MAX_ATTEMPTS:
             return {"status": "skipped", "reason": "max_attempts_reached"}
         
-        # Intentar matching
+        # CASO ESPECIAL: Si gap_reason es 'no_origin' y ya tiene person_key, crear origin directamente
+        if gap_reason == "no_origin" and person_key_existing:
+            try:
+                from uuid import UUID
+                person_key_uuid = UUID(str(person_key_existing))
+                
+                # Obtener datos del lead
+                lead_data = self._get_lead_data(lead_id)
+                if not lead_data:
+                    job.status = "failed"
+                    job.fail_reason = "lead_not_found"
+                    self.db.flush()
+                    return {"status": "failed", "reason": "lead_not_found"}
+                
+                # Crear/actualizar identity_origin directamente
+                self._ensure_identity_origin(lead_id, person_key_uuid, lead_data)
+                
+                # Actualizar job
+                job.status = "matched"
+                job.matched_person_key = person_key_uuid
+                job.fail_reason = None
+                job.attempt_count += 1
+                job.last_attempt_at = datetime.utcnow()
+                self.db.flush()
+                
+                logger.info(f"Lead {lead_id} origin creado para person_key existente {person_key_uuid}")
+                return {"status": "matched", "person_key": str(person_key_uuid), "action": "created_origin"}
+            
+            except Exception as e:
+                logger.error(f"Error creando origin para lead {lead_id}: {e}", exc_info=True)
+                self.db.rollback()
+                job.status = "pending" if job.attempt_count < MAX_ATTEMPTS else "failed"
+                job.fail_reason = f"error_creating_origin: {str(e)}"
+                job.attempt_count += 1
+                job.last_attempt_at = datetime.utcnow()
+                self.db.flush()
+                return {"status": job.status, "reason": "error_creating_origin"}
+        
+        # CASO NORMAL: Intentar matching (gap_reason == 'no_identity' o 'inconsistent_origin')
         job.attempt_count += 1
         job.last_attempt_at = datetime.utcnow()
         
@@ -193,7 +275,7 @@ class IdentityMatchingRetryJob:
             if not lead_data:
                 job.status = "failed"
                 job.fail_reason = "lead_not_found"
-                self.db.commit()
+                self.db.flush()  # Cambiar a flush (commit se hace por batch)
                 return {"status": "failed", "reason": "lead_not_found"}
             
             # Crear candidate para matching
@@ -216,10 +298,10 @@ class IdentityMatchingRetryJob:
                 job.status = "matched"
                 job.matched_person_key = person_key
                 job.fail_reason = None
-                self.db.commit()
+                self.db.flush()  # Cambiar a flush (commit se hace por batch)
                 
                 logger.info(f"Lead {lead_id} matcheado exitosamente a person_key {person_key}")
-                return {"status": "matched", "person_key": str(person_key)}
+                return {"status": "matched", "person_key": str(person_key), "action": "matched_and_linked"}
             else:
                 # Matching falló
                 fail_reason = match_result.reason_code or "no_match_found"
@@ -230,7 +312,7 @@ class IdentityMatchingRetryJob:
                     job.status = "pending"
                 
                 job.fail_reason = fail_reason
-                self.db.commit()
+                self.db.flush()  # Cambiar a flush (commit se hace por batch)
                 
                 logger.debug(f"Lead {lead_id} no matcheado (intento {job.attempt_count}): {fail_reason}")
                 return {"status": "pending" if job.status == "pending" else "failed", "reason": fail_reason}
@@ -240,7 +322,7 @@ class IdentityMatchingRetryJob:
             self.db.rollback()  # Rollback en caso de error
             job.status = "pending" if job.attempt_count < MAX_ATTEMPTS else "failed"
             job.fail_reason = f"error: {str(e)}"
-            self.db.commit()
+            self.db.flush()  # Cambiar a flush (commit se hace por batch)
             return {"status": job.status, "reason": "error"}
     
     def _get_lead_data(self, lead_id: str) -> Optional[Dict[str, Any]]:
@@ -355,9 +437,15 @@ class IdentityMatchingRetryJob:
         lead_data: Dict[str, Any]
     ):
         """Asegura que existe identity_origin para el person_key"""
-        existing_origin = self.db.query(IdentityOrigin).filter(
-            IdentityOrigin.person_key == person_key
-        ).first()
+        # Usar SQL directo para evitar problemas con enum
+        check_query = text("""
+            SELECT person_key, origin_tag, origin_source_id
+            FROM canon.identity_origin
+            WHERE person_key = :person_key
+            LIMIT 1
+        """)
+        result = self.db.execute(check_query, {"person_key": str(person_key)})
+        existing_origin = result.fetchone()
         
         if not existing_origin:
             origin_created_at = lead_data.get("lead_created_at")
@@ -366,7 +454,6 @@ class IdentityMatchingRetryJob:
                 origin_created_at = datetime.fromisoformat(origin_created_at.replace('Z', '+00:00'))
             
             # Workaround: usar SQL directo porque SQLAlchemy está enviando el nombre del enum en lugar del valor
-            from sqlalchemy import text
             origin_created_at_val = origin_created_at or datetime.utcnow()
             self.db.execute(text("""
                 INSERT INTO canon.identity_origin 
@@ -383,13 +470,24 @@ class IdentityMatchingRetryJob:
                 "origin_confidence": DEFAULT_CONFIDENCE,
                 "origin_created_at": origin_created_at_val
             })
-            self.db.commit()
+            self.db.flush()  # Cambiar a flush (commit se hace por batch)
         else:
-            # Si ya existe pero no es cabinet_lead, actualizar
-            if existing_origin.origin_tag != OriginTag.CABINET_LEAD:
-                existing_origin.origin_tag = OriginTag.CABINET_LEAD
-                existing_origin.origin_source_id = lead_id
-                existing_origin.resolution_status = OriginResolutionStatus.RESOLVED_AUTO
+            # Si ya existe pero no es cabinet_lead o source_id es diferente, actualizar
+            origin_tag_val = existing_origin.origin_tag if hasattr(existing_origin, 'origin_tag') else existing_origin[1]
+            origin_source_id_val = existing_origin.origin_source_id if hasattr(existing_origin, 'origin_source_id') else existing_origin[2]
+            
+            if origin_tag_val != 'cabinet_lead' or origin_source_id_val != lead_id:
+                self.db.execute(text("""
+                    UPDATE canon.identity_origin
+                    SET origin_tag = 'cabinet_lead',
+                        origin_source_id = :origin_source_id,
+                        resolution_status = 'resolved_auto',
+                        updated_at = NOW()
+                    WHERE person_key = :person_key
+                """), {
+                    "person_key": str(person_key),
+                    "origin_source_id": lead_id
+                })
                 self.db.flush()
 
 

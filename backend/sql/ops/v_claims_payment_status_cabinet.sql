@@ -34,6 +34,12 @@
 -- Esto asegura que M1, M5 y M25 se generen correctamente cuando están achieved dentro
 -- de la ventana de 14 días.
 -- ============================================================================
+-- FIX BUG CLAIMS FALTANTES (2026-01-XX):
+-- PROBLEMA: payment_calc_agg tomaba solo lead_date más reciente sin verificar si
+-- el milestone se alcanzó dentro de ventana 14d de esa lead_date.
+-- SOLUCIÓN: Usar directamente v_payment_calculation filtrando por ventana 14d,
+-- luego hacer DISTINCT ON para quedarse con lead_date más reciente de las válidas.
+-- ============================================================================
 
 CREATE OR REPLACE VIEW ops.v_claims_payment_status_cabinet AS
 WITH milestone_amounts AS (
@@ -42,47 +48,56 @@ WITH milestone_amounts AS (
     UNION ALL SELECT 5, 35::numeric(12,2)
     UNION ALL SELECT 25, 100::numeric(12,2)
 ),
-payment_calc_agg AS (
-    -- Agregado canónico de v_payment_calculation por (driver_id, milestone_trips)
-    -- Evita duplicados cuando hay múltiples reglas activas para el mismo milestone
-    SELECT DISTINCT ON (driver_id, milestone_trips)
+milestones_achieved AS (
+    -- Obtener milestones achieved desde vista canónica
+    SELECT
         driver_id,
-        person_key,
-        lead_date,
-        milestone_trips,
-        milestone_achieved,
+        milestone_value,
+        achieved_flag,
         achieved_date
-    FROM ops.v_payment_calculation
-    WHERE origin_tag = 'cabinet'
-        AND rule_scope = 'partner'  -- Solo Yango (partner), no scouts
-        AND milestone_trips IN (1, 5, 25)
+    FROM ops.v_cabinet_milestones_achieved_from_payment_calc
+    WHERE achieved_flag = true
+        AND milestone_value IN (1, 5, 25)
         AND driver_id IS NOT NULL
-        AND milestone_achieved = true  -- Solo milestones alcanzados (dentro de ventana)
-    ORDER BY driver_id, milestone_trips, lead_date DESC, achieved_date ASC
+),
+payment_calc_with_window AS (
+    -- Obtener TODAS las combinaciones (driver_id, milestone_trips, lead_date) desde v_payment_calculation
+    -- donde milestone_achieved=true y achieved_date está dentro de ventana 14d
+    SELECT
+        pc.driver_id,
+        pc.person_key,
+        pc.lead_date,
+        pc.milestone_trips,
+        pc.achieved_date
+    FROM ops.v_payment_calculation pc
+    WHERE pc.origin_tag = 'cabinet'
+        AND pc.rule_scope = 'partner'  -- Solo Yango (partner), no scouts
+        AND pc.milestone_trips IN (1, 5, 25)
+        AND pc.driver_id IS NOT NULL
+        AND pc.milestone_achieved = true  -- Solo milestones alcanzados
+        -- Ventana de 14 días: achieved_date debe estar dentro de lead_date + 14 días
+        AND pc.achieved_date::date <= (pc.lead_date + INTERVAL '14 days')::date
+        AND pc.achieved_date::date >= pc.lead_date
 ),
 base_claims_raw AS (
-    -- Fuente core: ops.v_cabinet_milestones_achieved_from_payment_calc (vista canónica)
-    -- Filtra solo claims de Yango (partner) para cabinet con milestones 1, 5, 25
+    -- Unir milestones achieved con payment_calc filtrando por ventana 14d
     -- REGLA CANÓNICA: Solo generar claim si existe milestone achieved dentro de ventana de 14 días
     SELECT 
         m.driver_id,
-        pc_agg.person_key,
-        pc_agg.lead_date,
+        pc.person_key,
+        pc.lead_date,
         m.milestone_value,
         -- Aplicar reglas de negocio para expected_amount desde catálogo
         ma.expected_amount
-    FROM ops.v_cabinet_milestones_achieved_from_payment_calc m
-    INNER JOIN payment_calc_agg pc_agg
-        ON pc_agg.driver_id = m.driver_id
-        AND pc_agg.milestone_trips = m.milestone_value
+    FROM milestones_achieved m
+    INNER JOIN payment_calc_with_window pc
+        ON pc.driver_id = m.driver_id
+        AND pc.milestone_trips = m.milestone_value
+        -- Verificar que achieved_date está dentro de ventana 14d de esta lead_date
+        AND m.achieved_date::date <= (pc.lead_date + INTERVAL '14 days')::date
+        AND m.achieved_date::date >= pc.lead_date
     INNER JOIN milestone_amounts ma
         ON ma.milestone_value = m.milestone_value
-    WHERE m.achieved_flag = true
-        AND m.milestone_value IN (1, 5, 25)
-        AND m.driver_id IS NOT NULL
-        -- Ventana de 14 días: achieved_date debe estar dentro de lead_date + 14 días
-        AND m.achieved_date::date <= (pc_agg.lead_date + INTERVAL '14 days')::date
-        AND m.achieved_date::date >= pc_agg.lead_date
 ),
 base_claims_dedup AS (
     -- Deduplicación: 1 fila por (driver_id + milestone_value), quedarse con lead_date más reciente

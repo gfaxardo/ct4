@@ -221,3 +221,5 @@ SELECT
      )) AS scouting_daily_with_lead_ledger_scout;
 
 
+
+

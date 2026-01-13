@@ -118,3 +118,4 @@ Los drivers en cuarentena son mayoritariamente legacy sin respaldo de eventos. L
 El sistema está implementado y funcionando correctamente. Los drivers en cuarentena están correctamente aislados y el sistema puede detectar y relinkear aquellos que tienen evidencia fuerte de matches con lead_events.
 
 
+

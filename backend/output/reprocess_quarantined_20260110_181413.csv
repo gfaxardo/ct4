@@ -1,0 +1,1 @@
+driver_id,person_key,creation_rule,previous_status,lead_events_count,matched_event_count,match_strategy,action,status,detected_driver_id_path,matched_source_table,matched_event_sample_ids,normalized_event_license,normalized_event_phone,error

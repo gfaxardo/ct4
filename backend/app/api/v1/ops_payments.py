@@ -27,6 +27,10 @@ from app.schemas.cabinet_financial import (
     WeeklyKpiRow,
     WeeklyKpisResponse
 )
+from app.schemas.kpi_red_recovery import (
+    KpiRedRecoveryMetricsResponse,
+    KpiRedRecoveryMetricsDaily,
+)
 from functools import lru_cache
 from time import time
 from typing import Dict, Tuple
@@ -474,7 +478,7 @@ def get_cabinet_financial_14d(
                     person_key
                 FROM {view_name}
                 WHERE {where_clause}
-                ORDER BY lead_date DESC NULLS LAST, driver_id
+                ORDER BY week_start DESC NULLS LAST, lead_date DESC NULLS LAST, driver_id
                 LIMIT :limit OFFSET :offset
             """
         else:
@@ -485,7 +489,7 @@ def get_cabinet_financial_14d(
                     cf.driver_name,
                     cf.lead_date,
                     cf.iso_week,
-                    DATE_TRUNC('week', cf.lead_date)::date AS week_start,
+                    COALESCE(cf.week_start, DATE_TRUNC('week', cf.lead_date)::date) AS week_start,
                     cf.connected_flag,
                     cf.connected_date,
                     cf.total_trips_14d,
@@ -540,7 +544,7 @@ def get_cabinet_financial_14d(
                     LIMIT 1
                 ) scout ON true
                 WHERE {where_clause}
-                ORDER BY cf.lead_date DESC NULLS LAST, cf.driver_id
+                ORDER BY COALESCE(cf.week_start, DATE_TRUNC('week', cf.lead_date)::date) DESC NULLS LAST, cf.lead_date DESC NULLS LAST, cf.driver_id
                 LIMIT :limit OFFSET :offset
             """
         
@@ -1800,5 +1804,228 @@ def get_funnel_gap_metrics(
         raise HTTPException(
             status_code=500,
             detail=f"Error calculando métricas del gap: {str(e)[:200]}"
+        )
+
+
+@router.get("/cabinet-financial-14d/kpi-red-recovery-metrics", response_model=KpiRedRecoveryMetricsResponse)
+def get_kpi_red_recovery_metrics(
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene métricas de recovery del KPI rojo.
+    
+    Retorna:
+    - today: Métricas de hoy
+    - yesterday: Métricas de ayer
+    - last_7_days: Métricas de los últimos 7 días
+    - current_backlog: Backlog actual del KPI rojo
+    """
+    try:
+        # Obtener backlog actual
+        backlog_query = text("""
+            SELECT COUNT(*) AS count
+            FROM ops.v_cabinet_kpi_red_backlog
+        """)
+        backlog_result = db.execute(backlog_query)
+        current_backlog = backlog_result.scalar() or 0
+        
+        # Obtener métricas diarias
+        metrics_query = text("""
+            SELECT 
+                metric_date,
+                backlog_start,
+                new_backlog_in,
+                matched_out,
+                backlog_end,
+                net_change,
+                top_fail_reason
+            FROM ops.v_cabinet_kpi_red_recovery_metrics_daily
+            WHERE metric_date >= CURRENT_DATE - INTERVAL '7 days'
+            ORDER BY metric_date DESC
+        """)
+        metrics_result = db.execute(metrics_query)
+        metrics_rows = metrics_result.fetchall()
+        
+        # Separar métricas por día
+        today_metrics = None
+        yesterday_metrics = None
+        last_7_days = []
+        
+        from datetime import date
+        today = date.today()
+        yesterday = date.fromordinal(today.toordinal() - 1)
+        
+        for row in metrics_rows:
+            metric_date = row.metric_date
+            metric_dict = {
+                "metric_date": metric_date,
+                "backlog_start": row.backlog_start or 0,
+                "new_backlog_in": row.new_backlog_in or 0,
+                "matched_out": row.matched_out or 0,
+                "backlog_end": row.backlog_end or 0,
+                "net_change": row.net_change or 0,
+                "top_fail_reason": row.top_fail_reason
+            }
+            
+            if metric_date == today:
+                today_metrics = KpiRedRecoveryMetricsDaily(**metric_dict)
+            elif metric_date == yesterday:
+                yesterday_metrics = KpiRedRecoveryMetricsDaily(**metric_dict)
+            
+            if metric_date >= date.fromordinal(today.toordinal() - 7):
+                last_7_days.append(KpiRedRecoveryMetricsDaily(**metric_dict))
+        
+        return KpiRedRecoveryMetricsResponse(
+            today=today_metrics,
+            yesterday=yesterday_metrics,
+            last_7_days=last_7_days,
+            current_backlog=current_backlog
+        )
+        
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error calculando métricas de recovery del KPI rojo: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error calculando métricas de recovery: {str(e)[:200]}"
+        )
+
+
+@router.get("/cabinet-financial-14d/claims-audit-summary")
+def get_claims_audit_summary(
+    db: Session = Depends(get_db),
+    limit: int = Query(10, ge=1, le=100, description="Límite de casos a mostrar")
+):
+    """
+    Obtiene resumen de auditoría de claims: compara "debería tener claim" (C2) 
+    vs "tiene claim" (C3) para detectar drivers elegibles sin claims generados.
+    
+    Retorna:
+    - summary: Conteos generales de missing claims
+    - root_causes: Top root causes encontrados
+    - sample_cases: Casos de ejemplo de drivers con claims faltantes
+    """
+    try:
+        # Resumen general
+        summary_query = text("""
+            SELECT 
+                COUNT(*) AS total_drivers_elegibles,
+                COUNT(*) FILTER (WHERE should_have_claim_m1 = true) AS total_should_have_m1,
+                COUNT(*) FILTER (WHERE has_claim_m1 = true) AS total_has_m1,
+                COUNT(*) FILTER (WHERE should_have_claim_m1 = true AND has_claim_m1 = false) AS missing_m1,
+                COUNT(*) FILTER (WHERE should_have_claim_m5 = true) AS total_should_have_m5,
+                COUNT(*) FILTER (WHERE has_claim_m5 = true) AS total_has_m5,
+                COUNT(*) FILTER (WHERE should_have_claim_m5 = true AND has_claim_m5 = false) AS missing_m5,
+                COUNT(*) FILTER (WHERE should_have_claim_m25 = true) AS total_should_have_m25,
+                COUNT(*) FILTER (WHERE has_claim_m25 = true) AS total_has_m25,
+                COUNT(*) FILTER (WHERE should_have_claim_m25 = true AND has_claim_m25 = false) AS missing_m25
+            FROM ops.v_cabinet_claims_audit_14d
+        """)
+        summary_result = db.execute(summary_query)
+        summary_row = summary_result.fetchone()
+        
+        summary = {
+            "total_drivers_elegibles": summary_row.total_drivers_elegibles or 0,
+            "m1": {
+                "should_have": summary_row.total_should_have_m1 or 0,
+                "has": summary_row.total_has_m1 or 0,
+                "missing": summary_row.missing_m1 or 0
+            },
+            "m5": {
+                "should_have": summary_row.total_should_have_m5 or 0,
+                "has": summary_row.total_has_m5 or 0,
+                "missing": summary_row.missing_m5 or 0
+            },
+            "m25": {
+                "should_have": summary_row.total_should_have_m25 or 0,
+                "has": summary_row.total_has_m25 or 0,
+                "missing": summary_row.missing_m25 or 0
+            }
+        }
+        
+        # Root causes
+        root_causes_query = text("""
+            SELECT 
+                root_cause,
+                COUNT(*) AS count,
+                COUNT(*) FILTER (WHERE missing_claim_bucket = 'M1_MISSING') AS m1_missing,
+                COUNT(*) FILTER (WHERE missing_claim_bucket = 'M5_MISSING') AS m5_missing,
+                COUNT(*) FILTER (WHERE missing_claim_bucket = 'M25_MISSING') AS m25_missing,
+                COUNT(*) FILTER (WHERE missing_claim_bucket = 'MULTIPLE_MISSING') AS multiple_missing
+            FROM ops.v_cabinet_claims_audit_14d
+            WHERE missing_claim_bucket != 'NONE'
+            GROUP BY root_cause
+            ORDER BY count DESC
+        """)
+        root_causes_result = db.execute(root_causes_query)
+        root_causes = []
+        for row in root_causes_result:
+            root_causes.append({
+                "root_cause": row.root_cause,
+                "count": row.count,
+                "m1_missing": row.m1_missing or 0,
+                "m5_missing": row.m5_missing or 0,
+                "m25_missing": row.m25_missing or 0,
+                "multiple_missing": row.multiple_missing or 0
+            })
+        
+        # Casos de ejemplo
+        sample_cases_query = text("""
+            SELECT 
+                driver_id,
+                person_key,
+                lead_date,
+                window_end_14d,
+                trips_in_14d,
+                should_have_claim_m1,
+                has_claim_m1,
+                should_have_claim_m5,
+                has_claim_m5,
+                should_have_claim_m25,
+                has_claim_m25,
+                missing_claim_bucket,
+                root_cause
+            FROM ops.v_cabinet_claims_audit_14d
+            WHERE missing_claim_bucket != 'NONE'
+            ORDER BY lead_date DESC
+            LIMIT :limit
+        """)
+        sample_cases_result = db.execute(sample_cases_query, {"limit": limit})
+        sample_cases = []
+        for row in sample_cases_result:
+            sample_cases.append({
+                "driver_id": row.driver_id,
+                "person_key": str(row.person_key) if row.person_key else None,
+                "lead_date": row.lead_date.isoformat() if row.lead_date else None,
+                "window_end_14d": row.window_end_14d.isoformat() if row.window_end_14d else None,
+                "trips_in_14d": row.trips_in_14d or 0,
+                "should_have_claim_m1": row.should_have_claim_m1,
+                "has_claim_m1": row.has_claim_m1,
+                "should_have_claim_m5": row.should_have_claim_m5,
+                "has_claim_m5": row.has_claim_m5,
+                "should_have_claim_m25": row.should_have_claim_m25,
+                "has_claim_m25": row.has_claim_m25,
+                "missing_claim_bucket": row.missing_claim_bucket,
+                "root_cause": row.root_cause
+            })
+        
+        return {
+            "summary": summary,
+            "root_causes": root_causes,
+            "sample_cases": sample_cases
+        }
+        
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        logger.error(f"Error obteniendo resumen de auditoría de claims: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo auditoría de claims: {str(e)[:200]}"
         )
 

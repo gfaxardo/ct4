@@ -725,6 +725,25 @@ class IngestionService:
         self.db.flush()
 
     def _link_driver(self, person_key: UUID, driver_id: str, snapshot_date: datetime, run_id: int):
+        """
+        Crea un link de driver solo si el person_key tiene un lead asociado.
+        
+        IMPORTANTE: Esta función solo debe llamarse cuando hay un match de lead con driver.
+        Los drivers NO deben estar en el sistema sin un lead asociado.
+        """
+        # Verificar que el person_key tiene un lead asociado (cabinet/scouting/migrations)
+        lead_link = self.db.query(IdentityLink).filter(
+            IdentityLink.person_key == person_key,
+            IdentityLink.source_table.in_(["module_ct_cabinet_leads", "module_ct_scouting_daily", "module_ct_migrations"])
+        ).first()
+        
+        if not lead_link:
+            logger.warning(
+                f"[INGESTION] Intento de crear link de driver {driver_id} para person_key {person_key} "
+                "sin lead asociado. Esto no debería ocurrir. El link será omitido."
+            )
+            return
+        
         existing = self.db.query(IdentityLink).filter(
             IdentityLink.source_table == "drivers",
             IdentityLink.source_pk == driver_id
@@ -739,7 +758,12 @@ class IngestionService:
                 match_rule="DRIVER_MATCH",
                 match_score=100,
                 confidence_level=ConfidenceLevel.HIGH,
-                evidence={"driver_id": driver_id, "linked_from": "matching"},
+                evidence={
+                    "driver_id": driver_id, 
+                    "linked_from": "matching",
+                    "has_lead_verification": True,
+                    "lead_source_table": lead_link.source_table
+                },
                 run_id=run_id
             )
             self.db.add(link)

@@ -1,0 +1,6 @@
+driver_id,person_key,creation_rule,previous_status,lead_events_count,action,status,detected_driver_id_path,event_source_table,error
+46fadf86aea446158704946a7300b2f7,3cbbd6fa-ef09-4cc4-ada6-53b44ae10b78,R1_PHONE_EXACT,quarantined,0,skipped,quarantined,,,
+0c6938cc23ed455497475344a9fcd5c0,836a15ee-61c8-4fd6-ad85-0b18ecf129c2,R1_PHONE_EXACT,quarantined,0,skipped,quarantined,,,
+913fbb1afc9a41a0b63ee66c487ff7bf,6013467e-0ec4-4f3a-8337-2cd411c0ec11,R1_PHONE_EXACT,quarantined,0,skipped,quarantined,,,
+03ac396b5e924618adfd2c467168e34d,9f5f43fb-fc31-43fc-ba10-e2f9e98f3c05,R1_PHONE_EXACT,quarantined,0,skipped,quarantined,,,
+1f0a0ebd0fb84f7f89abffbe245311b9,1f12cd92-26f4-4249-848b-1afcb4de43d8,R1_PHONE_EXACT,quarantined,0,skipped,quarantined,,,

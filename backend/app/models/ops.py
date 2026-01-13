@@ -97,3 +97,20 @@ class IdentityMatchingJob(Base):
     fail_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class CabinetKpiRedRecoveryQueue(Base):
+    __tablename__ = "cabinet_kpi_red_recovery_queue"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'matched', 'failed')", name="chk_cabinet_kpi_red_recovery_queue_status"),
+        {"schema": "ops"}
+    )
+
+    lead_source_pk = Column(String, primary_key=True, nullable=False)
+    status = Column(String, nullable=False, server_default='pending')
+    attempt_count = Column(Integer, nullable=False, server_default='0')
+    last_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    matched_person_key = Column(UUID(as_uuid=True), ForeignKey("canon.identity_registry.person_key", ondelete="SET NULL"), nullable=True)
+    fail_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

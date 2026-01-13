@@ -1,0 +1,916 @@
+{
+  "timestamp": "20260110_114118",
+  "dry_run": true,
+  "stats": {
+    "processed": 100,
+    "with_events": 0,
+    "without_events": 100,
+    "links_created": 0,
+    "links_skipped": 0,
+    "quarantined": 100,
+    "resolved_relinked": 0,
+    "errors": 0
+  },
+  "drivers": [
+    {
+      "driver_id": "1ade7b5cfc4a4bdf82abc0ae78eb7ae2",
+      "person_key": "a4ed2491-f8ce-4f0b-8a81-e89d1f4d4fe2",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "42f73f2b3f074f9c9c6c76124492f6fa",
+      "person_key": "5b164718-6f16-4661-b685-599c5535d66d",
+      "creation_rule": "driver_direct",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "8506fca6887e455fa602abf91db650ee",
+      "person_key": "995191f8-46e6-4c61-9c84-f3a6c9da96dd",
+      "creation_rule": "R2_LICENSE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "97486b6bb94442e08ad475b86d891999",
+      "person_key": "c54ed89c-8d7d-4edc-9a9f-25a5d5e5bd84",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "54d4b7f3759f42d083cea3547ca47264",
+      "person_key": "3f0f758e-c934-4304-bad3-288e6b953ce8",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "96613a3d4bba4abe8e6dba6efb6d57b2",
+      "person_key": "c2a949bf-6f47-4c4a-9863-4c3de44fb8c2",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "ad68e5257b2445d5a029271bc12396d1",
+      "person_key": "808220d0-6023-48a0-8514-36d6e5c6ca4e",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "3e55141de12046b4bf0cf22370dfd71f",
+      "person_key": "9e8ecc31-827e-4668-b4da-e201a9ce95fe",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "a03d0dde93024c7eb54ab4e883cb46a5",
+      "person_key": "ef3e92d0-66f6-4eec-a5d3-f5bc658749f7",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "aa9abdb5d84c45f7b3ef491f76b32623",
+      "person_key": "a9564318-1cbf-4d0a-bb97-8e858f8521ca",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "3b15991da9d44b578cfbecba5cdc05fa",
+      "person_key": "f7d8448d-ef80-40df-95bf-bb118062c520",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "b279f5cebf5543c1b1b6af9ab6878253",
+      "person_key": "13dc9d2b-bc09-4627-ac7b-ef7e1270b271",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "41cdb542048d4759a4bd0a8ac62cb294",
+      "person_key": "1698e789-2f8d-4ba7-a0b1-3829f31cd4f5",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "15b8da6091be43f18c3911ea718cc0d8",
+      "person_key": "fc970bc3-b08d-478f-b971-c2c50abed47b",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "b486f8032bf24bf49c80d1331fb182ce",
+      "person_key": "3548a2a4-da44-4052-84e0-92487ec18f2b",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "60365c84b42f4a88ae72751d1065f406",
+      "person_key": "95eaea15-7d7b-4502-965b-82b257d0f6a3",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "a9b7b3244d46403683a6d85c0ab16d5b",
+      "person_key": "65d04ad4-86f2-443c-ac8d-b3e01c913380",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "ad1a34ebdab14ac8981c4fd6c07364c2",
+      "person_key": "a4316e8e-5731-4c64-983f-8126d5fe17ae",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "2b4a7a8d943445618ee997f3ef9efa29",
+      "person_key": "57dd665a-1e40-4f5b-9305-d08ee6655860",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "e9a1a423c1c04df8b85782c48f081cb6",
+      "person_key": "a4655746-4d38-445d-8052-a88fcb71ce46",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "21c0115aba5d4f55b25650ff72ba3866",
+      "person_key": "1113eeb8-50df-42d1-98c7-e5209f3fa36d",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "a94fccca1bf54178ad65c3d47a3856e2",
+      "person_key": "2153e162-5ba5-4d18-ab73-634420922f2c",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "3adc3ac1103c4eb699ebe4db3b3be8ed",
+      "person_key": "e4fbe528-8583-4c22-8722-0809283baa37",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "946dcdcab2604ab1a6633b2c3f9c841e",
+      "person_key": "b185675a-45e3-4edc-bbd5-31d6ab27de48",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "6d66df73c847422f952b3e83bed6fdeb",
+      "person_key": "3958083c-2d09-4e39-a306-b0da28c29b9b",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "8da0b63809d34900806a95455d730c89",
+      "person_key": "06505c11-a9b2-43f2-9912-216d7ae0a38a",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "bba5bbad1a504f2aa07eea388c463773",
+      "person_key": "16d02e5a-6fa8-4c0a-9473-882159fa3a43",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "eee85cd76ce049ed860818288a12ddc0",
+      "person_key": "58e7b7f8-5ef8-4c90-9c41-d59eeeda13ec",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "f63ed0686b1243e296650bfa9bf09d73",
+      "person_key": "b70b9104-d112-42d8-8bb0-faeb4dbc7fc0",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "bbf7679f7b55416dac2e2a64b6f2d899",
+      "person_key": "bd6db033-dbe2-40f9-b7ce-a00a737c44a8",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "8f4c58710dfe49b6a9a9f56ad89ec3e9",
+      "person_key": "0e6b822d-56e1-4285-83b2-9a1423155a4e",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "ec4f568c87934320a563230e9a15796d",
+      "person_key": "06d5b8fd-96c4-4c23-be56-a77982e73058",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "215cabcecfcc4a45855b9eb268d9120b",
+      "person_key": "5c6e8489-2e26-4614-8d80-b62851e690ec",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "108efabc1c824211a4fdfba0549deaca",
+      "person_key": "5c7e2e81-fdc5-453c-97e7-45f99167bd9f",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "99fdcaa19c5d47d69a77d83c1584c1d9",
+      "person_key": "b4ba0dac-dca0-40f4-836a-1e98b54e25fe",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "3d50442c97d64412a379892fcdb1a1ea",
+      "person_key": "b0257da2-2703-4f3f-b06a-3847e4d3c28d",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "b07232de045f45b7bfcfe1d5e6a28e12",
+      "person_key": "f0764510-2073-47cb-abf2-131b391b4be6",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "c584cb85d48b4718aa51534131f8d37a",
+      "person_key": "27d68c4d-712b-4078-8cfe-7821955a77ab",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "b553dfbf51b04540889556acba45336f",
+      "person_key": "2488ccaa-4d5d-420c-b3cc-dae80fb3cfa0",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "7d6854e46dde44b5913feafbd0b47d69",
+      "person_key": "cf4d15df-2c23-4649-8c60-83653004df84",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "3653382f80204d0f8d0453043b72da05",
+      "person_key": "2e911346-1176-4d13-afe5-a74f7e2f31f6",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "db82d222a852412e8760ed6d6c6cd39f",
+      "person_key": "c87b1d3b-c57f-4f7b-a0fe-bddb87e464d1",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "3cd1d205045742ae915ad0b0b35a38c6",
+      "person_key": "751af377-573a-4888-89db-8dfae25e9d6a",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "01c327538ab44408bbb1a5f400901f8d",
+      "person_key": "7da8f7c5-64a0-40d4-a338-a62b65a29462",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "4989f8aadc654c23b1581306bc0916b8",
+      "person_key": "4253a89a-2129-4db8-923d-8f8abb120174",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "69c2ad602be84022b418d1fe7252e953",
+      "person_key": "cf4eb0a2-185b-492c-a768-3adabfb22e85",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "33a3c99ebf9441baaa7826aa8dcaf5dc",
+      "person_key": "c0d502c6-a19a-44c7-8a47-473c72a722e5",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "fba977a44ac14ba59267ed43997eb112",
+      "person_key": "c2d6a8e7-2529-45a4-9802-064869481819",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "0308f4e456b54fb9bb4f4ec1fcda7983",
+      "person_key": "8f8817e0-dbde-4f91-ba5c-8b72e0442880",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "f513e741533b4ff8a0be577e4d96dd01",
+      "person_key": "be9c3294-5d7a-473d-a353-cf999c7353a6",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "61f5bf0cb90c4f8f8dfefe1793ba331e",
+      "person_key": "a4eb83d2-e8a1-45ed-a467-81efd4f7f8a4",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "7ef46bfbe3f04268a9c79b565e2e3dbf",
+      "person_key": "02111f7f-f256-4cde-b8b0-c96a80d1ae2d",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "ff2a34043c484f678cf16f533aa28849",
+      "person_key": "f2e2c659-434c-460a-8a50-08b1c37188f0",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "151dc0715106491595e9329afc3a7ff4",
+      "person_key": "b375354c-dd1b-4680-94e6-c9638eaf8aa3",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "4a052c3a4b724952a9b673ed2fe469f3",
+      "person_key": "c09c41ce-690f-4171-b155-a928774c812f",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "7288764186ac4f6a898a996b8422569a",
+      "person_key": "e677578a-943b-48eb-9f81-24322c1c2ef0",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "88bdd0297f614a5c8d7c0e3f2c51a017",
+      "person_key": "9763b654-e2b6-4082-a762-ebd080ec92a1",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "aa21b1d57a7c44bb8c725338e0171b33",
+      "person_key": "0dff3291-577e-4be0-ab6c-696dadc767c7",
+      "creation_rule": "R2_LICENSE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "fe391d3c10fc4885b4ae4e76c254aab2",
+      "person_key": "5a1aa7c1-fa03-41d5-8f60-e8a55003ab1c",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "1c063e61e7a44beb99134e99100f5bd2",
+      "person_key": "5fb15cb0-a77f-4c80-a085-c87f535d2df5",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "d32aa1e2c54e4cc8a251c5c242123365",
+      "person_key": "5b9246db-fb87-4755-a86a-8d9f993c040b",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "0bb6b2dd588c43e98874973de208919e",
+      "person_key": "cedcde3b-2078-4742-97da-8755d953429e",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "672053fb2c4e42efa1dc6e3d997f0174",
+      "person_key": "c118179c-589d-4f4e-9d9e-5adbfe50c2be",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "ce4fe7132b1a43919ea83a4aa65fcc23",
+      "person_key": "3c78d6cd-1440-45d9-850e-7220f0666d77",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "91f3730457994381ad2f462747da29e0",
+      "person_key": "b607d9ae-51f8-414d-8ea9-46bd902f56a7",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "90258a42619a4ec4b6bf245e1bf94c38",
+      "person_key": "68d09332-78ff-4e83-9299-758e94471269",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "7db4d772c1be4df58f1491cb1345ee68",
+      "person_key": "d408959f-9b88-40e3-a42e-c9a1f820ca41",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "ccace11929794bc09533490b9c2d753e",
+      "person_key": "fafaeb49-bdd5-4190-904f-0653645af6cd",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "f16cbb47990443dbbf0bf07200843f42",
+      "person_key": "24ee9437-2278-4d9d-a1b8-1965187e5afb",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "11f239fd8968441f9232cff1d9a340ec",
+      "person_key": "93b561a0-624c-45fe-9a4b-763155a94ca1",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "3ecaf3e20f704d9fb5e243b1bec99699",
+      "person_key": "a4b6d5cd-6e2d-424f-b116-aec2a4cfad84",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "662304a510294f838322e830d94154a5",
+      "person_key": "d1f7d5eb-c6b0-40ab-acd8-d9fbbfbdedcd",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "d5a976ef75a54cad9681aba6480661e8",
+      "person_key": "037b8725-058b-40ee-9723-b223a2376608",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "54993ec393324ff88ff3e038e1e69ed0",
+      "person_key": "619e5a18-de39-4610-a7f7-2ccc41f4c66f",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "7b5e8555d4a8477fa79b1e78f37f0f5a",
+      "person_key": "51094c69-d223-44e4-b4f3-09ad155bc490",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "ed81388a8adc4c32986aa53bc0c58028",
+      "person_key": "6c2cce9a-88af-4c76-81d5-a31c0f0dc437",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "6867eb8fedfa491dad61c78c77d4c6e8",
+      "person_key": "19e035a1-b2a3-4553-96fb-346bae6597c5",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "ba51e38c68dc4ee099636983e374f746",
+      "person_key": "774bfea3-9838-4a72-9bec-41246033845f",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "3b612f67b2a24c81a9f44a01e89b916a",
+      "person_key": "3187b3fa-f164-4509-a313-9e68235c5629",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "0dbfe8d42cb947cc813136ee779772ea",
+      "person_key": "7258a2a0-b6e3-4b08-a5d4-23e4182489a7",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "66f69e6206e24e82afe664d2961fe7f6",
+      "person_key": "6548793f-eefd-4e73-82f2-59657b7a2577",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "4e4f4aa8e4e8406d9fac23206f1cf4fa",
+      "person_key": "ece0af22-6051-4e26-b40b-89163f52a362",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "eca92cabac8341869eb35cace53bf77a",
+      "person_key": "0cea51a5-b43c-462d-bd17-75a3f698c811",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "9765a633a6b2454486701688a1bad779",
+      "person_key": "3c901134-a2cc-4891-b623-5235efa3f602",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "8159b0e65c93490ebb69d6160654996b",
+      "person_key": "cb8a814a-a321-4873-813c-200ac8cfe77c",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "e198617db60b4e32a38a129dd1294d4d",
+      "person_key": "b0ec1036-c545-4ae9-be36-d353968a9e10",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "07ba875b7e58419f8e88a3b94879a1d8",
+      "person_key": "00437d37-c8d8-4011-bbe0-714c728d0d84",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "5b48fa760af148ec8894ad2d89eca68b",
+      "person_key": "f68f1735-c21b-485f-8ccc-ef698b274edd",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "4cb68e950a0446b48017df1cc9aaa714",
+      "person_key": "bf13cbcb-5c5e-4633-bc9e-6d5a696dab00",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "8f9dcd201c0c4fed998474af09f534e4",
+      "person_key": "7354bf52-9fe6-4c5f-958c-5860e7cc4f97",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "2d347b30e73d4b88b4eb7f93c17cca00",
+      "person_key": "5bd840ec-b842-46d6-bbff-85a42cb2759e",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "a7d21a5e86b841e49429424be2cf81af",
+      "person_key": "b73ef12a-533d-488c-98fd-c88cd954ce7e",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "6fa03e27cb8b44d9916005a93bd92f73",
+      "person_key": "e31484dd-08f5-4038-90e2-d44ed2111ba1",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "d81ff34d35d046768a7ddf89a26f351a",
+      "person_key": "fbd3d6e3-608d-4801-b24e-7abe7b382128",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "b916c400a323475cbe828f923874e899",
+      "person_key": "6a220e64-f413-44ef-a0f8-d73ac8171d0a",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "f531b914e6794718a7150662280bc77a",
+      "person_key": "a400682d-8c1b-4ebf-901b-072ad1225107",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "85a40f2575a949dd8301fe94dd6243ee",
+      "person_key": "76ef2fd7-2119-4d2b-a678-949c2f4c40de",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "bed448d643a34463bf9f23c294265880",
+      "person_key": "3c6bc4c7-e767-4226-9cb6-09862db19244",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "e3031b29f7df459ba5cf1a1a06c46b00",
+      "person_key": "bd5aaff4-fff6-4436-8c2b-cca46a202b7f",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    },
+    {
+      "driver_id": "40745f41faa64c6a976c6e24580e6303",
+      "person_key": "82201eac-f250-4cfb-8462-dab79afbbbb2",
+      "creation_rule": "R1_PHONE_EXACT",
+      "lead_events_count": 0,
+      "action": "quarantined",
+      "status": "quarantined",
+      "error": null
+    }
+  ]
+}

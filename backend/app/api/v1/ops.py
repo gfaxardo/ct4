@@ -1102,11 +1102,33 @@ def get_identity_gaps(
         totals_result = db.execute(text(totals_query), params)
         totals_row = totals_result.fetchone()
         
+        # Obtener freshness y matched_last_24h
+        freshness_query = text("""
+            SELECT 
+                MAX(last_attempt_at) as last_run,
+                COUNT(*) FILTER (WHERE status = 'matched' AND last_attempt_at >= NOW() - INTERVAL '24 hours') as matched_last_24h
+            FROM ops.identity_matching_jobs
+        """)
+        freshness_result = db.execute(freshness_query)
+        freshness_row = freshness_result.fetchone()
+        
+        last_run = freshness_row.last_run
+        matched_last_24h = freshness_row.matched_last_24h or 0
+        job_freshness_hours = None
+        if last_run:
+            from datetime import datetime, timezone
+            if isinstance(last_run, datetime):
+                delta = datetime.now(timezone.utc) - last_run
+                job_freshness_hours = round(delta.total_seconds() / 3600, 1)
+        
         totals = IdentityGapTotals(
             total_leads=totals_row.total_leads or 0,
             unresolved=totals_row.unresolved or 0,
             resolved=totals_row.resolved or 0,
-            pct_unresolved=round(100.0 * (totals_row.unresolved or 0) / max(totals_row.total_leads or 1, 1), 2)
+            pct_unresolved=round(100.0 * (totals_row.unresolved or 0) / max(totals_row.total_leads or 1, 1), 2),
+            matched_last_24h=matched_last_24h,
+            last_job_run=last_run.isoformat() if last_run else None,
+            job_freshness_hours=job_freshness_hours
         )
         
         # Obtener items paginados

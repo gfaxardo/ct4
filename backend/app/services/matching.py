@@ -67,6 +67,12 @@ class MatchingEngine:
             result = self._apply_rule_r3_plate_name(candidate)
             if result.person_key or result.reason_code:
                 results.append(result)
+            
+            # Si R3 no encontró candidatos por restricción de fecha, intentar R3b (sin restricción de fecha)
+            if result.reason_code == "NO_CANDIDATES":
+                result_r3b = self._apply_rule_r3b_plate_name_no_date(candidate)
+                if result_r3b.person_key or result_r3b.reason_code:
+                    results.append(result_r3b)
 
         if candidate.brand_norm and candidate.model_norm and candidate.name_norm:
             result = self._apply_rule_r4_car_fingerprint_name(candidate)
@@ -294,8 +300,9 @@ class MatchingEngine:
 
     def _apply_rule_r3_plate_name(self, candidate: IdentityCandidateInput) -> MatchingResult:
         try:
-            date_from = candidate.snapshot_date - timedelta(days=30)
-            date_to = candidate.snapshot_date + timedelta(days=7)
+            # Ampliado rango de fechas: de -30/+7 a -90/+30 días para capturar más candidatos
+            date_from = candidate.snapshot_date - timedelta(days=90)
+            date_to = candidate.snapshot_date + timedelta(days=30)
             
             query = text("""
                 SELECT driver_id, park_id, full_name_norm, hire_date
@@ -374,6 +381,101 @@ class MatchingEngine:
             
         except Exception as e:
             logger.error(f"Error en R3: {e}")
+            return MatchingResult(None, None, None, None, reason_code="ERROR")
+    
+    def _apply_rule_r3b_plate_name_no_date(self, candidate: IdentityCandidateInput) -> MatchingResult:
+        """
+        Regla R3b: Matching por placa + nombre SIN restricción de fecha.
+        Se usa cuando R3 no encuentra candidatos por restricción de fecha.
+        Menor confianza que R3 (MEDIUM en lugar de HIGH).
+        """
+        try:
+            query = text("""
+                SELECT driver_id, park_id, full_name_norm, hire_date
+                FROM canon.drivers_index
+                WHERE plate_norm = :plate_norm
+                AND park_id = :park_id_objetivo
+                LIMIT 20
+            """)
+            
+            try:
+                result = self.db.execute(query, {
+                    "plate_norm": candidate.plate_norm,
+                    "park_id_objetivo": self.park_id_objetivo
+                })
+                candidates = result.fetchall()
+            except (OperationalError, DisconnectionError, PendingRollbackError) as e:
+                raise
+            
+            if not candidates:
+                return MatchingResult(None, None, None, None, reason_code="NO_CANDIDATES")
+            
+            scored_candidates = []
+            for c in candidates:
+                similarity = name_similarity(candidate.name_norm, c.full_name_norm, self.name_similarity_threshold)
+                if similarity >= self.name_similarity_threshold:
+                    scored_candidates.append({
+                        "driver_id": c.driver_id,
+                        "park_id": c.park_id,
+                        "similarity": similarity
+                    })
+            
+            if not scored_candidates:
+                return MatchingResult(None, None, None, None, reason_code="WEAK_MATCH_ONLY")
+            
+            scored_candidates.sort(key=lambda x: x["similarity"], reverse=True)
+            
+            if len(scored_candidates) > 1:
+                best_sim = scored_candidates[0]["similarity"]
+                second_sim = scored_candidates[1]["similarity"]
+                gap = best_sim - second_sim
+                
+                if gap < 0.15:
+                    candidates_preview = [
+                        {
+                            "driver_id": str(c["driver_id"]),
+                            "similarity": c["similarity"]
+                        }
+                        for c in scored_candidates[:3]
+                    ]
+                    return MatchingResult(
+                        None, None, None, None,
+                        reason_code="MULTIPLE_CANDIDATES",
+                        evidence={"candidates": candidates_preview, "gap": gap}
+                    )
+            
+            # Match exitoso - obtener person_key
+            best_driver_id = scored_candidates[0]["driver_id"]
+            best_similarity = scored_candidates[0]["similarity"]
+            
+            person_key_query = text("""
+                SELECT person_key
+                FROM canon.identity_links
+                WHERE source_table = 'drivers'
+                AND source_pk = :driver_id
+                LIMIT 1
+            """)
+            
+            person_key_result = self.db.execute(person_key_query, {"driver_id": best_driver_id})
+            person_key_row = person_key_result.fetchone()
+            
+            if not person_key_row or not person_key_row.person_key:
+                return MatchingResult(None, None, None, None, reason_code="NO_PERSON_KEY")
+            
+            return MatchingResult(
+                person_key_row.person_key,
+                "R3b",  # Regla R3b
+                int(best_similarity * 100),
+                ConfidenceLevel.MEDIUM,  # Menor confianza que R3
+                evidence={
+                    "driver_id": str(best_driver_id),
+                    "similarity": best_similarity,
+                    "rule": "R3b_PLATE_NAME_NO_DATE"
+                }
+            )
+        
+        except Exception as e:
+            logger.error(f"Error en R3b matching: {e}", exc_info=True)
             return MatchingResult(None, None, None, None, reason_code="ERROR")
 
     def _apply_rule_r4_car_fingerprint_name(self, candidate: IdentityCandidateInput) -> MatchingResult:

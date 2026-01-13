@@ -1,0 +1,11 @@
+driver_id,person_key,creation_rule,lead_events_count,action,status,error
+1ade7b5cfc4a4bdf82abc0ae78eb7ae2,a4ed2491-f8ce-4f0b-8a81-e89d1f4d4fe2,R1_PHONE_EXACT,0,quarantined,quarantined,
+42f73f2b3f074f9c9c6c76124492f6fa,5b164718-6f16-4661-b685-599c5535d66d,driver_direct,0,quarantined,quarantined,
+8506fca6887e455fa602abf91db650ee,995191f8-46e6-4c61-9c84-f3a6c9da96dd,R2_LICENSE_EXACT,0,quarantined,quarantined,
+97486b6bb94442e08ad475b86d891999,c54ed89c-8d7d-4edc-9a9f-25a5d5e5bd84,R1_PHONE_EXACT,0,quarantined,quarantined,
+54d4b7f3759f42d083cea3547ca47264,3f0f758e-c934-4304-bad3-288e6b953ce8,R1_PHONE_EXACT,0,quarantined,quarantined,
+96613a3d4bba4abe8e6dba6efb6d57b2,c2a949bf-6f47-4c4a-9863-4c3de44fb8c2,R1_PHONE_EXACT,0,quarantined,quarantined,
+ad68e5257b2445d5a029271bc12396d1,808220d0-6023-48a0-8514-36d6e5c6ca4e,R1_PHONE_EXACT,0,quarantined,quarantined,
+3e55141de12046b4bf0cf22370dfd71f,9e8ecc31-827e-4668-b4da-e201a9ce95fe,R1_PHONE_EXACT,0,quarantined,quarantined,
+a03d0dde93024c7eb54ab4e883cb46a5,ef3e92d0-66f6-4eec-a5d3-f5bc658749f7,R1_PHONE_EXACT,0,quarantined,quarantined,
+aa9abdb5d84c45f7b3ef491f76b32623,a9564318-1cbf-4d0a-bb97-8e858f8521ca,R1_PHONE_EXACT,0,quarantined,quarantined,

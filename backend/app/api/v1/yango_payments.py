@@ -41,6 +41,11 @@ from app.schemas.payments import (
     CabinetReconciliationRow,
     CabinetReconciliationResponse
 )
+from app.schemas.cabinet_recovery import (
+    CabinetRecoveryImpactResponse,
+    CabinetRecoveryImpactTotals,
+    CabinetRecoveryImpactSeriesItem
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1542,4 +1547,111 @@ def get_cabinet_reconciliation(
         raise HTTPException(
             status_code=500,
             detail=f"Error al consultar reconciliación: {str(e)[:200]}"
+        )
+
+
+@router.get("/cabinet/identity-recovery-impact-14d", response_model=CabinetRecoveryImpactResponse)
+def get_cabinet_identity_recovery_impact_14d(
+    db: Session = Depends(get_db),
+    include_series: bool = Query(False, description="Incluir serie temporal (últimos 30 días)")
+):
+    """
+    Obtiene el impacto de recovery sobre Cobranza Cabinet 14d.
+    
+    Retorna:
+    - totals: Totales de impacto (total_leads, unidentified_count, etc.)
+    - series (opcional): Serie temporal de los últimos 30 días
+    - top_reasons (opcional): Top razones de fallo (si existen)
+    """
+    try:
+        # Query para obtener totales
+        totals_query = text("""
+            SELECT 
+                COUNT(*) AS total_leads,
+                COUNT(*) FILTER (WHERE impact_bucket = 'still_unidentified') AS still_unidentified_count,
+                COUNT(*) FILTER (WHERE impact_bucket = 'identified_but_missing_origin') AS identified_but_missing_origin_count,
+                COUNT(*) FILTER (WHERE impact_bucket = 'recovered_within_14d_but_no_claim') AS recovered_within_14d_but_no_claim_count,
+                COUNT(*) FILTER (WHERE impact_bucket = 'recovered_within_14d_and_claim') AS recovered_within_14d_and_claim_count,
+                COUNT(*) FILTER (WHERE impact_bucket = 'recovered_late') AS recovered_late_count,
+                COUNT(*) FILTER (WHERE claim_status_bucket = 'unidentified') AS unidentified_count,
+                COUNT(*) FILTER (WHERE claim_status_bucket = 'identified_no_origin') AS identified_no_origin_count,
+                COUNT(*) FILTER (WHERE claim_status_bucket = 'identified_origin_no_claim') AS identified_origin_no_claim_count
+            FROM ops.v_cabinet_identity_recovery_impact_14d
+        """)
+        
+        totals_result = db.execute(totals_query)
+        totals_row = totals_result.fetchone()
+        
+        totals = CabinetRecoveryImpactTotals(
+            total_leads=totals_row.total_leads if totals_row else 0,
+            unidentified_count=totals_row.unidentified_count if totals_row else 0,
+            identified_no_origin_count=totals_row.identified_no_origin_count if totals_row else 0,
+            recovered_within_14d_count=(totals_row.recovered_within_14d_but_no_claim_count if totals_row else 0) + (totals_row.recovered_within_14d_and_claim_count if totals_row else 0),
+            recovered_late_count=totals_row.recovered_late_count if totals_row else 0,
+            recovered_within_14d_and_claim_count=totals_row.recovered_within_14d_and_claim_count if totals_row else 0,
+            still_unidentified_count=totals_row.still_unidentified_count if totals_row else 0,
+            identified_but_missing_origin_count=totals_row.identified_but_missing_origin_count if totals_row else 0,
+            identified_origin_no_claim_count=totals_row.identified_origin_no_claim_count if totals_row else 0
+        )
+        
+        # Serie temporal (si se solicita)
+        series = None
+        if include_series:
+            series_query = text("""
+                SELECT 
+                    lead_date AS date,
+                    COUNT(*) FILTER (WHERE claim_status_bucket = 'unidentified') AS unidentified,
+                    COUNT(*) FILTER (WHERE recovered_within_14d = true) AS recovered_within_14d,
+                    COUNT(*) FILTER (WHERE recovered_within_14d = false AND recovered_at IS NOT NULL) AS recovered_late,
+                    COUNT(*) FILTER (WHERE has_claim = true) AS claims
+                FROM ops.v_cabinet_identity_recovery_impact_14d
+                WHERE lead_date >= CURRENT_DATE - INTERVAL '30 days'
+                GROUP BY lead_date
+                ORDER BY lead_date DESC
+                LIMIT 30
+            """)
+            
+            series_result = db.execute(series_query)
+            series_rows = series_result.fetchall()
+            
+            series = [
+                CabinetRecoveryImpactSeriesItem(
+                    event_date=row.date,
+                    unidentified=row.unidentified or 0,
+                    recovered_within_14d=row.recovered_within_14d or 0,
+                    recovered_late=row.recovered_late or 0,
+                    claims=row.claims or 0
+                )
+                for row in series_rows
+            ]
+        
+        return CabinetRecoveryImpactResponse(
+            totals=totals,
+            series=series,
+            top_reasons=None  # TODO: Implementar si hay tabla de fail_reason
+        )
+        
+    except ProgrammingError as e:
+        error_code = getattr(e.orig, 'pgcode', None) if hasattr(e, 'orig') else None
+        error_message = str(e.orig) if hasattr(e, 'orig') else str(e)
+        
+        if error_code == '42P01' or 'does not exist' in error_message.lower() or 'v_cabinet_identity_recovery_impact_14d' in error_message:
+            logger.exception(f"Vista no existe: {e}")
+            raise HTTPException(
+                status_code=404,
+                detail="Vista ops.v_cabinet_identity_recovery_impact_14d no existe. Aplicar backend/sql/ops/v_cabinet_identity_recovery_impact_14d.sql"
+            )
+        
+        logger.exception(f"Error SQL en identity recovery impact: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error SQL: {error_message[:200]}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error inesperado en identity recovery impact: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al consultar impacto de recovery: {str(e)[:200]}"
         )

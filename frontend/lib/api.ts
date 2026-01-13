@@ -106,6 +106,8 @@ import type {
   MvHealthResponse,
   PersonsBySourceResponse,
   DriversWithoutLeadsAnalysis,
+  OrphanDriver,
+  OrphansListResponse,
   OrphansMetricsResponse,
   RunFixResponse,
   CabinetLeadsDiagnostics,
@@ -122,6 +124,28 @@ export async function getPersonsBySource(): Promise<PersonsBySourceResponse> {
 
 export async function getDriversWithoutLeadsAnalysis(): Promise<DriversWithoutLeadsAnalysis> {
   return fetchApi<DriversWithoutLeadsAnalysis>('/api/v1/identity/stats/drivers-without-leads');
+}
+
+// ============================================================================
+// Orphans / Cuarentena API
+// ============================================================================
+
+export async function getOrphans(params?: {
+  page?: number;
+  page_size?: number;
+  status?: string;
+  detected_reason?: string;
+  driver_id?: string;
+}): Promise<OrphansListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString());
+  if (params?.page_size !== undefined) searchParams.set('page_size', params.page_size.toString());
+  if (params?.status) searchParams.set('status', params.status);
+  if (params?.detected_reason) searchParams.set('detected_reason', params.detected_reason);
+  if (params?.driver_id) searchParams.set('driver_id', params.driver_id);
+  
+  const query = searchParams.toString();
+  return fetchApi<OrphansListResponse>(`/api/v1/identity/orphans${query ? `?${query}` : ''}`);
 }
 
 export async function getOrphansMetrics(): Promise<OrphansMetricsResponse> {
@@ -586,6 +610,16 @@ export async function getCabinetReconciliation(params?: {
   return fetchApi<CabinetReconciliationResponse>(`/api/v1/yango/payments/cabinet/reconciliation${query ? `?${query}` : ''}`);
 }
 
+export async function getCabinetIdentityRecoveryImpact14d(params?: {
+  include_series?: boolean;
+}): Promise<CabinetRecoveryImpactResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.include_series !== undefined) searchParams.set('include_series', params.include_series.toString());
+  
+  const query = searchParams.toString();
+  return fetchApi<CabinetRecoveryImpactResponse>(`/api/v1/yango/cabinet/identity-recovery-impact-14d${query ? `?${query}` : ''}`);
+}
+
 // ============================================================================
 // Ops Payments API
 // ============================================================================
@@ -1004,7 +1038,6 @@ export interface IdentityGapRow {
   person_key: string | null;
   has_identity: boolean;
   has_origin: boolean;
-  has_driver_activity: boolean;
   trips_14d: number;
   gap_reason: string;
   gap_age_days: number;
@@ -1016,6 +1049,9 @@ export interface IdentityGapTotals {
   unresolved: number;
   resolved: number;
   pct_unresolved: number;
+  matched_last_24h: number;
+  last_job_run: string | null;
+  job_freshness_hours: number | null;
 }
 
 export interface IdentityGapBreakdown {

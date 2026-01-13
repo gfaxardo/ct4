@@ -8,6 +8,7 @@
 CREATE OR REPLACE VIEW ops.v_payment_calculation AS
 WITH conversion_metrics_base AS (
     -- Base: Datos de conversión por lead
+    -- EXCLUIR drivers en cuarentena activa (quarantined)
     SELECT 
         person_key,
         origin_tag,
@@ -16,6 +17,11 @@ WITH conversion_metrics_base AS (
         driver_id
     FROM observational.v_conversion_metrics
     WHERE driver_id IS NOT NULL
+        AND driver_id NOT IN (
+            SELECT driver_id 
+            FROM canon.driver_orphan_quarantine 
+            WHERE status = 'quarantined'
+        )
 ),
 all_payment_rules AS (
     -- Unión de reglas de scouts y partners con scope
