@@ -1,8 +1,22 @@
-from sqlalchemy import Column, String, Integer, DateTime, JSON, Enum, ForeignKey, UniqueConstraint, Numeric, Text, TypeDecorator
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB, ENUM
-from sqlalchemy.sql import func
-import uuid
+"""
+Canonical identity models for the CT4 Identity System.
+
+This module defines the core identity-related SQLAlchemy models
+that represent the canonical view of persons across data sources.
+"""
 import enum
+import uuid
+from typing import Any, Optional
+
+from sqlalchemy import (
+    Column, Enum, ForeignKey, Integer, Numeric, 
+    String, Text, TypeDecorator, UniqueConstraint
+)
+from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID as PGUUID
+from sqlalchemy.orm import Mapped
+from sqlalchemy.sql import func
+from sqlalchemy.types import DateTime
+
 from app.db import Base
 
 
@@ -157,6 +171,12 @@ class OrphanStatusEnum(TypeDecorator):
 
 
 class IdentityRegistry(Base):
+    """
+    Central registry of canonical persons.
+    
+    Each person_key represents a unique individual that may be linked
+    to multiple source records across different tables.
+    """
     __tablename__ = "identity_registry"
     __table_args__ = {"schema": "canon"}
 
@@ -170,8 +190,17 @@ class IdentityRegistry(Base):
     primary_full_name = Column(String, nullable=True)
     flags = Column(JSONB, nullable=True)
 
+    def __repr__(self) -> str:
+        return f"<IdentityRegistry(person_key={self.person_key}, phone={self.primary_phone})>"
+
 
 class IdentityLink(Base):
+    """
+    Links source records to canonical persons.
+    
+    Tracks which source records (from different tables) are associated
+    with each person_key, including the matching rule and confidence.
+    """
     __tablename__ = "identity_links"
     __table_args__ = (
         UniqueConstraint("source_table", "source_pk", name="uq_identity_links_source"),
@@ -189,6 +218,9 @@ class IdentityLink(Base):
     evidence = Column(JSONB, nullable=True)
     linked_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     run_id = Column(Integer, ForeignKey("ops.ingestion_runs.id"), nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<IdentityLink(id={self.id}, source={self.source_table}:{self.source_pk})>"
 
 
 class IdentityUnmatched(Base):

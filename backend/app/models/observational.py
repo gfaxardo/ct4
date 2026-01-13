@@ -1,7 +1,16 @@
-from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey, Date, Numeric, Text
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, JSONB, ENUM as PGENUM
-from sqlalchemy.sql import func
+"""
+Observational models for tracking lead events and attribution.
+
+This module defines models for the observational schema that tracks
+lead events, ledger entries, and scouting match candidates.
+"""
 import enum
+
+from sqlalchemy import Column, Date, Enum, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import ENUM as PGENUM, JSONB, UUID as PGUUID
+from sqlalchemy.sql import func
+from sqlalchemy.types import DateTime
+
 from app.db import Base
 
 
@@ -36,6 +45,12 @@ class ConfidenceLevelObs(str, enum.Enum):
 
 
 class LeadEvent(Base):
+    """
+    Individual lead events from various sources.
+    
+    Tracks each lead event with its source, date, and optional
+    association to a canonical person.
+    """
     __tablename__ = "lead_events"
     __table_args__ = (
         {"schema": "observational"}
@@ -49,6 +64,9 @@ class LeadEvent(Base):
     scout_id = Column(Integer, nullable=True)
     payload_json = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<LeadEvent(id={self.id}, source={self.source_table}:{self.source_pk})>"
 
 
 class LeadLedger(Base):

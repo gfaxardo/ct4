@@ -1,7 +1,19 @@
-from sqlalchemy import Column, Integer, DateTime, String, JSON, Enum, Date, Boolean, TypeDecorator, Text, ForeignKey, CheckConstraint
-from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
+"""
+Operational models for the CT4 system.
+
+This module defines models for tracking ingestion runs, alerts,
+and operational state of the identity matching system.
+"""
 import enum
+
+from sqlalchemy import (
+    Boolean, CheckConstraint, Column, Date, Enum, ForeignKey,
+    Integer, JSON, String, Text, TypeDecorator
+)
+from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
+from sqlalchemy.sql import func
+from sqlalchemy.types import DateTime
+
 from app.db import Base
 
 
@@ -43,6 +55,12 @@ class JobTypeEnum(TypeDecorator):
 
 
 class IngestionRun(Base):
+    """
+    Tracks execution of ingestion jobs.
+    
+    Records start time, end time, status, and statistics for each
+    run of the identity ingestion pipeline.
+    """
     __tablename__ = "ingestion_runs"
     __table_args__ = {"schema": "ops"}
 
@@ -56,6 +74,9 @@ class IngestionRun(Base):
     scope_date_from = Column(Date, nullable=True)
     scope_date_to = Column(Date, nullable=True)
     incremental = Column(Boolean, nullable=True, server_default='true')
+
+    def __repr__(self) -> str:
+        return f"<IngestionRun(id={self.id}, status={self.status}, job_type={self.job_type})>"
 
 
 class AlertSeverity(str, enum.Enum):
