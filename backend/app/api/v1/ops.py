@@ -1323,3 +1323,74 @@ def get_performance_diagnostics(db: Session = Depends(get_db)):
             status_code=500,
             detail=f"Error obteniendo diagnósticos: {str(e)}"
         )
+
+
+# =============================================================================
+# MANTENIMIENTO DE VISTAS MATERIALIZADAS
+# =============================================================================
+
+@router.get("/mv-maintenance/status")
+def get_mv_maintenance_status(db: Session = Depends(get_db)):
+    """
+    Obtiene el estado actual de todas las vistas materializadas críticas.
+    
+    Retorna información sobre cada MV incluyendo:
+    - Si existe y está poblada
+    - Tamaño
+    - Último refresh y su estado
+    - Tiempo desde el último refresh
+    """
+    try:
+        from app.services.mv_maintenance import get_mv_status
+        return {"mvs": get_mv_status(db)}
+    except Exception as e:
+        logger.exception("get_mv_maintenance_status failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo estado de MVs: {str(e)}"
+        )
+
+
+@router.post("/mv-maintenance/refresh")
+def refresh_materialized_views(
+    db: Session = Depends(get_db),
+    priority: Optional[int] = Query(None, ge=1, le=3, description="Solo MVs con esta prioridad o superior (1=más críticas)"),
+    mv_name: Optional[str] = Query(None, description="Nombre específico de MV a refrescar (ej: mv_cabinet_financial_14d)")
+):
+    """
+    Refresca las vistas materializadas.
+    
+    Opciones:
+    - Sin parámetros: Refresca todas las MVs críticas
+    - priority=1: Solo MVs de máxima prioridad
+    - mv_name=X: Solo una MV específica
+    
+    Ejemplo:
+    ```bash
+    # Refrescar todas
+    curl -X POST "http://localhost:8000/api/v1/ops/mv-maintenance/refresh"
+    
+    # Solo las más críticas
+    curl -X POST "http://localhost:8000/api/v1/ops/mv-maintenance/refresh?priority=1"
+    
+    # Una específica
+    curl -X POST "http://localhost:8000/api/v1/ops/mv-maintenance/refresh?mv_name=mv_cabinet_financial_14d"
+    ```
+    """
+    try:
+        from app.services.mv_maintenance import refresh_mv, refresh_all_critical_mvs
+        
+        if mv_name:
+            # Refrescar una MV específica
+            result = refresh_mv(db, "ops", mv_name)
+            return {"results": [result]}
+        else:
+            # Refrescar todas las críticas
+            return refresh_all_critical_mvs(db, priority)
+            
+    except Exception as e:
+        logger.exception("refresh_materialized_views failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error refrescando MVs: {str(e)}"
+        )
