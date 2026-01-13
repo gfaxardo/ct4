@@ -284,5 +284,3 @@ class DriverOrphanQuarantine(Base):
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     resolution_notes = Column(Text, nullable=True)
 
-
-

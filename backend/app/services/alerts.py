@@ -1,8 +1,7 @@
 import logging
-from datetime import date, timedelta
-from typing import Optional, List, Dict, Any
+from datetime import datetime
+from typing import Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 from app.models.ops import Alert, AlertSeverity
 from app.models.observational import ScoutingMatchCandidate
@@ -143,16 +142,11 @@ class AlertService:
         ).order_by(Alert.created_at.desc()).limit(limit).all()
 
     def acknowledge_alert(self, alert_id: int) -> Optional[Alert]:
-        from datetime import datetime
         alert = self.db.query(Alert).filter(Alert.id == alert_id).first()
         if alert:
             alert.acknowledged_at = datetime.utcnow()
             self.db.commit()
         return alert
-
-
-
-
 
 
 

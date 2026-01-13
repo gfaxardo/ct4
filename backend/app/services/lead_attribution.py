@@ -310,7 +310,7 @@ class LeadAttributionService:
                 source_pk = str(row_dict.get("id", ""))
                 if source_pk:
                     source_pks.append(source_pk)
-            except:
+            except (KeyError, AttributeError, TypeError):
                 continue
         
         # Cargar caché de eventos existentes de una vez
@@ -345,7 +345,7 @@ class LeadAttributionService:
                 if isinstance(event_date, str):
                     try:
                         event_date = datetime.strptime(event_date, "%Y-%m-%d").date()
-                    except:
+                    except ValueError:
                         event_date = None
                 elif isinstance(event_date, datetime):
                     event_date = event_date.date()
@@ -531,7 +531,7 @@ class LeadAttributionService:
                 source_pk = str(mapped.get("source_pk", ""))
                 if source_pk:
                     source_pks.append(source_pk)
-            except:
+            except (KeyError, AttributeError, TypeError):
                 continue
         
         # Cargar caché de eventos existentes de una vez
@@ -794,7 +794,7 @@ class LeadAttributionService:
                 source_pk = str(row_dict.get("id", ""))
                 if source_pk:
                     source_pks.append(source_pk)
-            except:
+            except (KeyError, AttributeError, TypeError):
                 continue
         
         # Cargar caché de eventos existentes de una vez
@@ -834,7 +834,7 @@ class LeadAttributionService:
                 elif isinstance(created_at, str):
                     try:
                         event_date = datetime.strptime(created_at, "%Y-%m-%d").date()
-                    except:
+                    except ValueError:
                         event_date = datetime.utcnow().date()
                 else:
                     event_date = datetime.utcnow().date()

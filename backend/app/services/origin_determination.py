@@ -4,7 +4,7 @@ Servicio para determinar el origen canónico de una persona.
 Aplica reglas de prioridad y detecta violaciones del contrato canónico.
 """
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List
 from datetime import datetime, date
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
@@ -370,4 +370,3 @@ class OriginDeterminationService:
             timestamps.append(first_link.linked_at)
         
         return min(timestamps) if timestamps else None
-
