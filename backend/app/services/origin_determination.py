@@ -4,18 +4,23 @@ Servicio para determinar el origen canónico de una persona.
 Aplica reglas de prioridad y detecta violaciones del contrato canónico.
 """
 import logging
-from typing import Optional, Dict, Any, List
-from datetime import datetime, date
 from dataclasses import dataclass
-from sqlalchemy.orm import Session
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from app.models.canon import (
-    IdentityLink, IdentityRegistry, IdentityOrigin,
-    OriginTag, DecidedBy, OriginResolutionStatus,
-    ConfidenceLevel
-)
+from sqlalchemy.orm import Session
+
 from app.config import LEAD_SYSTEM_START_DATE
+from app.models.canon import (
+    ConfidenceLevel,
+    DecidedBy,
+    IdentityLink,
+    IdentityOrigin,
+    IdentityRegistry,
+    OriginResolutionStatus,
+    OriginTag,
+)
 
 logger = logging.getLogger(__name__)
 

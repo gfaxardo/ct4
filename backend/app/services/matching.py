@@ -1,17 +1,34 @@
+"""
+Identity matching engine for the CT4 system.
+
+Provides the core matching logic for linking source records to canonical
+person identities using multiple rules (phone, license, plate+name, etc.).
+"""
 import logging
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, text
-from sqlalchemy.exc import OperationalError, DisconnectionError, PendingRollbackError
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
-from app.models.canon import IdentityRegistry, IdentityLink, IdentityUnmatched, ConfidenceLevel, UnmatchedStatus
-from app.services.normalization import (
-    normalize_phone, normalize_license, normalize_plate,
-    normalize_name, name_similarity
+
+from sqlalchemy import and_, text
+from sqlalchemy.exc import DisconnectionError, OperationalError, PendingRollbackError
+from sqlalchemy.orm import Session
+
+from app.config import NAME_SIMILARITY_THRESHOLD, PARK_ID_OBJETIVO
+from app.models.canon import (
+    ConfidenceLevel,
+    IdentityLink,
+    IdentityRegistry,
+    IdentityUnmatched,
+    UnmatchedStatus,
 )
-from app.config import PARK_ID_OBJETIVO, NAME_SIMILARITY_THRESHOLD
+from app.services.normalization import (
+    name_similarity,
+    normalize_license,
+    normalize_name,
+    normalize_phone,
+    normalize_plate,
+)
 
 logger = logging.getLogger(__name__)
 

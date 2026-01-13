@@ -1,16 +1,27 @@
+"""
+Scouting observation service for matching scouting data with canonical identities.
+
+Processes scouting daily records and attempts to match them with existing
+identity records using multiple strategies (license, phone, name similarity).
+"""
 import logging
 from datetime import date, datetime
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, text
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
+from sqlalchemy import and_, func, text
+from sqlalchemy.orm import Session
+
 from app.models.canon import IdentityLink, IdentityRegistry
-from app.models.observational import ScoutingMatchCandidate, MatchedSource, ConfidenceLevelObs
+from app.models.observational import ConfidenceLevelObs, MatchedSource, ScoutingMatchCandidate
 from app.services.data_contract import DataContract
 from app.services.normalization import (
-    normalize_phone, normalize_name, name_similarity,
-    normalize_license_simple, normalize_phone_pe9, digits_only
+    digits_only,
+    name_similarity,
+    normalize_license_simple,
+    normalize_name,
+    normalize_phone,
+    normalize_phone_pe9,
 )
 
 logger = logging.getLogger(__name__)

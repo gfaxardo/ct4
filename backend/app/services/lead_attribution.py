@@ -1,19 +1,35 @@
-import logging
-from typing import Optional, Dict, Any, List
-from datetime import date, datetime, timedelta
-from uuid import UUID, uuid4
-from sqlalchemy.orm import Session
-from sqlalchemy import text, and_, or_
-from sqlalchemy.exc import IntegrityError, PendingRollbackError, SQLAlchemyError
+"""
+Lead attribution service for the CT4 system.
 
-from app.models.observational import LeadEvent, LeadLedger, AttributionConfidence, DecisionStatus
-from app.models.canon import IdentityLink, IdentityRegistry, ConfidenceLevel
-from app.services.data_contract import DataContract
-from app.services.normalization import (
-    normalize_phone, normalize_license, normalize_phone_pe9, normalize_plate, normalize_name
-)
-from app.services.matching import MatchingEngine, IdentityCandidateInput
+Manages the attribution of leads to scouts, including populating lead events
+from various sources and processing the attribution ledger.
+"""
+import logging
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Optional
+from uuid import UUID, uuid4
+
+from sqlalchemy import and_, or_, text
+from sqlalchemy.exc import IntegrityError, PendingRollbackError, SQLAlchemyError
+from sqlalchemy.orm import Session
+
 from app.config import PARK_ID_OBJETIVO
+from app.models.canon import ConfidenceLevel, IdentityLink, IdentityRegistry
+from app.models.observational import (
+    AttributionConfidence,
+    DecisionStatus,
+    LeadEvent,
+    LeadLedger,
+)
+from app.services.data_contract import DataContract
+from app.services.matching import IdentityCandidateInput, MatchingEngine
+from app.services.normalization import (
+    normalize_license,
+    normalize_name,
+    normalize_phone,
+    normalize_phone_pe9,
+    normalize_plate,
+)
 
 logger = logging.getLogger(__name__)
 

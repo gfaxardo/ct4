@@ -1,17 +1,37 @@
+"""
+Identity ingestion service for the CT4 system.
+
+Orchestrates the ingestion pipeline that processes source records,
+matches them to canonical identities, and creates/updates links.
+"""
 import logging
-from datetime import datetime, date
-from typing import Dict, Any, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import text, func
-from sqlalchemy.exc import OperationalError, PendingRollbackError, DisconnectionError
-from uuid import uuid4, UUID
-from app.models.canon import IdentityRegistry, IdentityLink, IdentityUnmatched, ConfidenceLevel, UnmatchedStatus
-from app.models.ops import IngestionRun, RunStatus, JobType
 import time
-from app.services.normalization import normalize_phone, normalize_name, normalize_license, normalize_plate, parse_date
-from app.services.matching import MatchingEngine, IdentityCandidateInput
-from app.services.data_contract import DataContract
+from datetime import date, datetime
+from typing import Any, Dict, Optional
+from uuid import UUID, uuid4
+
+from sqlalchemy import func, text
+from sqlalchemy.exc import DisconnectionError, OperationalError, PendingRollbackError
+from sqlalchemy.orm import Session
+
 from app.db import SessionLocal
+from app.models.canon import (
+    ConfidenceLevel,
+    IdentityLink,
+    IdentityRegistry,
+    IdentityUnmatched,
+    UnmatchedStatus,
+)
+from app.models.ops import IngestionRun, JobType, RunStatus
+from app.services.data_contract import DataContract
+from app.services.matching import IdentityCandidateInput, MatchingEngine
+from app.services.normalization import (
+    normalize_license,
+    normalize_name,
+    normalize_phone,
+    normalize_plate,
+    parse_date,
+)
 
 logger = logging.getLogger(__name__)
 
