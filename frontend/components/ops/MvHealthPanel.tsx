@@ -264,14 +264,3 @@ export default function MvHealthPanel() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-

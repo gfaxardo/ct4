@@ -1,3 +1,7 @@
+/**
+ * Utility functions for formatting and display.
+ */
+
 export function formatDate(date: string): string {
   return new Date(date).toLocaleString('es-ES')
 }
@@ -23,23 +27,3 @@ export function getConfidenceColor(level: string): string {
   }
   return colors[level] || 'bg-gray-100 text-gray-800'
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -172,5 +172,3 @@ export function opsRawHealthIngestionDaily(params?: {
   return `${ENDPOINTS.OPS_RAW_HEALTH_INGESTION_DAILY}${buildQueryString(queryParams)}`;
 }
 
-
-

@@ -116,14 +116,3 @@ export default function HealthGlobalStatus() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-

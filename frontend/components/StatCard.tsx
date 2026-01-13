@@ -37,6 +37,3 @@ export default function StatCard({ title, value, subtitle, className = '', varia
     </div>
   );
 }
-
-
-

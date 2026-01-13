@@ -113,16 +113,3 @@ export default function Filters({
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

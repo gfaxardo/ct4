@@ -126,4 +126,3 @@ export default function CompactMilestoneCell({
     </div>
   );
 }
-
