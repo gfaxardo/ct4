@@ -1,7 +1,14 @@
-from pydantic import BaseModel
-from typing import Optional, Dict, Any, Literal, List
-from datetime import datetime, date
+"""
+Identity-related Pydantic schemas for API validation.
+
+Defines schemas for IdentityRegistry, IdentityLink, and related endpoints.
+"""
+from datetime import date, datetime
+from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
+
+from pydantic import BaseModel
+
 from app.models.canon import ConfidenceLevel, UnmatchedStatus
 
 

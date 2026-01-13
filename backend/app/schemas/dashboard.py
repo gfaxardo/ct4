@@ -108,27 +108,3 @@ class YangoReceivableItemsResponse(BaseModel):
     total: int
     limit: int
     offset: int
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

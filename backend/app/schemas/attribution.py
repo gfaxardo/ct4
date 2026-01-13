@@ -1,7 +1,13 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+"""
+Lead attribution Pydantic schemas for API validation.
+
+Defines schemas for lead events, attribution ledger, and related endpoints.
+"""
 from datetime import date, datetime
+from typing import Any, Dict, Optional
 from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
 class LeadEventBase(BaseModel):
@@ -64,31 +70,3 @@ class AttributionStats(BaseModel):
     assigned_count: int
     unassigned_count: int
     conflict_count: int
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

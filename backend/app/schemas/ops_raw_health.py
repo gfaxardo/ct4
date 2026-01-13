@@ -89,10 +89,3 @@ class RawDataIngestionDailyResponse(BaseModel):
     total: int
     limit: int
     offset: int
-
-
-
-
-
-
-

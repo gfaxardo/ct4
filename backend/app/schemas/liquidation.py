@@ -23,27 +23,3 @@ class ScoutMarkPaidResponse(BaseModel):
     preview_items: int
     preview_amount: Decimal
     message: str
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
