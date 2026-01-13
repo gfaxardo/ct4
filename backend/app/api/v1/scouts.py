@@ -11,7 +11,6 @@ import logging
 
 from app.db import get_db
 from app.models.ops import IngestionRun, RunStatus
-from app.services.lead_attribution import LeadAttributionService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -15,7 +15,3 @@ router.include_router(yango_payments.router, prefix="/yango", tags=["yango"])
 router.include_router(cabinet_leads.router, prefix="/cabinet-leads", tags=["cabinet-leads"])
 router.include_router(scouts.router, prefix="/scouts", tags=["scouts"])
 
-
-
-
-

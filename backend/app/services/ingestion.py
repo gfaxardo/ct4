@@ -3,7 +3,7 @@ import json
 from datetime import datetime, date
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.exc import OperationalError, PendingRollbackError, DisconnectionError
 from uuid import uuid4, UUID
 from app.models.canon import IdentityRegistry, IdentityLink, IdentityUnmatched, ConfidenceLevel, UnmatchedStatus

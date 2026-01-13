@@ -19,36 +19,9 @@ from app.models.canon import (
 from app.models.ops import IngestionRun, JobType, RunStatus
 from app.models.observational import ScoutingMatchCandidate, LeadEvent as LeadEventModel
 import logging
-import os
-import json as json_lib
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Helper function para logging de debug
-def _write_debug_log(location: str, message: str, data: dict, hypothesis_id: str, run_id: str = "run1"):
-    """Escribe un log de debug en formato NDJSON"""
-    try:
-        from datetime import datetime
-        # Desde backend/app/api/v1/identity.py necesitamos subir 4 niveles para llegar al workspace root
-        # backend/app/api/v1 -> backend/app/api -> backend/app -> backend -> workspace_root
-        workspace_root = Path(__file__).parent.parent.parent.parent.parent
-        debug_log_path = workspace_root / ".cursor" / "debug.log"
-        debug_log_path.parent.mkdir(parents=True, exist_ok=True)
-        log_entry = {
-            "id": f"log_{int(datetime.now().timestamp() * 1000)}",
-            "timestamp": int(datetime.now().timestamp() * 1000),
-            "location": location,
-            "message": message,
-            "data": data,
-            "sessionId": "debug-session",
-            "runId": run_id,
-            "hypothesisId": hypothesis_id
-        }
-        with open(debug_log_path, "a", encoding="utf-8") as f:
-            f.write(json_lib.dumps(log_entry) + "\n")
-    except Exception as e:
-        logger.error(f"Error writing debug log: {e}", exc_info=True)
 from app.schemas.identity import (
     IdentityRegistry as IdentityRegistrySchema, 
     IdentityLink as IdentityLinkSchema, 
@@ -302,9 +275,6 @@ def get_drivers_without_leads_analysis(db: Session = Depends(get_db)):
     IMPORTANTE: Los drivers en cuarentena (canon.driver_orphan_quarantine) 
     NO se cuentan como "operativos" y deben estar excluidos del funnel/claims/pagos.
     """
-    # #region agent log
-    _write_debug_log("identity.py:270", "FUNCTION_ENTRY_get_drivers_without_leads", {}, "H1")
-    # #endregion
     # Contar drivers en cuarentena
     quarantined_query = text("""
         SELECT 
@@ -449,39 +419,13 @@ def get_drivers_without_leads_analysis(db: Session = Depends(get_db)):
     
     # Obtener driver_ids en cuarentena primero para evitar problemas con enum en subqueries
     # SQLAlchemy puede usar el nombre del enum en lugar del valor en subqueries con select()
-    # #region agent log
-    enum_value = OrphanStatus.QUARANTINED
-    _write_debug_log("identity.py:449", "BEFORE_QUERY_QUARANTINED_ENUM", {
-        "enum_name": enum_value.name,
-        "enum_value": enum_value.value,
-        "enum_repr": repr(enum_value),
-        "enum_str": str(enum_value),
-        "enum_type": str(type(enum_value))
-    }, "H1")
-    # #endregion
     # Usar cast para forzar que SQLAlchemy use el valor del enum en lugar del nombre
-    try:
-        quarantined_status_value = OrphanStatus.QUARANTINED.value  # "quarantined"
-        quarantined_driver_ids_list = [
-            row[0] for row in db.query(DriverOrphanQuarantine.driver_id).filter(
-                cast(DriverOrphanQuarantine.status, String) == quarantined_status_value
-            ).all()
-        ]
-        # #region agent log
-        _write_debug_log("identity.py:470", "AFTER_QUERY_QUARANTINED", {
-            "quarantined_count": len(quarantined_driver_ids_list),
-            "success": True
-        }, "H1")
-        # #endregion
-    except Exception as e:
-        # #region agent log
-        _write_debug_log("identity.py:470", "AFTER_QUERY_QUARANTINED_ERROR", {
-            "error": str(e),
-            "error_type": str(type(e).__name__),
-            "success": False
-        }, "H1")
-        # #endregion
-        raise
+    quarantined_status_value = OrphanStatus.QUARANTINED.value  # "quarantined"
+    quarantined_driver_ids_list = [
+        row[0] for row in db.query(DriverOrphanQuarantine.driver_id).filter(
+            cast(DriverOrphanQuarantine.status, String) == quarantined_status_value
+        ).all()
+    ]
     
     # Convertir person_keys_list a UUIDs para la query ORM
     from uuid import UUID
@@ -732,70 +676,15 @@ def process_scouting_observations(
 
 
 def _parse_event_week(week_label: str) -> tuple[date, date]:
-    # #region agent log
-    try:
-        with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "initial",
-                "hypothesisId": "B",
-                "location": "identity.py:_parse_event_week:entry",
-                "message": "Parseando semana",
-                "data": {"week_label": week_label},
-                "timestamp": int(__import__('time').time() * 1000)
-            }) + '\n')
-    except: pass
-    # #endregion
+    """Parsea un label de semana ISO (YYYY-Www) a un rango de fechas."""
     try:
         year, week = week_label.split("-W")
         year = int(year)
         week = int(week)
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:_parse_event_week:before_fromisocalendar",
-                    "message": "Antes de fromisocalendar",
-                    "data": {"year": year, "week": week},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
         week_start = date.fromisocalendar(year, week, 1)
         week_end = date.fromisocalendar(year, week, 7)
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:_parse_event_week:success",
-                    "message": "Semana parseada exitosamente",
-                    "data": {"week_start": str(week_start), "week_end": str(week_end)},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
         return week_start, week_end
     except Exception as e:
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:_parse_event_week:error",
-                    "message": "Error parseando semana",
-                    "data": {"error": str(e), "error_type": type(e).__name__, "week_label": week_label},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
         raise HTTPException(
             status_code=400,
             detail=f"Formato de semana inválido: {week_label}. Use ISO 'YYYY-Www'"
@@ -878,26 +767,6 @@ def _get_available_weeks(db: Session, scope: MetricsScope) -> list[str]:
     rows_links = query_links.all()
     rows_unmatched = query_unmatched.all()
     
-    # #region agent log
-    try:
-        with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "initial",
-                "hypothesisId": "B",
-                "location": "identity.py:_get_available_weeks:after_queries",
-                "message": "Semanas encontradas",
-                "data": {
-                    "weeks_from_links": [r.week_label for r in rows_links if r.week_label],
-                    "weeks_from_unmatched": [r.week_label for r in rows_unmatched if r.week_label],
-                    "links_count": len(rows_links),
-                    "unmatched_count": len(rows_unmatched)
-                },
-                "timestamp": int(__import__('time').time() * 1000)
-            }) + '\n')
-    except: pass
-    # #endregion
-    
     weeks_links = {row.week_label for row in rows_links if row.week_label}
     weeks_unmatched = {row.week_label for row in rows_unmatched if row.week_label}
     
@@ -926,67 +795,10 @@ def _get_weekly_matched(
     # Aplicar filtros del scope
     query = _apply_scope_filters(query, scope, IdentityLink)
     
-    # #region agent log
-    try:
-        count_query = db.query(func.count(IdentityLink.id))
-        count_query = _apply_scope_filters(count_query, scope, IdentityLink)
-        total_links_count = count_query.scalar()
-        with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "initial",
-                "hypothesisId": "B",
-                "location": "identity.py:_get_weekly_matched:before_query",
-                "message": "Antes de ejecutar query",
-                "data": {
-                    "scope": {
-                        "run_id": scope.run_id,
-                        "source_table": scope.source_table,
-                        "event_date_from": str(scope.event_date_from) if scope.event_date_from else None,
-                        "event_date_to": str(scope.event_date_to) if scope.event_date_to else None
-                    },
-                    "total_links_in_scope": total_links_count
-                },
-                "timestamp": int(__import__('time').time() * 1000)
-            }) + '\n')
-    except: pass
-    # #endregion
     try:
         rows = query.all()
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:_get_weekly_matched:after_query",
-                    "message": "Query ejecutada exitosamente",
-                    "data": {"rows_count": len(rows)},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
         results = {}
         for row in rows:
-            # #region agent log
-            try:
-                with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "initial",
-                        "hypothesisId": "B",
-                        "location": "identity.py:_get_weekly_matched:processing_row",
-                        "message": "Procesando fila",
-                        "data": {
-                            "week_start_type": str(type(row.week_start)),
-                            "week_start_value": str(row.week_start) if row.week_start else None,
-                            "week_label": row.week_label if row.week_label else None
-                        },
-                        "timestamp": int(__import__('time').time() * 1000)
-                    }) + '\n')
-            except: pass
-            # #endregion
             week_start_val = row.week_start
             if isinstance(week_start_val, datetime):
                 week_start_val = week_start_val.date()
@@ -999,20 +811,7 @@ def _get_weekly_matched(
             results[key] = row.matched
         return results
     except Exception as e:
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:_get_weekly_matched:error",
-                    "message": "Error en query",
-                    "data": {"error": str(e), "error_type": type(e).__name__},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
+        logger.error(f"Error en _get_weekly_matched: {e}")
         return {}
 
 
@@ -1039,26 +838,6 @@ def _get_weekly_unmatched(
     
     try:
         rows = query.all()
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:_get_weekly_unmatched:after_query",
-                    "message": "Query ejecutada exitosamente",
-                    "data": {
-                        "rows_count": len(rows),
-                        "scope": {
-                            "run_id": scope.run_id,
-                            "source_table": scope.source_table
-                        }
-                    },
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
         results = {}
         for row in rows:
             week_start_val = row.week_start
@@ -1073,20 +852,7 @@ def _get_weekly_unmatched(
             results[key] = row.unmatched
         return results
     except Exception as e:
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:_get_weekly_unmatched:error",
-                    "message": "Error en query",
-                    "data": {"error": str(e), "error_type": type(e).__name__},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
+        logger.error(f"Error en _get_weekly_unmatched: {e}")
         return {}
 
 
@@ -1469,26 +1235,6 @@ def get_run_report(
     event_date_to: Optional[date] = Query(None, description="Fecha fin del evento"),
     include_weekly: bool = Query(True, description="Incluir datos semanales")
 ):
-    # #region agent log
-    try:
-        with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "initial",
-                "hypothesisId": "A",
-                "location": "identity.py:get_run_report:entry",
-                "message": "Endpoint llamado con parámetros",
-                "data": {
-                    "run_id": run_id,
-                    "group_by": group_by,
-                    "source_table": source_table,
-                    "event_week": event_week,
-                    "include_weekly": include_weekly
-                },
-                "timestamp": int(__import__('time').time() * 1000)
-            }) + '\n')
-    except: pass
-    # #endregion
     from app.models.ops import RunStatus
     from collections import defaultdict
     from typing import Dict, Any
@@ -1512,28 +1258,6 @@ def get_run_report(
     
     links = links_query.all()
     unmatched_list = unmatched_query.all()
-    
-    # #region agent log
-    try:
-        with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "initial",
-                "hypothesisId": "B",
-                "location": "identity.py:get_run_report:summary_counts",
-                "message": "Conteos del reporte resumen",
-                "data": {
-                    "run_id": run_id,
-                    "run_status": run.status.value if hasattr(run.status, 'value') else str(run.status),
-                    "total_links": len(links),
-                    "total_unmatched": len(unmatched_list),
-                    "links_by_source": {link.source_table: sum(1 for l in links if l.source_table == link.source_table) for link in links[:10]},
-                    "unmatched_by_source": {um.source_table: sum(1 for u in unmatched_list if u.source_table == um.source_table) for um in unmatched_list[:10]}
-                },
-                "timestamp": int(__import__('time').time() * 1000)
-            }) + '\n')
-    except: pass
-    # #endregion
     
     counts_by_source_table = defaultdict(lambda: {"total_processed": 0, "matched_count": 0, "unmatched_count": 0, "skipped_count": 0})
     
@@ -1610,20 +1334,6 @@ def get_run_report(
     }
     
     if group_by == "week" and include_weekly:
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:get_run_report:weekly_branch",
-                    "message": "Entrando a branch weekly",
-                    "data": {"group_by": group_by, "include_weekly": include_weekly},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
         event_date_from_filter = event_date_from
         event_date_to_filter = event_date_to
         
@@ -1632,37 +1342,6 @@ def get_run_report(
             event_date_from_filter = week_start
             event_date_to_filter = week_end
         
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:get_run_report:before_queries",
-                    "message": "Antes de ejecutar queries semanales",
-                    "data": {
-                        "run_id": run_id,
-                        "source_table": source_table,
-                        "event_date_from": str(event_date_from_filter) if event_date_from_filter else None,
-                        "event_date_to": str(event_date_to_filter) if event_date_to_filter else None
-                    },
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except Exception as e:
-            try:
-                with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "initial",
-                        "hypothesisId": "B",
-                        "location": "identity.py:get_run_report:log_error",
-                        "message": "Error escribiendo log",
-                        "data": {"error": str(e)},
-                        "timestamp": int(__import__('time').time() * 1000)
-                    }) + '\n')
-            except: pass
-        # #endregion
         try:
             # Crear scope para las queries semanales
             weekly_scope = MetricsScope(
@@ -1673,96 +1352,17 @@ def get_run_report(
                 mode="weekly"
             )
             weekly_matched = _get_weekly_matched(db, weekly_scope)
-            # #region agent log
-            try:
-                with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "initial",
-                        "hypothesisId": "B",
-                        "location": "identity.py:get_run_report:after_weekly_matched",
-                        "message": "weekly_matched completado",
-                        "data": {"count": len(weekly_matched)},
-                        "timestamp": int(__import__('time').time() * 1000)
-                    }) + '\n')
-            except: pass
-            # #endregion
             weekly_unmatched = _get_weekly_unmatched(db, weekly_scope)
             breakdowns = _get_weekly_breakdowns(db, weekly_scope)
             missing_keys = _get_weekly_missing_keys(db, weekly_scope)
         except Exception as e:
-            # #region agent log
-            try:
-                with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "initial",
-                        "hypothesisId": "B",
-                        "location": "identity.py:get_run_report:queries_error",
-                        "message": "Error ejecutando queries semanales",
-                        "data": {"error": str(e), "error_type": type(e).__name__},
-                        "timestamp": int(__import__('time').time() * 1000)
-                    }) + '\n')
-            except: pass
-            # #endregion
+            logger.error(f"Error ejecutando queries semanales: {e}")
             weekly_matched = {}
             weekly_unmatched = {}
             breakdowns = {'matched_by_rule': {}, 'matched_by_confidence': {}, 'unmatched_by_reason': {}}
             missing_keys = {}
         
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:get_run_report:after_queries",
-                    "message": "Después de ejecutar queries",
-                    "data": {
-                        "weekly_matched_keys": len(weekly_matched),
-                        "weekly_unmatched_keys": len(weekly_unmatched),
-                        "weekly_matched_sample": list(weekly_matched.items())[:3] if weekly_matched else [],
-                        "weekly_unmatched_sample": list(weekly_unmatched.items())[:3] if weekly_unmatched else []
-                    },
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
-        
         all_week_keys = set(weekly_matched.keys()) | set(weekly_unmatched.keys())
-        
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:get_run_report:after_queries",
-                    "message": "Después de ejecutar queries",
-                    "data": {
-                        "weekly_matched_keys": len(weekly_matched),
-                        "weekly_unmatched_keys": len(weekly_unmatched),
-                        "all_week_keys_count": len(all_week_keys),
-                        "weekly_matched_sample": list(weekly_matched.items())[:3] if weekly_matched else [],
-                        "weekly_unmatched_sample": list(weekly_unmatched.items())[:3] if weekly_unmatched else []
-                    },
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except Exception as e:
-            try:
-                with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps({
-                        "sessionId": "debug-session",
-                        "runId": "initial",
-                        "hypothesisId": "B",
-                        "location": "identity.py:get_run_report:log_error2",
-                        "message": "Error en log after_queries",
-                        "data": {"error": str(e)},
-                        "timestamp": int(__import__('time').time() * 1000)
-                    }) + '\n')
-            except: pass
         # #endregion
         
         weekly_data = []
@@ -1796,25 +1396,6 @@ def get_run_report(
         
         weekly_trend = _calculate_weekly_trend(weekly_data)
         
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "B",
-                    "location": "identity.py:get_run_report:weekly_response",
-                    "message": "Preparando respuesta weekly",
-                    "data": {
-                        "weekly_data_count": len(weekly_data),
-                        "weekly_trend_count": len(weekly_trend),
-                        "available_weeks_count": len(available_weeks)
-                    },
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
-        
         response_data["weekly"] = weekly_data
         response_data["weekly_trend"] = weekly_trend
         response_data["available_event_weeks"] = available_weeks
@@ -1822,42 +1403,7 @@ def get_run_report(
         scouting_kpis = _get_scouting_weekly_kpis(db, run_id, event_week)
         if scouting_kpis:
             response_data["scouting_kpis"] = scouting_kpis
-    else:
-        # #region agent log
-        try:
-            with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps({
-                    "sessionId": "debug-session",
-                    "runId": "initial",
-                    "hypothesisId": "A",
-                    "location": "identity.py:get_run_report:no_weekly",
-                    "message": "NO entrando a branch weekly",
-                    "data": {"group_by": group_by, "include_weekly": include_weekly},
-                    "timestamp": int(__import__('time').time() * 1000)
-                }) + '\n')
-        except: pass
-        # #endregion
     
-    # #region agent log
-    try:
-        with open('c:\\cursor\\CT4\\.cursor\\debug.log', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "initial",
-                "hypothesisId": "B",
-                "location": "identity.py:get_run_report:return",
-                "message": "Devolviendo respuesta",
-                "data": {
-                    "has_weekly": "weekly" in response_data,
-                    "has_weekly_trend": "weekly_trend" in response_data,
-                    "has_available_weeks": "available_event_weeks" in response_data,
-                    "weekly_count": len(response_data.get("weekly", [])),
-                    "weekly_trend_count": len(response_data.get("weekly_trend", []))
-                },
-                "timestamp": int(__import__('time').time() * 1000)
-            }) + '\n')
-    except: pass
-    # #endregion
     return RunReportResponse(**response_data)
 
 
@@ -2139,42 +1685,17 @@ def get_orphans_metrics(db: Session = Depends(get_db)):
     """
     Obtiene métricas agregadas de drivers huérfanos.
     """
-    # #region agent log
-    _write_debug_log("identity.py:2126", "FUNCTION_ENTRY_get_orphans_metrics", {}, "H4")
-    # #endregion
     # Total de orphans
     total_orphans = db.query(DriverOrphanQuarantine).count()
     
     # Por status
     by_status = {}
-    # #region agent log
-    _write_debug_log("identity.py:2148", "BEFORE_STATUS_LOOP", {
-        "orphan_status_values": [s.value for s in OrphanStatus],
-        "orphan_status_names": [s.name for s in OrphanStatus]
-    }, "H4")
-    # #endregion
     for status in OrphanStatus:
-        # #region agent log
-        _write_debug_log("identity.py:2176", "BEFORE_STATUS_QUERY", {
-            "status_name": status.name,
-            "status_value": status.value,
-            "status_repr": repr(status),
-            "status_str": str(status),
-            "status_type": str(type(status))
-        }, "H4")
-        # #endregion
         # Usar cast para forzar que SQLAlchemy use el valor del enum en lugar del nombre
         status_value = status.value
         count = db.query(DriverOrphanQuarantine).filter(
             cast(DriverOrphanQuarantine.status, String) == status_value
         ).count()
-        # #region agent log
-        _write_debug_log("identity.py:2193", "AFTER_STATUS_QUERY", {
-            "status_name": status.name,
-            "status_value": status.value,
-            "count": count
-        }, "H4")
-        # #endregion
         by_status[status.value] = count
     
     # Por razón

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
 from datetime import date
+import logging
 
 from app.db import get_db
 from app.schemas.attribution import (
@@ -11,6 +12,7 @@ from app.schemas.attribution import (
 from app.services.lead_attribution import LeadAttributionService
 from app.models.observational import LeadEvent as LeadEventModel, LeadLedger as LeadLedgerModel
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -19,8 +21,6 @@ def populate_events(
     request: PopulateEventsRequest,
     db: Session = Depends(get_db)
 ):
-    import logging
-    logger = logging.getLogger(__name__)
     
     logger.info(f"Iniciando populate_events. source_tables={request.source_tables}, date_from={request.date_from}, date_to={request.date_to}")
     
@@ -164,10 +164,6 @@ def get_stats(db: Session = Depends(get_db)):
         unassigned_count=unassigned_count,
         conflict_count=conflict_count
     )
-
-
-
-
 
 
 

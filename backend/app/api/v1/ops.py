@@ -24,7 +24,6 @@ from app.schemas.ops_mv_health import MvHealthResponse, MvHealthRow
 from app.schemas.ops_health_checks import HealthChecksResponse, HealthCheckRow
 from app.schemas.ops_health_global import HealthGlobalResponse
 from app.schemas.ops_source_registry import SourceRegistryResponse, SourceRegistryRow
-from app.schemas.ops_source_registry import SourceRegistryResponse, SourceRegistryRow
 from app.api.v1 import ops_payments
 from app.schemas.identity_gap import (
     IdentityGapResponse,

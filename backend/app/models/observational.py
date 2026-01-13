@@ -62,9 +62,9 @@ class LeadLedger(Base):
     attributed_scout_id = Column(Integer, nullable=True)
     attribution_rule = Column(String, nullable=True)
     attribution_score = Column(Numeric(5, 2), nullable=False)
-    confidence_level = Column(PGENUM('high', 'medium', 'low', name='attributionconfidence', create_type=False, native_enum=False), nullable=False)
+    confidence_level = Column(PGENUM('high', 'medium', 'low', name='attributionconfidence', create_type=False), nullable=False)
     evidence_json = Column(JSONB, nullable=True)
-    decision_status = Column(PGENUM('assigned', 'unassigned', 'conflict', name='decisionstatus', create_type=False, native_enum=False), nullable=False)
+    decision_status = Column(PGENUM('assigned', 'unassigned', 'conflict', name='decisionstatus', create_type=False), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 

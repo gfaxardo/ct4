@@ -8,7 +8,6 @@ from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, date
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
-from sqlalchemy import text, and_, or_, func
 from uuid import UUID
 
 from app.models.canon import (

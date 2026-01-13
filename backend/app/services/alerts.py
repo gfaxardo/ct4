@@ -2,7 +2,7 @@ import logging
 from datetime import date, timedelta
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func
 
 from app.models.ops import Alert, AlertSeverity
 from app.models.observational import ScoutingMatchCandidate
@@ -149,10 +149,6 @@ class AlertService:
             alert.acknowledged_at = datetime.utcnow()
             self.db.commit()
         return alert
-
-
-
-
 
 
 

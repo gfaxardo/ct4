@@ -71,8 +71,6 @@ class LeadAttributionService:
             
             # No existe el vínculo - verificar si hay un lead asociado antes de crear
             # Buscar si hay un lead_event o migration que referencia este driver_id
-            from app.models.observational import LeadEvent
-            
             has_lead = False
             lead_source = None
             
