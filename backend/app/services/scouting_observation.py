@@ -1,8 +1,8 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func, text
+from sqlalchemy import and_, func, text
 from uuid import UUID
 
 from app.models.canon import IdentityLink, IdentityRegistry

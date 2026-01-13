@@ -77,8 +77,6 @@ def _run_ingestion_background(
             refresh_index=refresh_index
         )
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Error en background task para run_id {run_id}: {str(e)}")
     finally:
         db.close()

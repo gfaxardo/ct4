@@ -129,5 +129,3 @@ def normalize_phone_pe9(phone: Optional[str]) -> Optional[str]:
     if not digits or len(digits) < 9:
         return None
     return digits[-9:]
-
-
