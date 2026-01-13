@@ -1,12 +1,28 @@
+"""
+Data normalization utilities for identity matching.
+
+Provides functions for normalizing phone numbers, names, licenses,
+plates, and dates to enable consistent matching across data sources.
+"""
 import re
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
 
 
-STOPWORDS = {"DE", "DEL", "LA", "LOS", "LAS", "EL", "Y", "E"}
+# Spanish stopwords to exclude from name matching
+STOPWORDS: set[str] = {"DE", "DEL", "LA", "LOS", "LAS", "EL", "Y", "E"}
 
 
 def normalize_phone(phone: Optional[str]) -> Optional[str]:
+    """
+    Normalize phone number by removing formatting characters.
+    
+    Args:
+        phone: Raw phone number string
+        
+    Returns:
+        Cleaned phone number with only digits, or None if invalid
+    """
     if not phone:
         return None
     cleaned = re.sub(r'[\s\-\(\)\+]', '', phone)
@@ -45,6 +61,20 @@ def tokenize_name(name: Optional[str]) -> List[str]:
 
 
 def name_similarity(name1: Optional[str], name2: Optional[str], threshold: float = 0.66) -> float:
+    """
+    Calculate similarity between two names using Jaccard + overlap metrics.
+    
+    Uses a combination of Jaccard similarity and overlap coefficient
+    for robust name matching that handles partial matches well.
+    
+    Args:
+        name1: First name to compare
+        name2: Second name to compare
+        threshold: Minimum similarity threshold (unused in calculation, kept for API)
+        
+    Returns:
+        Similarity score between 0.0 and 1.0
+    """
     tokens1 = set(tokenize_name(name1))
     tokens2 = set(tokenize_name(name2))
     

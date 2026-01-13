@@ -1,16 +1,22 @@
+"""
+Alert service for scouting and identity system monitoring.
+
+Provides functionality to detect, create, and manage alerts
+related to scouting data quality and matching performance.
+"""
 import logging
-from datetime import datetime
-from typing import Optional, List
+from datetime import datetime, timezone
+from typing import List, Optional
+
 from sqlalchemy.orm import Session
 
-from app.models.ops import Alert, AlertSeverity
-from app.models.observational import ScoutingMatchCandidate
 from app.api.v1.identity import (
-    _get_scouting_processed_count,
-    _get_scouting_candidates_count,
     _get_scouting_avg_time_to_match,
-    _get_scouting_high_confidence_count
+    _get_scouting_candidates_count,
+    _get_scouting_high_confidence_count,
+    _get_scouting_processed_count,
 )
+from app.models.ops import Alert, AlertSeverity
 
 logger = logging.getLogger(__name__)
 
@@ -142,15 +148,12 @@ class AlertService:
         ).order_by(Alert.created_at.desc()).limit(limit).all()
 
     def acknowledge_alert(self, alert_id: int) -> Optional[Alert]:
+        """Acknowledge an alert by setting its acknowledged_at timestamp."""
         alert = self.db.query(Alert).filter(Alert.id == alert_id).first()
         if alert:
-            alert.acknowledged_at = datetime.utcnow()
+            alert.acknowledged_at = datetime.now(timezone.utc)
             self.db.commit()
         return alert
-
-
-
-
 
 
 

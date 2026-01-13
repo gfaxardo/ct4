@@ -1,9 +1,21 @@
-from typing import Optional, Dict, Any
-from datetime import datetime, date
+"""
+Data contract definitions for mapping source tables to canonical fields.
+
+Provides a centralized mapping from various source table schemas
+to a unified canonical format for identity matching.
+"""
 import hashlib
+from datetime import date, datetime
+from typing import Any, Dict, Optional
 
 
 class DataContract:
+    """
+    Maps source table rows to canonical field format.
+    
+    Defines field mappings for each supported source table,
+    enabling consistent data transformation across the pipeline.
+    """
     MAPPINGS = {
         "module_ct_cabinet_leads": {
             "source_pk": lambda row: row.get("external_id") or str(row.get("id", "")),
