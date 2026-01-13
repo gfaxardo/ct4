@@ -1,16 +1,23 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, Header
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from typing import Optional
+"""
+Scout liquidation API endpoints.
+
+Provides endpoints for previewing and marking scout items as paid.
+"""
 from datetime import date
 from decimal import Decimal
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.config import settings
 from app.db import get_db
 from app.schemas.liquidation import (
     ScoutMarkPaidRequest,
     ScoutMarkPaidResponse,
-    ScoutPreviewResponse
+    ScoutPreviewResponse,
 )
-from app.config import settings
 
 router = APIRouter()
 

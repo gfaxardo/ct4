@@ -1,16 +1,27 @@
+"""
+Lead attribution API endpoints.
+
+Provides endpoints for populating lead events and processing the attribution ledger.
+"""
+import logging
+from datetime import date
+from typing import List, Optional
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import Optional, List
-from uuid import UUID
-from datetime import date
-import logging
 
 from app.db import get_db
+from app.models.observational import LeadEvent as LeadEventModel
+from app.models.observational import LeadLedger as LeadLedgerModel
 from app.schemas.attribution import (
-    LeadEvent, LeadLedger, PopulateEventsRequest, ProcessLedgerRequest, AttributionStats
+    AttributionStats,
+    LeadEvent,
+    LeadLedger,
+    PopulateEventsRequest,
+    ProcessLedgerRequest,
 )
 from app.services.lead_attribution import LeadAttributionService
-from app.models.observational import LeadEvent as LeadEventModel, LeadLedger as LeadLedgerModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -1,15 +1,29 @@
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from typing import Optional
+"""
+Dashboard API endpoints.
+
+Provides summary views and metrics for scouts and Yango payments.
+"""
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from app.db import get_db
 from app.schemas.dashboard import (
-    ScoutSummaryResponse, ScoutTotals, ScoutByWeek, TopScout,
-    ScoutOpenItemsResponse, ScoutOpenItem,
-    YangoSummaryResponse, YangoTotals, YangoByWeek,
-    YangoReceivableItemsResponse, YangoReceivableItem
+    ScoutByWeek,
+    ScoutOpenItem,
+    ScoutOpenItemsResponse,
+    ScoutSummaryResponse,
+    ScoutTotals,
+    TopScout,
+    YangoByWeek,
+    YangoReceivableItem,
+    YangoReceivableItemsResponse,
+    YangoSummaryResponse,
+    YangoTotals,
 )
 
 router = APIRouter()

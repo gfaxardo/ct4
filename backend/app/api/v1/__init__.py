@@ -1,6 +1,22 @@
+"""
+API v1 router aggregation.
+
+Combines all v1 endpoint routers into a single router for the main application.
+"""
 from fastapi import APIRouter
-from app.api.v1 import identity, ops, attribution, dashboard, liquidation, yango_payments, cabinet_leads, identity_audit, scouts
-from .payments import router as payments_router
+
+from app.api.v1 import (
+    attribution,
+    cabinet_leads,
+    dashboard,
+    identity,
+    identity_audit,
+    liquidation,
+    ops,
+    scouts,
+    yango_payments,
+)
+from app.api.v1.payments import router as payments_router
 
 router = APIRouter()
 

@@ -1,12 +1,16 @@
 """
-Endpoints para Scout Attribution Observability
+Scout Attribution Observability API endpoints.
+
+Provides endpoints for monitoring scout attribution metrics,
+job status, and triggering attribution refreshes.
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from typing import Optional
-from datetime import date
 import logging
+from datetime import date
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.ops import IngestionRun, RunStatus
