@@ -118,5 +118,3 @@ def _generate_scouting_pk(scout_id: Any, phone: Optional[str], license: Optional
     key_str = f"{scout_id}|{phone_norm}|{license_norm}|{date_str}"
     return hashlib.md5(key_str.encode('utf-8')).hexdigest()
 
-
-

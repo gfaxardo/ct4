@@ -26,4 +26,3 @@ PARK_ID_OBJETIVO = settings.park_id_objetivo
 NAME_SIMILARITY_THRESHOLD = settings.name_similarity_threshold
 LEAD_SYSTEM_START_DATE = date.fromisoformat(settings.lead_system_start_date)
 
-
