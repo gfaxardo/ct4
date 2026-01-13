@@ -1,16 +1,18 @@
 """
 Endpoints para operaciones de payments dentro del módulo ops
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import text
-from sqlalchemy.exc import ProgrammingError, OperationalError
-from typing import Optional
+import logging
 from datetime import date
 from enum import Enum
-import logging
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.services.mv_cache import get_best_view, mv_exists
 from app.schemas.payments import (
     DriverMatrixRow,
     OpsDriverMatrixResponse,
@@ -166,28 +168,13 @@ def get_driver_matrix(
             # Default fallback
             order_by_clause = "ORDER BY week_start DESC NULLS LAST, driver_name ASC NULLS LAST"
         
-        # Determinar qué vista usar: materializada si existe, sino normal
-        # Intentar detectar si existe la vista materializada
-        view_name = "ops.v_payments_driver_matrix_cabinet"  # Default: vista normal
-        try:
-            # Verificar si existe la vista materializada
-            check_mv_sql = """
-                SELECT EXISTS (
-                    SELECT 1 
-                    FROM pg_matviews 
-                    WHERE schemaname = 'ops' 
-                    AND matviewname = 'mv_payments_driver_matrix_cabinet'
-                )
-            """
-            mv_exists = db.execute(text(check_mv_sql)).scalar()
-            if mv_exists:
-                view_name = "ops.mv_payments_driver_matrix_cabinet"
-                logger.info("Usando vista materializada para mejor rendimiento")
-            else:
-                logger.info("Vista materializada no existe, usando vista normal")
-        except Exception as e:
-            logger.warning(f"No se pudo verificar vista materializada, usando vista normal: {str(e)}")
-            view_name = "ops.v_payments_driver_matrix_cabinet"
+        # Determinar qué vista usar: materializada si existe, sino normal (con caché)
+        view_name = get_best_view(
+            db, 
+            "ops", 
+            ["mv_payments_driver_matrix_cabinet"], 
+            "ops.v_payments_driver_matrix_cabinet"
+        )
         
         # Query para contar total (sin limit/offset)
         count_sql = f"""

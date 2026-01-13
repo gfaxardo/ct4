@@ -1201,3 +1201,125 @@ def get_identity_gap_alerts(
             status_code=500,
             detail=f"Error obteniendo alertas de brechas: {str(e)}"
         )
+
+
+@router.get("/performance-diagnostics")
+def get_performance_diagnostics(db: Session = Depends(get_db)):
+    """
+    Diagnóstico de rendimiento de la base de datos.
+    
+    Retorna información sobre:
+    - Tamaño de tablas principales
+    - Índices faltantes
+    - Vistas materializadas y su estado
+    - Estadísticas de conexiones
+    """
+    try:
+        diagnostics = {}
+        
+        # 1. Tamaño de tablas principales
+        tables_query = text("""
+            SELECT 
+                schemaname || '.' || tablename AS table_name,
+                pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) AS total_size,
+                pg_total_relation_size(schemaname || '.' || tablename) AS size_bytes
+            FROM pg_tables
+            WHERE schemaname IN ('public', 'canon', 'ops', 'observational')
+            ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
+            LIMIT 20
+        """)
+        tables_result = db.execute(tables_query)
+        diagnostics["top_tables_by_size"] = [
+            {"table": row.table_name, "size": row.total_size, "bytes": row.size_bytes}
+            for row in tables_result
+        ]
+        
+        # 2. Vistas materializadas con estado
+        mv_query = text("""
+            SELECT 
+                schemaname || '.' || matviewname AS mv_name,
+                ispopulated,
+                pg_size_pretty(pg_relation_size(schemaname || '.' || matviewname)) AS size
+            FROM pg_matviews
+            WHERE schemaname IN ('ops', 'canon')
+            ORDER BY pg_relation_size(schemaname || '.' || matviewname) DESC
+        """)
+        mv_result = db.execute(mv_query)
+        diagnostics["materialized_views"] = [
+            {"name": row.mv_name, "populated": row.ispopulated, "size": row.size}
+            for row in mv_result
+        ]
+        
+        # 3. Índices en tablas principales
+        indexes_query = text("""
+            SELECT 
+                schemaname || '.' || tablename AS table_name,
+                indexname,
+                pg_size_pretty(pg_relation_size(schemaname || '.' || indexname)) AS index_size
+            FROM pg_indexes
+            WHERE schemaname IN ('canon', 'ops', 'public')
+            ORDER BY pg_relation_size(schemaname || '.' || indexname) DESC
+            LIMIT 30
+        """)
+        indexes_result = db.execute(indexes_query)
+        diagnostics["top_indexes"] = [
+            {"table": row.table_name, "index": row.indexname, "size": row.index_size}
+            for row in indexes_result
+        ]
+        
+        # 4. Estadísticas de conexiones
+        conn_query = text("""
+            SELECT 
+                count(*) AS total_connections,
+                count(*) FILTER (WHERE state = 'active') AS active,
+                count(*) FILTER (WHERE state = 'idle') AS idle,
+                count(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_transaction
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+        """)
+        conn_result = db.execute(conn_query).fetchone()
+        diagnostics["connections"] = {
+            "total": conn_result.total_connections,
+            "active": conn_result.active,
+            "idle": conn_result.idle,
+            "idle_in_transaction": conn_result.idle_in_transaction
+        }
+        
+        # 5. Queries lentas recientes (si pg_stat_statements está disponible)
+        try:
+            slow_query = text("""
+                SELECT 
+                    LEFT(query, 100) AS query_snippet,
+                    calls,
+                    round(total_exec_time::numeric, 2) AS total_ms,
+                    round(mean_exec_time::numeric, 2) AS mean_ms
+                FROM pg_stat_statements
+                WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                ORDER BY mean_exec_time DESC
+                LIMIT 10
+            """)
+            slow_result = db.execute(slow_query)
+            diagnostics["slowest_queries"] = [
+                {
+                    "query": row.query_snippet,
+                    "calls": row.calls,
+                    "total_ms": float(row.total_ms),
+                    "mean_ms": float(row.mean_ms)
+                }
+                for row in slow_result
+            ]
+        except Exception:
+            diagnostics["slowest_queries"] = "pg_stat_statements not available"
+        
+        # 6. Cache de MVs
+        from app.services.mv_cache import get_cache_stats
+        diagnostics["mv_cache"] = get_cache_stats()
+        
+        return diagnostics
+        
+    except Exception as e:
+        logger.exception("get_performance_diagnostics failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo diagnósticos: {str(e)}"
+        )
