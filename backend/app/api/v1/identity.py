@@ -1178,6 +1178,7 @@ def _build_metrics_response(
 ) -> MetricsResponse:
     """
     Construye una respuesta MetricsResponse basada en el scope proporcionado.
+    Optimizado para modo 'breakdowns' - solo carga totales y breakdowns, no weekly.
     """
     totals = _get_summary_counts(db, scope)
     
@@ -1186,7 +1187,9 @@ def _build_metrics_response(
         "totals": totals
     }
     
-    if scope.mode == "weekly" or scope.mode == "breakdowns":
+    # Solo cargar weekly data para modo "weekly" explícito
+    # Para "breakdowns" solo necesitamos los totales y breakdowns agregados
+    if scope.mode == "weekly":
         # Obtener datos semanales
         weekly_matched = _get_weekly_matched(db, scope)
         weekly_unmatched = _get_weekly_unmatched(db, scope)
@@ -1222,26 +1225,42 @@ def _build_metrics_response(
         response_data["available_event_weeks"] = _get_available_weeks(db, scope)
     
     if scope.mode == "breakdowns":
-        # Obtener breakdowns agregados (no por semana)
-        links_query = db.query(IdentityLink)
-        links_query = _apply_scope_filters(links_query, scope, IdentityLink)
-        links = links_query.all()
+        # Obtener breakdowns agregados usando SQL directo (MUCHO más rápido)
+        # En lugar de cargar todos los registros y contarlos en Python
         
-        unmatched_query = db.query(IdentityUnmatched)
-        unmatched_query = _apply_scope_filters(unmatched_query, scope, IdentityUnmatched)
-        unmatched_list = unmatched_query.all()
+        # Matched by rule
+        matched_by_rule_query = text("""
+            SELECT match_rule, COUNT(*) as cnt
+            FROM canon.identity_links
+            GROUP BY match_rule
+        """)
+        matched_by_rule = {
+            row.match_rule: row.cnt 
+            for row in db.execute(matched_by_rule_query).fetchall()
+        }
         
-        matched_by_rule = {}
-        matched_by_confidence = {}
-        unmatched_by_reason = {}
+        # Matched by confidence
+        matched_by_confidence_query = text("""
+            SELECT confidence_level::text as conf, COUNT(*) as cnt
+            FROM canon.identity_links
+            GROUP BY confidence_level
+        """)
+        matched_by_confidence = {
+            row.conf: row.cnt 
+            for row in db.execute(matched_by_confidence_query).fetchall()
+        }
         
-        for link in links:
-            matched_by_rule[link.match_rule] = matched_by_rule.get(link.match_rule, 0) + 1
-            conf_level = link.confidence_level.value if hasattr(link.confidence_level, 'value') else str(link.confidence_level)
-            matched_by_confidence[conf_level] = matched_by_confidence.get(conf_level, 0) + 1
-        
-        for um in unmatched_list:
-            unmatched_by_reason[um.reason_code] = unmatched_by_reason.get(um.reason_code, 0) + 1
+        # Unmatched by reason
+        unmatched_by_reason_query = text("""
+            SELECT reason_code, COUNT(*) as cnt
+            FROM canon.identity_unmatched
+            WHERE status = 'OPEN'
+            GROUP BY reason_code
+        """)
+        unmatched_by_reason = {
+            row.reason_code: row.cnt 
+            for row in db.execute(unmatched_by_reason_query).fetchall()
+        }
         
         response_data["breakdowns"] = {
             "matched_by_rule": matched_by_rule,
