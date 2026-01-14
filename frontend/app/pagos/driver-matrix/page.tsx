@@ -315,17 +315,17 @@ function DriverMatrixPageContent() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full table-fixed">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="w-10 py-3 px-3"></th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Driver</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Week</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Origin</th>
-                      <th className="text-center py-3 px-4 text-xs font-semibold text-slate-600 uppercase">M1</th>
-                      <th className="text-center py-3 px-4 text-xs font-semibold text-slate-600 uppercase">M5</th>
-                      <th className="text-center py-3 px-4 text-xs font-semibold text-slate-600 uppercase">M25</th>
-                      <th className="text-center py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Conectado</th>
+                      <th className="w-10 py-3 px-2"></th>
+                      <th className="w-56 text-left py-3 px-3 text-xs font-semibold text-slate-600 uppercase">Driver</th>
+                      <th className="w-24 text-left py-3 px-3 text-xs font-semibold text-slate-600 uppercase">Week</th>
+                      <th className="w-24 text-center py-3 px-3 text-xs font-semibold text-slate-600 uppercase">Origin</th>
+                      <th className="w-36 text-center py-3 px-2 text-xs font-semibold text-slate-600 uppercase">M1</th>
+                      <th className="w-36 text-center py-3 px-2 text-xs font-semibold text-slate-600 uppercase">M5</th>
+                      <th className="w-36 text-center py-3 px-2 text-xs font-semibold text-slate-600 uppercase">M25</th>
+                      <th className="w-20 text-center py-3 px-2 text-xs font-semibold text-slate-600 uppercase">Conect.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -334,45 +334,43 @@ function DriverMatrixPageContent() {
                       const isExpanded = expandedRows[rowKey];
                       const hasInconsistency = row.m5_without_m1_flag || row.m25_without_m5_flag;
                       return (
-                        <tr key={idx}>
-                          <td colSpan={8} className="p-0">
-                            <div className={`hover:bg-slate-50/50 transition-colors ${isExpanded ? 'bg-slate-50' : ''}`}>
-                              <div className="flex items-center">
-                                <div className="w-10 py-3 px-3">
-                                  <button onClick={() => toggleRowExpand(row)} className="p-1 hover:bg-slate-200 rounded transition-colors">
-                                    <span className={`inline-block text-slate-400 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
-                                  </button>
+                        <>
+                          <tr key={idx} className={`hover:bg-slate-50/50 transition-colors ${isExpanded ? 'bg-slate-50' : ''}`}>
+                            <td className="py-2 px-2">
+                              <button onClick={() => toggleRowExpand(row)} className="p-1 hover:bg-slate-200 rounded transition-colors">
+                                <span className={`inline-block text-slate-400 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                              </button>
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="font-medium text-slate-900 truncate">{row.driver_name || '—'}</div>
+                              <div className="text-xs text-slate-500 font-mono truncate">{row.driver_id?.substring(0, 16)}...</div>
+                              {hasInconsistency && <Badge variant="warning" className="mt-1 text-xs">⚠</Badge>}
+                            </td>
+                            <td className="py-2 px-3 text-sm text-slate-600">{row.week_start ? new Date(row.week_start).toLocaleDateString('es-ES') : '—'}</td>
+                            <td className="py-2 px-3 text-center"><Badge variant={row.origin_tag === 'cabinet' ? 'info' : 'default'}>{row.origin_tag || '?'}</Badge></td>
+                            <td className="py-2 px-2"><CompactMilestoneCell achieved_flag={row.m1_achieved_flag} achieved_date={row.m1_achieved_date} expected_amount_yango={row.m1_expected_amount_yango} yango_payment_status={row.m1_yango_payment_status} window_status={row.m1_window_status} overdue_days={row.m1_overdue_days} label="M1" /></td>
+                            <td className="py-2 px-2"><CompactMilestoneCell achieved_flag={row.m5_achieved_flag} achieved_date={row.m5_achieved_date} expected_amount_yango={row.m5_expected_amount_yango} yango_payment_status={row.m5_yango_payment_status} window_status={row.m5_window_status} overdue_days={row.m5_overdue_days} label="M5" /></td>
+                            <td className="py-2 px-2"><CompactMilestoneCell achieved_flag={row.m25_achieved_flag} achieved_date={row.m25_achieved_date} expected_amount_yango={row.m25_expected_amount_yango} yango_payment_status={row.m25_yango_payment_status} window_status={row.m25_window_status} overdue_days={row.m25_overdue_days} label="M25" /></td>
+                            <td className="py-2 px-2 text-center">{row.connected_flag ? <span className="text-green-500">✓</span> : <span className="text-slate-400">—</span>}</td>
+                          </tr>
+                          {isExpanded && (
+                            <tr key={`${idx}-exp`} className="bg-slate-50">
+                              <td colSpan={8} className="px-4 pb-4 pt-2 border-t border-slate-100">
+                                <div className="grid grid-cols-3 gap-6">
+                                  <div><h4 className="text-sm font-semibold text-slate-700 mb-2">M1</h4><MilestoneCell achieved_flag={row.m1_achieved_flag} achieved_date={row.m1_achieved_date} expected_amount_yango={row.m1_expected_amount_yango} yango_payment_status={row.m1_yango_payment_status} window_status={row.m1_window_status} overdue_days={row.m1_overdue_days} /></div>
+                                  <div><h4 className="text-sm font-semibold text-slate-700 mb-2">M5</h4><MilestoneCell achieved_flag={row.m5_achieved_flag} achieved_date={row.m5_achieved_date} expected_amount_yango={row.m5_expected_amount_yango} yango_payment_status={row.m5_yango_payment_status} window_status={row.m5_window_status} overdue_days={row.m5_overdue_days} /></div>
+                                  <div><h4 className="text-sm font-semibold text-slate-700 mb-2">M25</h4><MilestoneCell achieved_flag={row.m25_achieved_flag} achieved_date={row.m25_achieved_date} expected_amount_yango={row.m25_expected_amount_yango} yango_payment_status={row.m25_yango_payment_status} window_status={row.m25_window_status} overdue_days={row.m25_overdue_days} /></div>
                                 </div>
-                                <div className="flex-1 py-3 px-4">
-                                  <div className="font-medium text-slate-900">{row.driver_name || '—'}</div>
-                                  <div className="text-xs text-slate-500 font-mono">{row.driver_id?.substring(0, 16)}...</div>
-                                  {hasInconsistency && <Badge variant="warning" className="mt-1 text-xs">⚠ Inconsistencia</Badge>}
+                                <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-4 gap-4 text-sm">
+                                  <div><span className="font-medium text-slate-500">Driver ID:</span> <span className="text-slate-700 font-mono text-xs break-all">{row.driver_id || '—'}</span></div>
+                                  <div><span className="font-medium text-slate-500">Person Key:</span> <span className="text-slate-700 font-mono text-xs break-all">{row.person_key || '—'}</span></div>
+                                  <div><span className="font-medium text-slate-500">Lead Date:</span> <span className="text-slate-700">{row.lead_date ? new Date(row.lead_date).toLocaleDateString('es-ES') : '—'}</span></div>
+                                  <div><span className="font-medium text-slate-500">Connected:</span> <span className="text-slate-700">{row.connected_date ? new Date(row.connected_date).toLocaleDateString('es-ES') : '—'}</span></div>
                                 </div>
-                                <div className="py-3 px-4 text-sm text-slate-600">{row.week_start ? new Date(row.week_start).toLocaleDateString('es-ES') : '—'}</div>
-                                <div className="py-3 px-4"><Badge variant={row.origin_tag === 'cabinet' ? 'info' : 'default'}>{row.origin_tag || 'unknown'}</Badge></div>
-                                <div className="py-3 px-4"><CompactMilestoneCell achieved_flag={row.m1_achieved_flag} achieved_date={row.m1_achieved_date} expected_amount_yango={row.m1_expected_amount_yango} yango_payment_status={row.m1_yango_payment_status} window_status={row.m1_window_status} overdue_days={row.m1_overdue_days} label="M1" /></div>
-                                <div className="py-3 px-4"><CompactMilestoneCell achieved_flag={row.m5_achieved_flag} achieved_date={row.m5_achieved_date} expected_amount_yango={row.m5_expected_amount_yango} yango_payment_status={row.m5_yango_payment_status} window_status={row.m5_window_status} overdue_days={row.m5_overdue_days} label="M5" /></div>
-                                <div className="py-3 px-4"><CompactMilestoneCell achieved_flag={row.m25_achieved_flag} achieved_date={row.m25_achieved_date} expected_amount_yango={row.m25_expected_amount_yango} yango_payment_status={row.m25_yango_payment_status} window_status={row.m25_window_status} overdue_days={row.m25_overdue_days} label="M25" /></div>
-                                <div className="py-3 px-4 text-center">{row.connected_flag ? <span className="text-green-500">✓</span> : <span className="text-slate-400">—</span>}</div>
-                              </div>
-                              {isExpanded && (
-                                <div className="px-4 pb-4 pt-2 border-t border-slate-100">
-                                  <div className="grid grid-cols-3 gap-6">
-                                    <div><h4 className="text-sm font-semibold text-slate-700 mb-2">M1</h4><MilestoneCell achieved_flag={row.m1_achieved_flag} achieved_date={row.m1_achieved_date} expected_amount_yango={row.m1_expected_amount_yango} yango_payment_status={row.m1_yango_payment_status} window_status={row.m1_window_status} overdue_days={row.m1_overdue_days} /></div>
-                                    <div><h4 className="text-sm font-semibold text-slate-700 mb-2">M5</h4><MilestoneCell achieved_flag={row.m5_achieved_flag} achieved_date={row.m5_achieved_date} expected_amount_yango={row.m5_expected_amount_yango} yango_payment_status={row.m5_yango_payment_status} window_status={row.m5_window_status} overdue_days={row.m5_overdue_days} /></div>
-                                    <div><h4 className="text-sm font-semibold text-slate-700 mb-2">M25</h4><MilestoneCell achieved_flag={row.m25_achieved_flag} achieved_date={row.m25_achieved_date} expected_amount_yango={row.m25_expected_amount_yango} yango_payment_status={row.m25_yango_payment_status} window_status={row.m25_window_status} overdue_days={row.m25_overdue_days} /></div>
-                                  </div>
-                                  <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-4 gap-4 text-sm">
-                                    <div><span className="font-medium text-slate-500">Driver ID:</span> <span className="text-slate-700 font-mono text-xs">{row.driver_id || '—'}</span></div>
-                                    <div><span className="font-medium text-slate-500">Person Key:</span> <span className="text-slate-700 font-mono text-xs">{row.person_key || '—'}</span></div>
-                                    <div><span className="font-medium text-slate-500">Lead Date:</span> <span className="text-slate-700">{row.lead_date ? new Date(row.lead_date).toLocaleDateString('es-ES') : '—'}</span></div>
-                                    <div><span className="font-medium text-slate-500">Connected:</span> <span className="text-slate-700">{row.connected_date ? new Date(row.connected_date).toLocaleDateString('es-ES') : '—'}</span></div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                              </td>
+                            </tr>
+                          )}
+                        </>
                       );
                     })}
                   </tbody>
