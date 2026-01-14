@@ -20,8 +20,14 @@ import logging
 import hashlib
 import csv
 import io
+from time import time
+from typing import Dict, Tuple, Any
 
 from app.db import get_db
+
+# Cache para claims-to-collect (TTL en segundos)
+CACHE_TTL_CLAIMS = 120  # 2 minutos
+_claims_cache: Dict[Tuple, Tuple[float, Any]] = {}
 from app.schemas.payments import (
     YangoReconciliationSummaryRow,
     YangoReconciliationSummaryResponse,
@@ -700,6 +706,22 @@ def get_cabinet_claims_to_collect(
     
     READ-ONLY: No recalcula estados, solo consume la vista existente.
     """
+    # Verificar cache primero
+    cache_key = (
+        date_from.isoformat() if date_from else None,
+        date_to.isoformat() if date_to else None,
+        milestone_value,
+        search,
+        limit,
+        offset
+    )
+    current_time = time()
+    if cache_key in _claims_cache:
+        cached_time, cached_data = _claims_cache[cache_key]
+        if current_time - cached_time < CACHE_TTL_CLAIMS:
+            logger.debug("Returning cached claims-to-collect")
+            return cached_data
+    
     # Construir query base (QUERY 3.1)
     where_conditions = []
     params = {}
@@ -796,13 +818,18 @@ def get_cabinet_claims_to_collect(
             "offset": offset
         }
         
-        return YangoCabinetClaimsResponse(
+        response = YangoCabinetClaimsResponse(
             status="ok",
             count=len(rows),
             total=total,
             filters={k: v for k, v in filters.items() if v is not None},
             rows=rows
         )
+        
+        # Guardar en caché
+        _claims_cache[cache_key] = (current_time, response)
+        
+        return response
     except OperationalError as e:
         # Error de conexión a BD
         logger.exception(f"Error de conexion a BD en cabinet claims to collect: {e}")
@@ -1005,6 +1032,10 @@ def get_cabinet_claim_drilldown(
             )
         
         row_dict = dict(row_data)
+        
+        # Convertir person_key de UUID a string si existe
+        if 'person_key' in row_dict and row_dict['person_key'] is not None:
+            row_dict['person_key'] = str(row_dict['person_key'])
         
         # Calcular claim_key (MD5 de driver_id|milestone_value|lead_date)
         claim_key_str = f"{row_dict.get('driver_id') or 'NULL'}|{row_dict.get('milestone_value') or 'NULL'}|{row_dict.get('lead_date') or 'NULL'}"

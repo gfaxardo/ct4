@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { runOrphansFix, ApiError } from '@/lib/api';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
@@ -19,6 +19,7 @@ import {
   useDriversWithoutLeads,
   useOrphansMetrics,
 } from '@/lib/hooks/use-dashboard';
+import { PageLoadingOverlay } from '@/components/Skeleton';
 
 // Iconos SVG
 const Icons = {
@@ -44,27 +45,15 @@ const Icons = {
   ),
 };
 
-function LoadingState() {
+// Spinner para cambio de tabs
+function TabLoadingSpinner({ text }: { text: string }) {
   return (
-    <div className="animate-pulse space-y-8">
-      {/* Stats skeleton */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="bg-white rounded-xl border border-slate-200/60 p-5 h-32">
-            <div className="h-4 bg-slate-200 rounded w-24 mb-4" />
-            <div className="h-8 bg-slate-200 rounded w-20" />
-          </div>
-        ))}
+    <div className="bg-white rounded-xl border border-slate-200/60 p-12 flex flex-col items-center justify-center min-h-[300px]">
+      <div className="relative w-12 h-12 mb-4">
+        <div className="absolute inset-0 border-4 border-slate-200 rounded-full" />
+        <div className="absolute inset-0 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
       </div>
-      {/* Content skeleton */}
-      <div className="bg-white rounded-xl border border-slate-200/60 p-6 h-64">
-        <div className="h-6 bg-slate-200 rounded w-48 mb-6" />
-        <div className="space-y-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-4 bg-slate-200 rounded" style={{ width: `${80 - i * 10}%` }} />
-          ))}
-        </div>
-      </div>
+      <p className="text-slate-600 font-medium">{text}</p>
     </div>
   );
 }
@@ -90,15 +79,55 @@ export default function DashboardPage() {
   const [mode, setMode] = useState<'weekly' | 'breakdowns'>('breakdowns');
   const [fixRunning, setFixRunning] = useState(false);
   const [fixError, setFixError] = useState<string | null>(null);
+  
+  // Minimum loading time to ensure skeleton is visible
+  const [minLoadingComplete, setMinLoadingComplete] = useState(false);
+  
+  useEffect(() => {
+    // Show skeleton for at least 800ms on initial load for better UX
+    const timer = setTimeout(() => {
+      setMinLoadingComplete(true);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, []);
 
   // React Query hooks with caching
-  const { data: stats, isLoading: loadingStats, error: statsError, refetch: refetchStats } = useIdentityStats();
-  const { data: metrics, isLoading: loadingMetrics } = useGlobalMetrics(mode);
-  const { data: personsBySource, isLoading: loadingPersons } = usePersonsBySource();
-  const { data: driversWithoutLeads, isLoading: loadingDrivers } = useDriversWithoutLeads();
-  const { data: orphansMetrics, isLoading: loadingOrphans, refetch: refetchOrphans } = useOrphansMetrics();
+  const { 
+    data: stats, 
+    isFetching: fetchingStats,
+    error: statsError, 
+    refetch: refetchStats 
+  } = useIdentityStats();
+  
+  const { 
+    data: metrics, 
+    isFetching: fetchingMetrics 
+  } = useGlobalMetrics(mode);
+  
+  const { 
+    data: personsBySource, 
+    isFetching: fetchingPersons 
+  } = usePersonsBySource();
+  
+  const { 
+    data: driversWithoutLeads, 
+    isFetching: fetchingDrivers 
+  } = useDriversWithoutLeads();
+  
+  const { 
+    data: orphansMetrics, 
+    isFetching: fetchingOrphans, 
+    refetch: refetchOrphans 
+  } = useOrphansMetrics();
 
-  const loading = loadingStats || loadingMetrics || loadingPersons || loadingDrivers || loadingOrphans;
+  // Show skeleton when:
+  // 1. We haven't passed minimum loading time yet, OR
+  // 2. We're fetching and don't have stats data
+  const showSkeleton = !minLoadingComplete || (!stats && fetchingStats);
+  
+  // Show spinner when we have data but are refetching in background
+  const isRefetching = fetchingStats || fetchingMetrics || fetchingPersons || fetchingDrivers || fetchingOrphans;
+  
   const error = statsError ? (statsError as Error).message : null;
 
   const handleRunFix = async (execute: boolean = false) => {
@@ -125,8 +154,9 @@ export default function DashboardPage() {
     }
   };
 
-  if (loading && !stats) {
-    return <LoadingState />;
+  // Show loading overlay on initial page load
+  if (showSkeleton) {
+    return <PageLoadingOverlay title="Dashboard" subtitle="Cargando estadísticas del sistema..." />;
   }
 
   if (error && !stats) {
@@ -203,9 +233,9 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
-        {loadingMetrics && (
+        {isRefetching && (
           <div className="flex items-center gap-2 text-sm text-slate-500">
-            <svg className="animate-spin h-4 w-4 text-primary-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg className="animate-spin h-4 w-4 text-cyan-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
@@ -453,90 +483,98 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Breakdowns */}
-      {mode === 'breakdowns' && metrics?.breakdowns && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="card">
-            <div className="card-header">
-              <h2 className="text-lg font-semibold text-slate-900">Matched por Regla (Global)</h2>
-            </div>
-            <div className="card-body">
-              <div className="space-y-3">
-                {Object.entries(metrics.breakdowns.matched_by_rule).map(([rule, count]) => (
-                  <div key={rule} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                    <span className="text-sm text-slate-700 font-medium">{rule}</span>
-                    <Badge variant="success">{count.toLocaleString()}</Badge>
+      {/* Tab Content with Loading State */}
+      {/* Show spinner when fetching and current tab data is not available */}
+      {(fetchingMetrics && ((mode === 'breakdowns' && !metrics?.breakdowns) || (mode === 'weekly' && !metrics?.weekly))) ? (
+        <TabLoadingSpinner text={`Cargando ${mode === 'weekly' ? 'métricas semanales' : 'resumen'}...`} />
+      ) : (
+        <>
+          {/* Breakdowns */}
+          {mode === 'breakdowns' && metrics?.breakdowns && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="card">
+                <div className="card-header">
+                  <h2 className="text-lg font-semibold text-slate-900">Matched por Regla (Global)</h2>
+                </div>
+                <div className="card-body">
+                  <div className="space-y-3">
+                    {Object.entries(metrics.breakdowns.matched_by_rule).map(([rule, count]) => (
+                      <div key={rule} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                        <span className="text-sm text-slate-700 font-medium">{rule}</span>
+                        <Badge variant="success">{count.toLocaleString()}</Badge>
+                      </div>
+                    ))}
+                    {Object.keys(metrics.breakdowns.matched_by_rule).length === 0 && (
+                      <p className="text-sm text-slate-400 text-center py-4">No hay matches</p>
+                    )}
                   </div>
-                ))}
-                {Object.keys(metrics.breakdowns.matched_by_rule).length === 0 && (
-                  <p className="text-sm text-slate-400 text-center py-4">No hay matches</p>
-                )}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header">
+                  <h2 className="text-lg font-semibold text-slate-900">Unmatched por Razón (Top 5)</h2>
+                </div>
+                <div className="card-body">
+                  <div className="space-y-3">
+                    {Object.entries(metrics.breakdowns.unmatched_by_reason)
+                      .slice(0, 5)
+                      .map(([reason, count]) => (
+                        <div key={reason} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                          <span className="text-sm text-slate-700 font-medium">{reason}</span>
+                          <Badge variant="warning">{count.toLocaleString()}</Badge>
+                        </div>
+                      ))}
+                    {Object.keys(metrics.breakdowns.unmatched_by_reason).length === 0 && (
+                      <p className="text-sm text-slate-400 text-center py-4">No hay unmatched</p>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="card">
-            <div className="card-header">
-              <h2 className="text-lg font-semibold text-slate-900">Unmatched por Razón (Top 5)</h2>
-            </div>
-            <div className="card-body">
-              <div className="space-y-3">
-                {Object.entries(metrics.breakdowns.unmatched_by_reason)
-                  .slice(0, 5)
-                  .map(([reason, count]) => (
-                    <div key={reason} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                      <span className="text-sm text-slate-700 font-medium">{reason}</span>
-                      <Badge variant="warning">{count.toLocaleString()}</Badge>
-                    </div>
-                  ))}
-                {Object.keys(metrics.breakdowns.unmatched_by_reason).length === 0 && (
-                  <p className="text-sm text-slate-400 text-center py-4">No hay unmatched</p>
-                )}
+          {/* Weekly View */}
+          {mode === 'weekly' && metrics?.weekly && (
+            <div className="card">
+              <div className="card-header">
+                <h2 className="text-lg font-semibold text-slate-900">Métricas Semanales</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="table-modern">
+                  <thead>
+                    <tr>
+                      <th>Semana</th>
+                      <th>Fuente</th>
+                      <th className="text-right">Matched</th>
+                      <th className="text-right">Unmatched</th>
+                      <th className="text-right">Match Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.weekly.map((week, idx) => (
+                      <tr key={idx}>
+                        <td className="font-medium">{week.week_label}</td>
+                        <td>
+                          <Badge variant="default" size="sm">{week.source_table}</Badge>
+                        </td>
+                        <td className="text-right font-semibold text-emerald-600">{week.matched.toLocaleString()}</td>
+                        <td className="text-right font-semibold text-amber-600">{week.unmatched.toLocaleString()}</td>
+                        <td className="text-right">
+                          <Badge 
+                            variant={week.match_rate >= 90 ? 'success' : week.match_rate >= 70 ? 'info' : 'warning'}
+                          >
+                            {week.match_rate.toFixed(1)}%
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Weekly View */}
-      {mode === 'weekly' && metrics?.weekly && (
-        <div className="card">
-          <div className="card-header">
-            <h2 className="text-lg font-semibold text-slate-900">Métricas Semanales</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="table-modern">
-              <thead>
-                <tr>
-                  <th>Semana</th>
-                  <th>Fuente</th>
-                  <th className="text-right">Matched</th>
-                  <th className="text-right">Unmatched</th>
-                  <th className="text-right">Match Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.weekly.map((week, idx) => (
-                  <tr key={idx}>
-                    <td className="font-medium">{week.week_label}</td>
-                    <td>
-                      <Badge variant="default" size="sm">{week.source_table}</Badge>
-                    </td>
-                    <td className="text-right font-semibold text-emerald-600">{week.matched.toLocaleString()}</td>
-                    <td className="text-right font-semibold text-amber-600">{week.unmatched.toLocaleString()}</td>
-                    <td className="text-right">
-                      <Badge 
-                        variant={week.match_rate >= 90 ? 'success' : week.match_rate >= 70 ? 'info' : 'warning'}
-                      >
-                        {week.match_rate.toFixed(1)}%
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       {/* Alerts Section - PENDING */}

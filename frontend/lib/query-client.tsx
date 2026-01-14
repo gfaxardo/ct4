@@ -20,8 +20,7 @@ const defaultQueryOptions = {
     retry: 2,
     // Don't refetch on window focus in development
     refetchOnWindowFocus: process.env.NODE_ENV === 'production',
-    // Keep previous data while fetching new data
-    placeholderData: 'keepPreviousData' as const,
+    // Note: removed placeholderData to allow proper skeleton display
   },
 };
 

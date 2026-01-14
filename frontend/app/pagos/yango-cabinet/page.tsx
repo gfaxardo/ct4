@@ -1,13 +1,13 @@
 /**
  * Yango - Reconciliación
- * Basado en FRONTEND_UI_BLUEPRINT_v1.md
+ * Diseño moderno consistente con el resto del sistema
  * 
  * Objetivo: "¿Cuál es el estado de reconciliación de pagos Yango?"
  */
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getYangoReconciliationSummary,
@@ -22,13 +22,13 @@ import type {
   CabinetReconciliationRow,
 } from '@/lib/types';
 import StatCard from '@/components/StatCard';
-import DataTable from '@/components/DataTable';
-import Filters from '@/components/Filters';
-import Pagination from '@/components/Pagination';
 import Badge from '@/components/Badge';
-import PaymentsLegend from '@/components/payments/PaymentsLegend';
+import { PageLoadingOverlay } from '@/components/Skeleton';
 
-// Helper functions para reconciliation_status
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
 function getReconciliationStatusVariant(status: string | null): 'success' | 'warning' | 'error' | 'info' | 'default' {
   if (!status) return 'default';
   switch (status) {
@@ -49,32 +49,27 @@ function getReconciliationStatusLabel(status: string | null): string {
   if (!status) return '—';
   const labels: Record<string, string> = {
     'OK': 'OK',
-    'ACHIEVED_NOT_PAID': 'Logrado, No Pagado',
-    'PAID_WITHOUT_ACHIEVEMENT': 'Pagado, No Logrado',
-    'NOT_APPLICABLE': 'No Aplicable',
+    'ACHIEVED_NOT_PAID': 'Pendiente',
+    'PAID_WITHOUT_ACHIEVEMENT': 'Pagado Anticipado',
+    'NOT_APPLICABLE': 'N/A',
   };
   return labels[status] || status;
 }
 
-function getReconciliationStatusDescription(status: string | null): string {
-  if (!status) return '';
-  const descriptions: Record<string, string> = {
-    'OK': 'El milestone fue logrado operativamente y pagado por Yango.',
-    'ACHIEVED_NOT_PAID': 'El milestone fue logrado operativamente pero aún no ha sido pagado por Yango.',
-    'PAID_WITHOUT_ACHIEVEMENT': 'Yango pagó este milestone según sus criterios, pero no hay evidencia suficiente en nuestro sistema operativo. Estado válido y esperado.',
-    'NOT_APPLICABLE': 'Ni logrado ni pagado.',
-  };
-  return descriptions[status] || '';
-}
+// ============================================================================
+// TYPES
+// ============================================================================
 
-// Tipos para flags derivados
 type DerivedFlag = 'OUT_OF_SEQUENCE' | 'EARLY_PAYMENT' | 'LATE_PAYMENT' | 'INCOMPLETE_SEQUENCE' | 'SEQUENCE_CORRECTED';
 
 interface RowWithFlags extends CabinetReconciliationRow {
   derivedFlags: DerivedFlag[];
 }
 
-// Función para calcular días entre dos fechas
+// ============================================================================
+// FLAG DETECTION
+// ============================================================================
+
 function daysBetween(date1: string | null, date2: string | null): number | null {
   if (!date1 || !date2) return null;
   try {
@@ -87,7 +82,6 @@ function daysBetween(date1: string | null, date2: string | null): number | null 
   }
 }
 
-// Función principal para detectar flags derivados
 function detectDerivedFlags(
   currentRow: CabinetReconciliationRow,
   allRows: CabinetReconciliationRow[]
@@ -102,23 +96,21 @@ function detectDerivedFlags(
 
   if (!driverId || milestoneValue === null) return flags;
 
-  // Filtrar rows del mismo driver
   const driverRows = allRows.filter(r => r.driver_id === driverId && r.milestone_value !== null);
 
-  // 1) EARLY_PAYMENT
+  // EARLY_PAYMENT
   if (reconciliationStatus === 'PAID_WITHOUT_ACHIEVEMENT' && payDate) {
     if (!achievedDate) {
       flags.push('EARLY_PAYMENT');
     } else {
       const daysDiff = daysBetween(achievedDate, payDate);
       if (daysDiff !== null && daysDiff < 0) {
-        // achieved_date es posterior a pay_date
         flags.push('EARLY_PAYMENT');
       }
     }
   }
 
-  // 2) LATE_PAYMENT
+  // LATE_PAYMENT
   if (achievedDate && payDate) {
     const daysDiff = daysBetween(achievedDate, payDate);
     if (daysDiff !== null && daysDiff > 7) {
@@ -126,7 +118,7 @@ function detectDerivedFlags(
     }
   }
 
-  // 3) OUT_OF_SEQUENCE: milestone menor pagado después de uno mayor
+  // OUT_OF_SEQUENCE
   if (paidFlag && payDate) {
     const greaterMilestones = driverRows.filter(
       r => r.milestone_value !== null && 
@@ -139,7 +131,6 @@ function detectDerivedFlags(
       if (greaterRow.pay_date) {
         const daysDiff = daysBetween(greaterRow.pay_date, payDate);
         if (daysDiff !== null && daysDiff < 0) {
-          // pay_date del milestone menor es posterior al pay_date del mayor
           flags.push('OUT_OF_SEQUENCE');
           break;
         }
@@ -147,58 +138,29 @@ function detectDerivedFlags(
     }
   }
 
-  // 4) INCOMPLETE_SEQUENCE: milestone mayor pagado pero faltan intermedios
+  // INCOMPLETE_SEQUENCE
   if (paidFlag && milestoneValue > 1) {
     const expectedMilestones = [1, 5, 25].filter(m => m < milestoneValue);
     const paidMilestones = driverRows
       .filter(r => r.paid_flag && r.milestone_value !== null && expectedMilestones.includes(r.milestone_value))
       .map(r => r.milestone_value!);
     
-    // Verificar si faltan milestones intermedios esperados
     const missingMilestones = expectedMilestones.filter(m => !paidMilestones.includes(m));
     if (missingMilestones.length > 0) {
       flags.push('INCOMPLETE_SEQUENCE');
     }
   }
 
-  // 5) SEQUENCE_CORRECTED: verificar si había problemas pero ahora están corregidos
-  // Esto requiere analizar si todos los milestones esperados están presentes
-  if (paidFlag) {
-    const allExpectedMilestones = [1, 5, 25].filter(m => m <= milestoneValue);
-    const allPaidMilestones = driverRows
-      .filter(r => r.paid_flag && r.milestone_value !== null && allExpectedMilestones.includes(r.milestone_value))
-      .map(r => r.milestone_value!)
-      .sort((a, b) => a - b);
-    
-    // Si todos los milestones esperados están pagados y en secuencia
-    const hasAllExpected = allExpectedMilestones.every(m => allPaidMilestones.includes(m));
-    if (hasAllExpected && allPaidMilestones.length === allExpectedMilestones.length) {
-      // Verificar si hay OUT_OF_SEQUENCE o INCOMPLETE_SEQUENCE en otros milestones
-      const hasSequenceIssues = driverRows.some(r => {
-        if (r.milestone_value === milestoneValue) return false;
-        const otherFlags = detectDerivedFlags(r, allRows);
-        return otherFlags.includes('OUT_OF_SEQUENCE') || otherFlags.includes('INCOMPLETE_SEQUENCE');
-      });
-      
-      // Si este milestone está bien pero había problemas antes, podría ser corregido
-      // Por simplicidad, solo marcamos si este es el milestone más alto y está completo
-      if (milestoneValue === Math.max(...allPaidMilestones) && hasSequenceIssues) {
-        flags.push('SEQUENCE_CORRECTED');
-      }
-    }
-  }
-
   return flags;
 }
 
-// Función para obtener label y variant de flags derivados
 function getDerivedFlagLabel(flag: DerivedFlag): string {
   const labels: Record<DerivedFlag, string> = {
-    'OUT_OF_SEQUENCE': 'Fuera de Secuencia',
-    'EARLY_PAYMENT': 'Pago Anticipado',
-    'LATE_PAYMENT': 'Pago Tardío',
-    'INCOMPLETE_SEQUENCE': 'Secuencia Incompleta',
-    'SEQUENCE_CORRECTED': 'Secuencia Corregida',
+    'OUT_OF_SEQUENCE': 'Fuera Secuencia',
+    'EARLY_PAYMENT': 'Anticipado',
+    'LATE_PAYMENT': 'Tardío',
+    'INCOMPLETE_SEQUENCE': 'Incompleto',
+    'SEQUENCE_CORRECTED': 'Corregido',
   };
   return labels[flag];
 }
@@ -213,6 +175,76 @@ function getDerivedFlagVariant(flag: DerivedFlag): 'success' | 'warning' | 'erro
   };
   return variants[flag];
 }
+
+// ============================================================================
+// ICONS
+// ============================================================================
+
+const Icons = {
+  check: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+    </svg>
+  ),
+  pending: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  money: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  warning: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+  ),
+};
+
+// ============================================================================
+// TAB COMPONENTS
+// ============================================================================
+
+interface TabProps {
+  id: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  badge?: number;
+}
+
+function Tab({ label, active, onClick, badge }: TabProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        relative px-4 py-3 text-sm font-medium transition-all duration-200
+        ${active 
+          ? 'text-cyan-600 border-b-2 border-cyan-500 bg-cyan-50/50' 
+          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+        }
+      `}
+    >
+      <span className="flex items-center gap-2">
+        {label}
+        {badge !== undefined && badge > 0 && (
+          <span className={`
+            px-2 py-0.5 text-xs rounded-full
+            ${active ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-600'}
+          `}>
+            {badge}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
 
 export default function YangoCabinetPage() {
   const router = useRouter();
@@ -230,8 +262,17 @@ export default function YangoCabinetPage() {
     mode: 'real',
   });
   const [offset, setOffset] = useState(0);
-  const [limit, setLimit] = useState(100);
+  const [limit] = useState(100);
+  
+  // Paginación para Items Detallados
+  const [itemsPage, setItemsPage] = useState(0);
+  const itemsPerPage = 20;
+  
+  // Paginación para Reconciliación Detallada
+  const [reconPage, setReconPage] = useState(0);
+  const reconPerPage = 30;
 
+  // Load summary data
   useEffect(() => {
     async function loadData() {
       try {
@@ -257,15 +298,9 @@ export default function YangoCabinetPage() {
         setItems(itemsData);
       } catch (err) {
         if (err instanceof ApiError) {
-          if (err.status === 400) {
-            setError('Parámetros inválidos');
-          } else if (err.status === 500) {
-            setError('Error al cargar reconciliación');
-          } else {
-            setError(`Error ${err.status}: ${err.detail || err.message}`);
-          }
+          setError(`Error ${err.status}: ${err.detail || err.message}`);
         } else {
-          setError('Error desconocido');
+          setError('Error al cargar datos');
         }
       } finally {
         setLoading(false);
@@ -275,26 +310,20 @@ export default function YangoCabinetPage() {
     loadData();
   }, [filters, offset, limit]);
 
-  // Cargar datos de reconciliación cuando se activa la pestaña
+  // Load reconciliation data when tab is active
   useEffect(() => {
-    if (activeTab === 'reconciliation') {
+    if (activeTab === 'reconciliation' && !cabinetReconciliation) {
       async function loadReconciliation() {
         try {
           setReconciliationLoading(true);
           setReconciliationError(null);
-          const data = await getCabinetReconciliation({ limit: 50, offset: 0 });
+          const data = await getCabinetReconciliation({ limit: 100, offset: 0 });
           setCabinetReconciliation(data);
         } catch (err) {
           if (err instanceof ApiError) {
-            if (err.status === 400) {
-              setReconciliationError('Parámetros inválidos');
-            } else if (err.status === 500) {
-              setReconciliationError('Error al cargar reconciliación');
-            } else {
-              setReconciliationError(`Error ${err.status}: ${err.detail || err.message}`);
-            }
+            setReconciliationError(`Error ${err.status}: ${err.detail || err.message}`);
           } else {
-            setReconciliationError('Error desconocido');
+            setReconciliationError('Error al cargar reconciliación');
           }
         } finally {
           setReconciliationLoading(false);
@@ -302,488 +331,442 @@ export default function YangoCabinetPage() {
       }
       loadReconciliation();
     }
-  }, [activeTab]);
+  }, [activeTab, cabinetReconciliation]);
 
-  const filterFields = [
-    {
-      name: 'week_start',
-      label: 'Semana (Lunes)',
-      type: 'date' as const,
-    },
-    {
-      name: 'milestone_value',
-      label: 'Milestone',
-      type: 'select' as const,
-      options: [
-        { value: '1', label: '1' },
-        { value: '5', label: '5' },
-        { value: '25', label: '25' },
-      ],
-    },
-    {
-      name: 'mode',
-      label: 'Modo',
-      type: 'select' as const,
-      options: [
-        { value: 'real', label: 'Real' },
-        { value: 'assumed', label: 'Assumed' },
-      ],
-    },
-  ];
+  // Calculate stats from reconciliation data
+  const reconciliationStats = useMemo(() => {
+    if (!cabinetReconciliation?.rows) return null;
+    
+    const stats = {
+      total: cabinetReconciliation.rows.length,
+      ok: 0,
+      pending: 0,
+      earlyPaid: 0,
+      notApplicable: 0,
+    };
 
-  type SummaryRow = YangoReconciliationSummaryResponse['rows'][0];
-  type ItemRow = YangoReconciliationItemsResponse['rows'][0];
+    cabinetReconciliation.rows.forEach(row => {
+      switch (row.reconciliation_status) {
+        case 'OK': stats.ok++; break;
+        case 'ACHIEVED_NOT_PAID': stats.pending++; break;
+        case 'PAID_WITHOUT_ACHIEVEMENT': stats.earlyPaid++; break;
+        case 'NOT_APPLICABLE': stats.notApplicable++; break;
+      }
+    });
 
-  const summaryColumns = [
-    {
-      key: 'pay_week_start_monday',
-      header: 'Semana',
-      render: (row: SummaryRow) =>
-        row.pay_week_start_monday ? new Date(row.pay_week_start_monday).toLocaleDateString('es-ES') : '—',
-    },
-    { key: 'milestone_value', header: 'Milestone' },
-    {
-      key: 'amount_expected_sum',
-      header: 'Esperado',
-      render: (row: SummaryRow) => row.amount_expected_sum ? Number(row.amount_expected_sum).toFixed(2) : '—',
-    },
-    {
-      key: 'amount_paid_total_visible',
-      header: 'Pagado Visible',
-      render: (row: SummaryRow) => row.amount_paid_total_visible ? Number(row.amount_paid_total_visible).toFixed(2) : '—',
-    },
-    {
-      key: 'amount_pending_active_sum',
-      header: 'Pendiente Activo',
-      render: (row: SummaryRow) => row.amount_pending_active_sum ? Number(row.amount_pending_active_sum).toFixed(2) : '—',
-    },
-    {
-      key: 'amount_diff',
-      header: 'Diferencia',
-      render: (row: SummaryRow) => (
-        <span className={row.amount_diff && row.amount_diff < 0 ? 'text-red-600' : ''}>
-          {row.amount_diff ? Number(row.amount_diff).toFixed(2) : '—'}
-        </span>
-      ),
-    },
-    { key: 'count_expected', header: 'Cant. Esperada' },
-    { key: 'count_paid', header: 'Cant. Pagada' },
-    { key: 'count_pending_active', header: 'Cant. Pendiente' },
-  ];
+    return stats;
+  }, [cabinetReconciliation]);
 
-  const itemsColumns = [
-    {
-      key: 'driver_id',
-      header: 'Driver ID',
-      render: (row: ItemRow) =>
-        row.driver_id ? (
-          <button
-            onClick={() => router.push(`/pagos/yango-cabinet/driver/${row.driver_id}`)}
-            className="text-blue-600 hover:text-blue-800 underline"
-          >
-            {row.driver_id}
-          </button>
-        ) : (
-          '—'
-        ),
-    },
-    { key: 'person_key', header: 'Person Key' },
-    {
-      key: 'lead_date',
-      header: 'Lead Date',
-      render: (row: ItemRow) =>
-        row.lead_date ? new Date(row.lead_date).toLocaleDateString('es-ES') : '—',
-    },
-    {
-      key: 'pay_week_start_monday',
-      header: 'Semana',
-      render: (row: ItemRow) =>
-        row.pay_week_start_monday ? new Date(row.pay_week_start_monday).toLocaleDateString('es-ES') : '—',
-    },
-    { key: 'milestone_value', header: 'Milestone' },
-    {
-      key: 'expected_amount',
-      header: 'Esperado',
-      render: (row: ItemRow) =>
-        row.expected_amount ? `${row.expected_amount} ${row.currency || ''}` : '—',
-    },
-    {
-      key: 'due_date',
-      header: 'Due Date',
-      render: (row: ItemRow) =>
-        row.due_date ? new Date(row.due_date).toLocaleDateString('es-ES') : '—',
-    },
-    {
-      key: 'window_status',
-      header: 'Estado Ventana',
-      render: (row: ItemRow) =>
-        row.window_status ? (
-          <Badge variant={row.window_status === 'active' ? 'success' : 'error'}>
-            {row.window_status}
-          </Badge>
-        ) : (
-          '—'
-        ),
-    },
-    {
-      key: 'paid_status',
-      header: 'Estado Pago',
-      render: (row: ItemRow) =>
-        row.paid_status ? (
-          <Badge
-            variant={
-              row.paid_status.includes('paid') ? 'success' : row.paid_status.includes('pending') ? 'warning' : 'error'
-            }
-          >
-            {row.paid_status}
-          </Badge>
-        ) : (
-          '—'
-        ),
-    },
-    {
-      key: 'paid_date',
-      header: 'Fecha Pago',
-      render: (row: ItemRow) =>
-        row.paid_date ? new Date(row.paid_date).toLocaleDateString('es-ES') : '—',
-    },
-  ];
+  // Calculate rows with flags
+  const rowsWithFlags = useMemo((): RowWithFlags[] => {
+    if (!cabinetReconciliation?.rows) return [];
+    return cabinetReconciliation.rows.map(row => ({
+      ...row,
+      derivedFlags: detectDerivedFlags(row, cabinetReconciliation.rows),
+    }));
+  }, [cabinetReconciliation]);
+
+  // Initial loading
+  if (loading && !summary && !items) {
+    return <PageLoadingOverlay title="Reconciliación" subtitle="Cargando datos de reconciliación..." />;
+  }
 
   return (
-    <div className="px-4 py-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Yango - Reconciliación</h1>
-        <PaymentsLegend />
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Reconciliación de Pagos Yango</h1>
+          <p className="text-slate-500 mt-1">
+            Cruce entre milestones logrados operativamente y pagos ejecutados por Yango
+          </p>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="mb-6 border-b border-gray-200">
-        <nav className="flex space-x-8">
-          <button
-            onClick={() => setActiveTab('summary')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'summary'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Resumen
-          </button>
-          <button
-            onClick={() => setActiveTab('reconciliation')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'reconciliation'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Reconciliación
-          </button>
-        </nav>
-      </div>
-
+      {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-          <p className="text-red-800">{error}</p>
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
+          <p className="text-rose-800">{error}</p>
         </div>
       )}
 
-      {activeTab === 'summary' && (
-        <>
-          <Filters
-            fields={filterFields}
-            values={filters}
-            onChange={(values) => setFilters(values as typeof filters)}
-            onReset={() => {
-              setFilters({ week_start: '', milestone_value: '', mode: 'real' });
-              setOffset(0);
-            }}
+      {/* Tabs */}
+      <div className="bg-white rounded-xl border border-slate-200/60 overflow-hidden">
+        <div className="flex border-b border-slate-200">
+          <Tab 
+            id="summary" 
+            label="Resumen" 
+            active={activeTab === 'summary'} 
+            onClick={() => setActiveTab('summary')}
+            badge={summary?.rows?.length}
           />
+          <Tab 
+            id="reconciliation" 
+            label="Reconciliación Detallada" 
+            active={activeTab === 'reconciliation'} 
+            onClick={() => setActiveTab('reconciliation')}
+            badge={cabinetReconciliation?.rows?.length}
+          />
+        </div>
 
-          {/* Summary Table */}
-          {summary && (
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold mb-4">Resumen por Semana y Milestone</h2>
-              <DataTable
-                data={summary.rows}
-                columns={summaryColumns}
-                loading={loading}
-                emptyMessage="No hay datos de resumen para los filtros seleccionados"
-              />
-            </div>
-          )}
-
-          {/* Items Table */}
-          <div>
-            <h2 className="text-xl font-semibold mb-4">Items Detallados</h2>
-            <DataTable
-              data={items?.rows || []}
-              columns={itemsColumns}
-              loading={loading}
-              emptyMessage="No hay items que coincidan con los filtros"
-            />
-          </div>
-
-          {!loading && items && items.rows.length > 0 && (
-            <Pagination
-              total={items.total || items.count}
-              limit={limit}
-              offset={offset}
-              onPageChange={(newOffset) => setOffset(newOffset)}
-            />
-          )}
-        </>
-      )}
-
-      {activeTab === 'reconciliation' && (
-        <div>
-          {reconciliationError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <p className="text-red-800">{reconciliationError}</p>
-            </div>
-          )}
-
-          {reconciliationLoading && (
-            <div className="mb-6">
-              <p>Cargando datos de reconciliación...</p>
-            </div>
-          )}
-
-          {!reconciliationLoading && !cabinetReconciliation && (
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Reconciliación de Milestones</h2>
-              <p>Sin datos cargados</p>
-            </div>
-          )}
-
-          {!reconciliationLoading && cabinetReconciliation && (
-            <div>
-              {/* Panel Informativo */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <h3 className="text-sm font-semibold text-blue-900 mb-2">ℹ️ Sobre la Reconciliación</h3>
-                <p className="text-sm text-blue-800 mb-2">
-                  Esta vista muestra el cruce explícito entre milestones <strong>logrados operativamente</strong> (ACHIEVED) 
-                  y milestones <strong>pagados por Yango</strong> (PAID). El estado de reconciliación es <strong>explicativo, no correctivo</strong>.
-                </p>
-                <p className="text-xs text-blue-700 italic">
-                  Principio rector: "El pasado no se corrige, se explica". No se recalculan milestones históricos ni se modifican pagos ejecutados.
-                </p>
-              </div>
-
-              {/* Estadísticas Derivadas */}
-              {cabinetReconciliation.rows.length > 0 && (() => {
-                const stats = cabinetReconciliation.rows.reduce((acc, row) => {
-                  const status = row.reconciliation_status || 'UNKNOWN';
-                  acc[status] = (acc[status] || 0) + 1;
-                  return acc;
-                }, {} as Record<string, number>);
-
-                return (
-                  <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {Object.entries(stats).map(([status, count]) => (
-                      <div key={status} className="bg-white border border-gray-200 rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge variant={getReconciliationStatusVariant(status)}>
-                            {getReconciliationStatusLabel(status)}
-                          </Badge>
-                        </div>
-                        <div className="text-2xl font-bold text-gray-900">{count}</div>
-                        <div className="text-xs text-gray-500">
-                          {((count / cabinetReconciliation.rows.length) * 100).toFixed(1)}%
-                        </div>
-                      </div>
-                    ))}
+        <div className="p-6">
+          {/* ============== TAB: SUMMARY ============== */}
+          {activeTab === 'summary' && (
+            <div className="space-y-6">
+              {/* Filters */}
+              <div className="bg-slate-50 rounded-xl p-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">Semana</label>
+                    <input
+                      type="date"
+                      value={filters.week_start}
+                      onChange={(e) => setFilters(prev => ({ ...prev, week_start: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                    />
                   </div>
-                );
-              })()}
-
-              <h2 className="text-xl font-semibold mb-4">Reconciliación de Milestones</h2>
-
-              {/* Leyenda Explicativa */}
-              <div className="bg-gray-100 border border-gray-300 rounded-lg p-4 mb-4">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Cómo interpretar esta tabla</h3>
-                <p className="text-xs text-gray-700 mb-3">
-                  Las señales mostradas no indican errores ni bloqueos de pago. Son explicaciones informativas sobre cómo y cuándo el upstream ejecutó los pagos.
-                </p>
-                
-                <div className="mb-3">
-                  <h4 className="text-xs font-semibold text-gray-800 mb-2">Señales de secuencia:</h4>
-                  <ul className="text-xs text-gray-700 space-y-1 list-disc list-inside">
-                    <li><strong>Fuera de secuencia:</strong> pago válido que apareció después de uno mayor</li>
-                    <li><strong>Pago adelantado:</strong> pago ejecutado antes de consolidarse la evidencia operativa</li>
-                    <li><strong>Pago tardío:</strong> pago ejecutado con retraso</li>
-                    <li><strong>Secuencia incompleta:</strong> no todos los milestones fueron pagados</li>
-                    <li><strong>Secuencia corregida:</strong> el sistema se completó automáticamente con el tiempo</li>
-                  </ul>
-                </div>
-
-                <div className="mb-3">
-                  <h4 className="text-xs font-semibold text-gray-800 mb-2">Situaciones generales:</h4>
-                  <ul className="text-xs text-gray-700 space-y-1 list-disc list-inside">
-                    <li><strong>PAID_WITHOUT_ACHIEVEMENT:</strong> Estado válido. El upstream pagó bajo sus propias reglas.</li>
-                    <li><strong>UPSTREAM_OVERPAYMENT:</strong> No es un error. Representa pagos legítimos ejecutados por upstream.</li>
-                    <li><strong>INSUFFICIENT_TRIPS_CONFIRMED:</strong> Puede deberse a lag de datos o ventanas distintas.</li>
-                    <li><strong>ACHIEVED_NOT_PAID:</strong> Milestone logrado, pago pendiente.</li>
-                  </ul>
-                </div>
-
-                <p className="text-xs text-gray-700 italic border-t border-gray-300 pt-2 mt-2">
-                  El sistema CT4 no corrige el pasado. Lo explica con evidencia.
-                </p>
-              </div>
-
-              {/* Leyenda de Estados */}
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Leyenda de Estados</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="flex items-start gap-2">
-                    <Badge variant="success">OK</Badge>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-gray-700">Logrado y Pagado</p>
-                      <p className="text-xs text-gray-600">El milestone fue logrado operativamente y pagado por Yango.</p>
-                    </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">Milestone</label>
+                    <select
+                      value={filters.milestone_value}
+                      onChange={(e) => setFilters(prev => ({ ...prev, milestone_value: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                    >
+                      <option value="">Todos</option>
+                      <option value="1">M1</option>
+                      <option value="5">M5</option>
+                      <option value="25">M25</option>
+                    </select>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <Badge variant="warning">Logrado, No Pagado</Badge>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-gray-700">ACHIEVED_NOT_PAID</p>
-                      <p className="text-xs text-gray-600">El milestone fue logrado operativamente pero aún no ha sido pagado por Yango.</p>
-                    </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">Modo</label>
+                    <select
+                      value={filters.mode}
+                      onChange={(e) => setFilters(prev => ({ ...prev, mode: e.target.value }))}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                    >
+                      <option value="real">Real</option>
+                      <option value="assumed">Assumed</option>
+                    </select>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <Badge variant="info">Pagado, No Logrado</Badge>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-gray-700">PAID_WITHOUT_ACHIEVEMENT</p>
-                      <p className="text-xs text-gray-600">Yango pagó según sus criterios, sin evidencia suficiente en nuestro sistema. <strong>Estado válido y esperado</strong>.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Badge variant="default">No Aplicable</Badge>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-gray-700">NOT_APPLICABLE</p>
-                      <p className="text-xs text-gray-600">Ni logrado ni pagado.</p>
-                    </div>
+                  <div className="flex items-end">
+                    <button
+                      onClick={() => {
+                        setFilters({ week_start: '', milestone_value: '', mode: 'real' });
+                        setOffset(0);
+                      }}
+                      className="w-full px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                    >
+                      Limpiar
+                    </button>
                   </div>
                 </div>
               </div>
 
-              {/* Leyenda de Flags Derivados */}
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-                <h3 className="text-sm font-semibold text-amber-900 mb-3">📊 Flags Derivados (Análisis de Secuencias)</h3>
-                <p className="text-xs text-amber-800 mb-3 italic">
-                  Estos flags se calculan en memoria analizando las secuencias de pagos por driver. Son informativos y no modifican los datos originales.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="flex items-start gap-2">
-                    <Badge variant="warning">Fuera de Secuencia</Badge>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-gray-700">OUT_OF_SEQUENCE</p>
-                      <p className="text-xs text-gray-600">Un milestone menor fue pagado después de un milestone mayor del mismo driver.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Badge variant="info">Pago Anticipado</Badge>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-gray-700">EARLY_PAYMENT</p>
-                      <p className="text-xs text-gray-600">PAID_WITHOUT_ACHIEVEMENT donde el pago ocurrió antes de la fecha de logro (o sin fecha de logro).</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Badge variant="warning">Pago Tardío</Badge>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-gray-700">LATE_PAYMENT</p>
-                      <p className="text-xs text-gray-600">El pago ocurrió más de 7 días después de la fecha de logro.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Badge variant="warning">Secuencia Incompleta</Badge>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-gray-700">INCOMPLETE_SEQUENCE</p>
-                      <p className="text-xs text-gray-600">Existe un milestone mayor pagado pero faltan milestones intermedios o inferiores pagados.</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <Badge variant="success">Secuencia Corregida</Badge>
-                    <div className="flex-1">
-                      <p className="text-xs font-medium text-gray-700">SEQUENCE_CORRECTED</p>
-                      <p className="text-xs text-gray-600">Inicialmente hubo problemas de secuencia, pero ahora todos los milestones esperados aparecen correctamente.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {cabinetReconciliation.rows.length === 0 ? (
-                <p>Sin resultados</p>
-              ) : (() => {
-                // Calcular flags derivados para todos los rows
-                const rowsWithFlags: RowWithFlags[] = cabinetReconciliation.rows.map(row => ({
-                  ...row,
-                  derivedFlags: detectDerivedFlags(row, cabinetReconciliation.rows),
-                }));
-
-                return (
+              {/* Summary Table */}
+              {summary && summary.rows.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Resumen por Semana y Milestone</h3>
                   <div className="overflow-x-auto">
-                    <table className="min-w-full border border-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-2 text-left border-b border-gray-200">Driver ID</th>
-                          <th className="px-4 py-2 text-left border-b border-gray-200">Milestone</th>
-                          <th className="px-4 py-2 text-left border-b border-gray-200">Estado</th>
-                          <th className="px-4 py-2 text-left border-b border-gray-200">Señales</th>
-                          <th className="px-4 py-2 text-left border-b border-gray-200">Fecha Pago</th>
-                          <th className="px-4 py-2 text-left border-b border-gray-200">Fecha Logrado</th>
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Semana</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Milestone</th>
+                          <th className="text-right py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Esperado</th>
+                          <th className="text-right py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Pagado</th>
+                          <th className="text-right py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Pendiente</th>
+                          <th className="text-right py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Diferencia</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {rowsWithFlags.map((row, index) => {
-                          const stableKey = row.driver_id && row.milestone_value
-                            ? `${row.driver_id}-${row.milestone_value}-${index}`
-                            : `row-${index}`;
-                          return (
-                            <tr key={stableKey} className="border-b border-gray-200 hover:bg-gray-50">
-                              <td className="px-4 py-2">{row.driver_id || '—'}</td>
-                              <td className="px-4 py-2">
-                                <span className="font-medium">M{row.milestone_value || '—'}</span>
+                      <tbody className="divide-y divide-slate-100">
+                        {summary.rows.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="py-3 px-4 text-sm text-slate-900">
+                              {row.pay_week_start_monday ? new Date(row.pay_week_start_monday).toLocaleDateString('es-ES') : '—'}
+                            </td>
+                            <td className="py-3 px-4">
+                              <Badge variant={row.milestone_value === 25 ? 'success' : row.milestone_value === 5 ? 'warning' : 'info'}>
+                                M{row.milestone_value}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-4 text-sm text-right font-medium text-slate-900">
+                              S/ {row.amount_expected_sum ? Number(row.amount_expected_sum).toFixed(2) : '0.00'}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-right font-medium text-emerald-600">
+                              S/ {row.amount_paid_total_visible ? Number(row.amount_paid_total_visible).toFixed(2) : '0.00'}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-right font-medium text-amber-600">
+                              S/ {row.amount_pending_active_sum ? Number(row.amount_pending_active_sum).toFixed(2) : '0.00'}
+                            </td>
+                            <td className={`py-3 px-4 text-sm text-right font-medium ${row.amount_diff && row.amount_diff < 0 ? 'text-rose-600' : 'text-slate-600'}`}>
+                              S/ {row.amount_diff ? Number(row.amount_diff).toFixed(2) : '0.00'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Items Table */}
+              {items && items.rows.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4">
+                    Items Detallados
+                    <span className="ml-2 text-sm font-normal text-slate-500">({items.count} items)</span>
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Driver</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Milestone</th>
+                          <th className="text-right py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Monto</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Vencimiento</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Estado</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Fecha Pago</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {items.rows.slice(itemsPage * itemsPerPage, (itemsPage + 1) * itemsPerPage).map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="py-3 px-4">
+                              <button
+                                onClick={() => router.push(`/pagos/yango-cabinet/driver/${row.driver_id}`)}
+                                className="text-sm font-medium text-cyan-600 hover:text-cyan-700 hover:underline"
+                              >
+                                {row.driver_id || '—'}
+                              </button>
+                            </td>
+                            <td className="py-3 px-4">
+                              <Badge variant={row.milestone_value === 25 ? 'success' : row.milestone_value === 5 ? 'warning' : 'info'}>
+                                M{row.milestone_value}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-4 text-sm text-right font-medium text-slate-900">
+                              S/ {row.expected_amount || '0.00'}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600">
+                              {row.due_date ? new Date(row.due_date).toLocaleDateString('es-ES') : '—'}
+                            </td>
+                            <td className="py-3 px-4">
+                              <Badge variant={row.paid_status?.includes('paid') ? 'success' : row.paid_status?.includes('pending') ? 'warning' : 'error'}>
+                                {row.paid_status || 'PENDING'}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-4 text-sm text-slate-600">
+                              {row.paid_date ? new Date(row.paid_date).toLocaleDateString('es-ES') : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {/* Controles de paginación para Items */}
+                  <div className="mt-4 flex items-center justify-between">
+                    <p className="text-sm text-slate-500">
+                      Mostrando {Math.min(itemsPage * itemsPerPage + 1, items.rows.length)} - {Math.min((itemsPage + 1) * itemsPerPage, items.rows.length)} de {items.count} items
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setItemsPage(p => Math.max(0, p - 1))}
+                        disabled={itemsPage === 0}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        ← Anterior
+                      </button>
+                      <span className="text-sm text-slate-600">
+                        Página {itemsPage + 1} de {Math.ceil(items.rows.length / itemsPerPage)}
+                      </span>
+                      <button
+                        onClick={() => setItemsPage(p => Math.min(Math.ceil(items.rows.length / itemsPerPage) - 1, p + 1))}
+                        disabled={(itemsPage + 1) * itemsPerPage >= items.rows.length}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Siguiente →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(!summary?.rows?.length && !items?.rows?.length) && !loading && (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 mx-auto bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                    {Icons.warning}
+                  </div>
+                  <p className="text-slate-500">No hay datos para los filtros seleccionados</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ============== TAB: RECONCILIATION ============== */}
+          {activeTab === 'reconciliation' && (
+            <div className="space-y-6">
+              {reconciliationLoading && (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="relative w-12 h-12 mb-4">
+                    <div className="absolute inset-0 border-4 border-slate-200 rounded-full" />
+                    <div className="absolute inset-0 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                  <p className="text-slate-600">Cargando reconciliación...</p>
+                </div>
+              )}
+
+              {reconciliationError && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
+                  <p className="text-rose-800">{reconciliationError}</p>
+                </div>
+              )}
+
+              {!reconciliationLoading && reconciliationStats && (
+                <>
+                  {/* Stats Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <StatCard
+                      title="Total"
+                      value={reconciliationStats.total}
+                      subtitle="Registros analizados"
+                      icon={Icons.money}
+                    />
+                    <StatCard
+                      title="OK"
+                      value={reconciliationStats.ok}
+                      subtitle={`${((reconciliationStats.ok / reconciliationStats.total) * 100).toFixed(1)}% del total`}
+                      icon={Icons.check}
+                      variant="success"
+                    />
+                    <StatCard
+                      title="Pendientes"
+                      value={reconciliationStats.pending}
+                      subtitle="Logrado, no pagado"
+                      icon={Icons.pending}
+                      variant="warning"
+                    />
+                    <StatCard
+                      title="Anticipados"
+                      value={reconciliationStats.earlyPaid}
+                      subtitle="Pagado por Yango"
+                      icon={Icons.money}
+                      variant="info"
+                    />
+                  </div>
+
+                  {/* Info Panel */}
+                  <div className="bg-gradient-to-r from-slate-50 to-cyan-50/30 rounded-xl border border-slate-200/60 p-4">
+                    <h3 className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Sobre la Reconciliación
+                    </h3>
+                    <p className="text-sm text-slate-600">
+                      Esta vista muestra el cruce entre milestones <strong>logrados operativamente</strong> y <strong>pagados por Yango</strong>. 
+                      Los estados son explicativos, no correctivos. El sistema CT4 no corrige el pasado, lo explica con evidencia.
+                    </p>
+                  </div>
+
+                  {/* Reconciliation Table */}
+                  {rowsWithFlags.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50">
+                            <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Driver</th>
+                            <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Milestone</th>
+                            <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Estado</th>
+                            <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Señales</th>
+                            <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Fecha Pago</th>
+                            <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase tracking-wider">Fecha Logro</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {rowsWithFlags.slice(reconPage * reconPerPage, (reconPage + 1) * reconPerPage).map((row, idx) => (
+                            <tr key={`${row.driver_id}-${row.milestone_value}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="py-3 px-4">
+                                <button
+                                  onClick={() => router.push(`/pagos/yango-cabinet/driver/${row.driver_id}`)}
+                                  className="text-sm font-medium text-cyan-600 hover:text-cyan-700 hover:underline"
+                                >
+                                  {row.driver_id || '—'}
+                                </button>
                               </td>
-                              <td className="px-4 py-2">
+                              <td className="py-3 px-4">
+                                <Badge variant={row.milestone_value === 25 ? 'success' : row.milestone_value === 5 ? 'warning' : 'info'}>
+                                  M{row.milestone_value || '—'}
+                                </Badge>
+                              </td>
+                              <td className="py-3 px-4">
                                 <Badge variant={getReconciliationStatusVariant(row.reconciliation_status)}>
                                   {getReconciliationStatusLabel(row.reconciliation_status)}
                                 </Badge>
                               </td>
-                              <td className="px-4 py-2">
+                              <td className="py-3 px-4">
                                 {row.derivedFlags.length === 0 ? (
-                                  <span className="text-gray-400">—</span>
+                                  <span className="text-slate-400">—</span>
                                 ) : (
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    {row.derivedFlags.map((flag, flagIndex) => (
-                                      <Badge
-                                        key={flagIndex}
-                                        variant={getDerivedFlagVariant(flag)}
-                                      >
+                                  <div className="flex flex-wrap gap-1">
+                                    {row.derivedFlags.map((flag, i) => (
+                                      <Badge key={i} variant={getDerivedFlagVariant(flag)}>
                                         {getDerivedFlagLabel(flag)}
                                       </Badge>
                                     ))}
                                   </div>
                                 )}
                               </td>
-                              <td className="px-4 py-2">
+                              <td className="py-3 px-4 text-sm text-slate-600">
                                 {row.pay_date ? new Date(row.pay_date).toLocaleDateString('es-ES') : '—'}
                               </td>
-                              <td className="px-4 py-2">
+                              <td className="py-3 px-4 text-sm text-slate-600">
                                 {row.achieved_date ? new Date(row.achieved_date).toLocaleDateString('es-ES') : '—'}
                               </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()}
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <p className="text-slate-500">No hay datos de reconciliación</p>
+                    </div>
+                  )}
+
+                  {/* Controles de paginación para Reconciliación */}
+                  {rowsWithFlags.length > 0 && (
+                    <div className="mt-4 flex items-center justify-between">
+                      <p className="text-sm text-slate-500">
+                        Mostrando {Math.min(reconPage * reconPerPage + 1, rowsWithFlags.length)} - {Math.min((reconPage + 1) * reconPerPage, rowsWithFlags.length)} de {rowsWithFlags.length} registros
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setReconPage(p => Math.max(0, p - 1))}
+                          disabled={reconPage === 0}
+                          className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          ← Anterior
+                        </button>
+                        <span className="text-sm text-slate-600">
+                          Página {reconPage + 1} de {Math.ceil(rowsWithFlags.length / reconPerPage)}
+                        </span>
+                        <button
+                          onClick={() => setReconPage(p => Math.min(Math.ceil(rowsWithFlags.length / reconPerPage) - 1, p + 1))}
+                          disabled={(reconPage + 1) * reconPerPage >= rowsWithFlags.length}
+                          className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Siguiente →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -48,9 +48,14 @@ from typing import Dict, Tuple
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Cache simple para métricas de scout (TTL 60s)
-_scout_metrics_cache: Dict[Tuple, Tuple[float, ScoutAttributionMetrics]] = {}
+# Cache simple para métricas (TTL en segundos)
 CACHE_TTL = 60  # segundos
+CACHE_TTL_FUNNEL = 120  # 2 minutos para funnel gap (datos cambian poco)
+CACHE_TTL_WEEKLY = 180  # 3 minutos para weekly kpis
+
+_scout_metrics_cache: Dict[Tuple, Tuple[float, ScoutAttributionMetrics]] = {}
+_funnel_gap_cache: Dict[str, Tuple[float, dict]] = {}
+_weekly_kpis_cache: Dict[Tuple, Tuple[float, dict]] = {}
 
 
 class OrderByOption(str, Enum):
@@ -1274,53 +1279,32 @@ def get_scout_attribution_metrics(
                 WHERE {where_clause}
             """
         else:
-            # Fallback con JOIN LATERAL
+            # Fallback SIN JOIN costoso - solo métricas básicas de la vista financiera
+            # Los campos de scout no están disponibles sin la MV enriched
             metrics_sql = f"""
                 SELECT 
                     COUNT(*) AS total_drivers,
-                    COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END) AS drivers_with_scout,
-                    COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS drivers_without_scout,
-                    CASE 
-                        WHEN COUNT(*) > 0 
-                        THEN ROUND((COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END)::NUMERIC / COUNT(*)) * 100, 2)
-                        ELSE 0
-                    END AS pct_with_scout,
-                    -- Breakdown por quality bucket (simplificado)
-                    COUNT(CASE WHEN scout.scout_quality_bucket = 'SATISFACTORY_LEDGER' THEN 1 END) AS quality_ledger,
-                    COUNT(CASE WHEN scout.scout_quality_bucket = 'EVENTS_ONLY' THEN 1 END) AS quality_events,
-                    COUNT(CASE WHEN scout.scout_quality_bucket = 'SCOUTING_DAILY_ONLY' THEN 1 END) AS quality_scouting,
+                    0 AS drivers_with_scout,
+                    COUNT(*) AS drivers_without_scout,
+                    0.00 AS pct_with_scout,
+                    0 AS quality_ledger,
+                    0 AS quality_events,
+                    0 AS quality_scouting,
                     0 AS quality_migrations,
                     0 AS quality_cabinet,
-                    COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS quality_missing,
-                    -- Breakdown por source (simplificado)
-                    COUNT(CASE WHEN scout.scout_source_table = 'observational.lead_ledger' THEN 1 END) AS source_ledger,
-                    COUNT(CASE WHEN scout.scout_source_table = 'observational.lead_events' THEN 1 END) AS source_events,
+                    COUNT(*) AS quality_missing,
+                    0 AS source_ledger,
+                    0 AS source_events,
                     0 AS source_migrations,
-                    COUNT(CASE WHEN scout.scout_source_table LIKE '%scouting_daily%' THEN 1 END) AS source_scouting,
+                    0 AS source_scouting,
                     0 AS source_cabinet,
-                    -- Drivers sin scout por razón (simplificado)
-                    0 AS no_scout_missing_identity,
-                    COUNT(CASE WHEN scout.scout_id IS NULL THEN 1 END) AS no_scout_no_source_match
+                    COUNT(*) AS no_scout_missing_identity,
+                    0 AS no_scout_no_source_match
                 FROM {view_name} cf
-                LEFT JOIN LATERAL (
-                    SELECT DISTINCT ON (driver_id)
-                        scout_id,
-                        scout_quality_bucket,
-                        scout_source_table
-                    FROM ops.v_yango_collection_with_scout
-                    WHERE driver_id = cf.driver_id
-                        AND scout_id IS NOT NULL
-                    ORDER BY driver_id, 
-                        CASE scout_quality_bucket
-                            WHEN 'SATISFACTORY_LEDGER' THEN 1
-                            WHEN 'EVENTS_ONLY' THEN 2
-                            WHEN 'SCOUTING_DAILY_ONLY' THEN 3
-                            ELSE 4
-                        END
-                    LIMIT 1
-                ) scout ON true
                 WHERE {where_clause}
             """
+            # NOTA: Sin la MV enriched, no hay datos de scout disponibles.
+            # Para obtener métricas de scout completas, crear ops.mv_yango_cabinet_cobranza_enriched_14d
         
         result = db.execute(text(metrics_sql), params)
         row = result.fetchone()
@@ -1369,6 +1353,8 @@ def get_scout_attribution_metrics(
                 LIMIT 10
             """
         else:
+            # Sin la MV enriched, mostramos los top drivers con milestone y mayor deuda
+            # Sin información de scout (requiere la MV para esos datos)
             top_missing_sql = f"""
                 SELECT 
                     cf.driver_id,
@@ -1378,16 +1364,7 @@ def get_scout_attribution_metrics(
                     cf.reached_m25_14d,
                     cf.amount_due_yango
                 FROM {view_name} cf
-                LEFT JOIN LATERAL (
-                    SELECT DISTINCT ON (driver_id)
-                        scout_id
-                    FROM ops.v_yango_collection_with_scout
-                    WHERE driver_id = cf.driver_id
-                        AND scout_id IS NOT NULL
-                    LIMIT 1
-                ) scout ON true
                 WHERE {where_clause}
-                    AND scout.scout_id IS NULL
                     AND (cf.reached_m1_14d = true OR cf.reached_m5_14d = true OR cf.reached_m25_14d = true)
                 ORDER BY cf.amount_due_yango DESC NULLS LAST, cf.lead_date DESC NULLS LAST
                 LIMIT 10
@@ -1467,6 +1444,25 @@ def get_weekly_kpis(
     Retorna métricas semanales ordenadas DESC (semanas más recientes primero).
     """
     try:
+        # Verificar cache primero
+        cache_key = (
+            only_with_debt,
+            min_debt,
+            reached_milestone,
+            scout_id,
+            scout_quality_bucket,
+            week_start_from,
+            week_start_to,
+            limit_weeks,
+            use_materialized
+        )
+        current_time = time()
+        if cache_key in _weekly_kpis_cache:
+            cached_time, cached_data = _weekly_kpis_cache[cache_key]
+            if current_time - cached_time < CACHE_TTL_WEEKLY:
+                logger.debug("Returning cached weekly KPIs")
+                return cached_data
+        
         # Seleccionar vista (prioridad: MV enriched > MV legacy > vista normal)
         if use_materialized:
             check_mv_enriched = db.execute(text("""
@@ -1563,41 +1559,28 @@ def get_weekly_kpis(
                 LIMIT :limit_weeks
             """
         else:
-            # Fallback: calcular week_start en runtime
+            # Fallback SIN JOIN costoso - métricas semanales básicas
+            # Los campos de scout no están disponibles sin la MV enriched
             metrics_sql = f"""
                 SELECT 
                     DATE_TRUNC('week', cf.lead_date)::date AS week_start,
                     COUNT(*) AS total_rows,
                     SUM(cf.amount_due_yango) AS debt_sum,
-                    COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END) AS with_scout,
-                    ROUND(COUNT(CASE WHEN scout.scout_id IS NOT NULL THEN 1 END)::NUMERIC / NULLIF(COUNT(*), 0) * 100, 2) AS pct_with_scout,
+                    0 AS with_scout,
+                    0.00 AS pct_with_scout,
                     COUNT(CASE WHEN cf.reached_m1_14d = true THEN 1 END) AS reached_m1,
                     COUNT(CASE WHEN cf.reached_m5_14d = true THEN 1 END) AS reached_m5,
                     COUNT(CASE WHEN cf.reached_m25_14d = true THEN 1 END) AS reached_m25,
                     SUM(cf.total_paid_yango) AS paid_sum,
                     SUM(cf.amount_due_yango) AS unpaid_sum
                 FROM {view_name} cf
-                LEFT JOIN LATERAL (
-                    SELECT DISTINCT ON (driver_id)
-                        scout_id
-                    FROM ops.v_yango_collection_with_scout
-                    WHERE driver_id = cf.driver_id
-                        AND scout_id IS NOT NULL
-                    ORDER BY driver_id, 
-                        CASE scout_quality_bucket
-                            WHEN 'SATISFACTORY_LEDGER' THEN 1
-                            WHEN 'EVENTS_ONLY' THEN 2
-                            WHEN 'SCOUTING_DAILY_ONLY' THEN 3
-                            ELSE 4
-                        END
-                    LIMIT 1
-                ) scout ON true
                 WHERE {where_clause}
                     AND cf.lead_date IS NOT NULL
                 GROUP BY DATE_TRUNC('week', cf.lead_date)::date
                 ORDER BY week_start DESC
                 LIMIT :limit_weeks
             """
+            # NOTA: Sin la MV enriched, with_scout=0. Para métricas de scout, crear la MV.
         
         params["limit_weeks"] = limit_weeks
         
@@ -1617,7 +1600,7 @@ def get_weekly_kpis(
             unpaid_sum=Decimal(str(row.unpaid_sum or 0))
         ) for row in rows]
         
-        return WeeklyKpisResponse(
+        result = WeeklyKpisResponse(
             status="ok",
             weeks=weeks,
             filters={
@@ -1631,6 +1614,17 @@ def get_weekly_kpis(
                 "limit_weeks": limit_weeks
             }
         )
+        
+        # Guardar en cache
+        _weekly_kpis_cache[cache_key] = (current_time, result)
+        
+        # Limpiar cache expirado (mantener solo últimos 50 entries)
+        if len(_weekly_kpis_cache) > 50:
+            expired_keys = [k for k, (t, _) in _weekly_kpis_cache.items() if current_time - t >= CACHE_TTL_WEEKLY]
+            for k in expired_keys:
+                _weekly_kpis_cache.pop(k, None)
+        
+        return result
         
     except HTTPException:
         raise
@@ -1667,47 +1661,57 @@ def get_funnel_gap_metrics(
     - claims generados
     """
     try:
-        # Query para calcular métricas del gap
-        # Note: This query uses CTEs with JOINs to v_claims_payment_status_cabinet
-        # Performance depends on MV availability for that view
-        sql = text("""
-            WITH leads_with_identity AS (
-                SELECT DISTINCT
-                    COALESCE(mcl.external_id::text, mcl.id::text) AS lead_source_pk
-                FROM public.module_ct_cabinet_leads mcl
-                INNER JOIN canon.identity_links il
-                    ON il.source_table = 'module_ct_cabinet_leads'
-                    AND il.source_pk = COALESCE(mcl.external_id::text, mcl.id::text)
-            ),
-            leads_with_claims AS (
-                SELECT DISTINCT
-                    COALESCE(mcl.external_id::text, mcl.id::text) AS lead_source_pk
-                FROM public.module_ct_cabinet_leads mcl
-                INNER JOIN canon.identity_links il
-                    ON il.source_table = 'module_ct_cabinet_leads'
-                    AND il.source_pk = COALESCE(mcl.external_id::text, mcl.id::text)
-                INNER JOIN ops.v_claims_payment_status_cabinet c
-                    ON c.person_key = il.person_key
-                    AND c.driver_id IS NOT NULL
+        # Verificar cache primero
+        cache_key = "funnel_gap_metrics"
+        current_time = time()
+        if cache_key in _funnel_gap_cache:
+            cached_time, cached_data = _funnel_gap_cache[cache_key]
+            if current_time - cached_time < CACHE_TTL_FUNNEL:
+                logger.debug("Returning cached funnel gap metrics")
+                return cached_data
+        
+        # Query OPTIMIZADA: Consultas separadas más simples
+        # Esto permite que PostgreSQL use índices mejor
+        
+        # Primero verificar si existe MV para claims (mucho más rápido)
+        mv_claims_exists = db.execute(text("""
+            SELECT EXISTS (
+                SELECT 1 FROM pg_matviews 
+                WHERE schemaname = 'ops' AND matviewname = 'mv_claims_payment_status_cabinet'
             )
-            SELECT 
-                COUNT(*) AS total_leads,
-                COUNT(DISTINCT li.lead_source_pk) AS leads_with_identity,
-                COUNT(DISTINCT lc.lead_source_pk) AS leads_with_claims,
-                COUNT(*) - COUNT(DISTINCT li.lead_source_pk) AS leads_without_identity,
-                COUNT(*) - COUNT(DISTINCT lc.lead_source_pk) AS leads_without_claims,
-                COUNT(*) - COUNT(DISTINCT COALESCE(li.lead_source_pk, lc.lead_source_pk)) AS leads_without_both
-            FROM public.module_ct_cabinet_leads mcl
-            LEFT JOIN leads_with_identity li
-                ON li.lead_source_pk = COALESCE(mcl.external_id::text, mcl.id::text)
-            LEFT JOIN leads_with_claims lc
-                ON lc.lead_source_pk = COALESCE(mcl.external_id::text, mcl.id::text)
+        """)).scalar()
+        
+        claims_view = "ops.mv_claims_payment_status_cabinet" if mv_claims_exists else "ops.v_claims_payment_status_cabinet"
+        
+        total_sql = text("SELECT COUNT(*) FROM public.module_ct_cabinet_leads")
+        identity_sql = text("""
+            SELECT COUNT(*) FROM canon.identity_links 
+            WHERE source_table = 'module_ct_cabinet_leads'
+        """)
+        claims_sql = text(f"""
+            SELECT COUNT(DISTINCT il.source_pk) 
+            FROM canon.identity_links il
+            INNER JOIN {claims_view} c ON c.person_key = il.person_key
+            WHERE il.source_table = 'module_ct_cabinet_leads'
         """)
         
-        result = db.execute(sql)
-        row = result.fetchone()
+        total_leads = db.execute(total_sql).scalar() or 0
+        leads_with_identity = db.execute(identity_sql).scalar() or 0
+        leads_with_claims = db.execute(claims_sql).scalar() or 0
         
-        if not row:
+        # Crear pseudo-row para mantener compatibilidad con código existente
+        class ResultRow:
+            def __init__(self):
+                self.total_leads = total_leads
+                self.leads_with_identity = leads_with_identity
+                self.leads_with_claims = leads_with_claims
+                self.leads_without_identity = total_leads - leads_with_identity
+                self.leads_without_claims = total_leads - leads_with_claims
+                self.leads_without_both = total_leads - leads_with_identity
+        
+        row = ResultRow()
+        
+        if total_leads == 0:
             return {
                 "total_leads": 0,
                 "leads_with_identity": 0,
@@ -1735,7 +1739,7 @@ def get_funnel_gap_metrics(
             "without_both": round((row.leads_without_both / total * 100) if total > 0 else 0, 2)
         }
         
-        return {
+        result = {
             "total_leads": total,
             "leads_with_identity": row.leads_with_identity or 0,
             "leads_with_claims": row.leads_with_claims or 0,
@@ -1744,6 +1748,11 @@ def get_funnel_gap_metrics(
             "leads_without_both": row.leads_without_both or 0,
             "percentages": percentages
         }
+        
+        # Guardar en cache
+        _funnel_gap_cache[cache_key] = (current_time, result)
+        
+        return result
         
     except Exception as e:
         # Hacer rollback si hay una transacción fallida

@@ -19,7 +19,7 @@ import Badge from '@/components/Badge';
 import Tabs, { TabPanel } from '@/components/Tabs';
 import CabinetLimboSection from '@/components/CabinetLimboSection';
 import CabinetClaimsGapSection from '@/components/CabinetClaimsGapSection';
-import { StatCardSkeleton, LoadingSpinner } from '@/components/Skeleton';
+import { StatCardSkeleton, LoadingSpinner, PageLoadingOverlay } from '@/components/Skeleton';
 import {
   useCabinetFinancial,
   useFunnelGap,
@@ -362,6 +362,12 @@ export default function CobranzaYangoPage() {
     { id: 'conductores', label: 'Conductores', icon: <TableIcon />, badge: data?.meta?.total },
     { id: 'recovery', label: 'Recovery & Gaps', icon: <RecoveryIcon />, badge: identityGaps?.totals?.unresolved },
   ];
+
+  // Loading inicial estándar
+  const isInitialLoading = loading && !data && loadingGap && !funnelGap;
+  if (isInitialLoading) {
+    return <PageLoadingOverlay title="Cobranza Yango" subtitle="Cargando datos financieros..." />;
+  }
 
   return (
     <div className="space-y-6">
