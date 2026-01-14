@@ -7,12 +7,18 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getIdentityStats, getGlobalMetrics, getPersonsBySource, getDriversWithoutLeadsAnalysis, getOrphansMetrics, runOrphansFix, ApiError } from '@/lib/api';
-import type { IdentityStats, MetricsResponse, PersonsBySourceResponse, DriversWithoutLeadsAnalysis, OrphansMetricsResponse } from '@/lib/types';
+import { useState } from 'react';
+import { runOrphansFix, ApiError } from '@/lib/api';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import Link from 'next/link';
+import {
+  useIdentityStats,
+  useGlobalMetrics,
+  usePersonsBySource,
+  useDriversWithoutLeads,
+  useOrphansMetrics,
+} from '@/lib/hooks/use-dashboard';
 
 // Iconos SVG
 const Icons = {
@@ -81,76 +87,50 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<IdentityStats | null>(null);
-  const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
-  const [personsBySource, setPersonsBySource] = useState<PersonsBySourceResponse | null>(null);
-  const [driversWithoutLeads, setDriversWithoutLeads] = useState<DriversWithoutLeadsAnalysis | null>(null);
-  const [orphansMetrics, setOrphansMetrics] = useState<OrphansMetricsResponse | null>(null);
   const [mode, setMode] = useState<'summary' | 'weekly' | 'breakdowns'>('breakdowns');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [fixRunning, setFixRunning] = useState(false);
+  const [fixError, setFixError] = useState<string | null>(null);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  // React Query hooks with caching
+  const { data: stats, isLoading: loadingStats, error: statsError, refetch: refetchStats } = useIdentityStats();
+  const { data: metrics, isLoading: loadingMetrics } = useGlobalMetrics(mode);
+  const { data: personsBySource, isLoading: loadingPersons } = usePersonsBySource();
+  const { data: driversWithoutLeads, isLoading: loadingDrivers } = useDriversWithoutLeads();
+  const { data: orphansMetrics, isLoading: loadingOrphans, refetch: refetchOrphans } = useOrphansMetrics();
 
-      const [statsData, metricsData, personsBySourceData, driversWithoutLeadsData, orphansMetricsData] = await Promise.all([
-        getIdentityStats(),
-        getGlobalMetrics({ mode }),
-        getPersonsBySource(),
-        getDriversWithoutLeadsAnalysis(),
-        getOrphansMetrics(),
-      ]);
-
-      setStats(statsData);
-      setMetrics(metricsData);
-      setPersonsBySource(personsBySourceData);
-      setDriversWithoutLeads(driversWithoutLeadsData);
-      setOrphansMetrics(orphansMetricsData);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.status === 500 ? 'Error al cargar estadísticas' : `Error ${err.status}: ${err.detail || err.message}`);
-      } else {
-        setError('Error desconocido');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  const loading = loadingStats || loadingMetrics || loadingPersons || loadingDrivers || loadingOrphans;
+  const error = statsError ? (statsError as Error).message : null;
 
   const handleRunFix = async (execute: boolean = false) => {
     try {
       setFixRunning(true);
-      setError(null);
+      setFixError(null);
       const result = await runOrphansFix({ execute, limit: 100 });
       if (result && !result.dry_run) {
-        setTimeout(() => loadData(), 2000);
+        // Refetch orphans data after fix
+        setTimeout(() => {
+          refetchOrphans();
+          refetchStats();
+        }, 2000);
       }
       alert(`Fix ${execute ? 'ejecutado' : 'dry-run'} completado. Ver consola para detalles.`);
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(`Error al ejecutar fix: ${err.detail || err.message}`);
+        setFixError(`Error al ejecutar fix: ${err.detail || err.message}`);
       } else {
-        setError('Error desconocido al ejecutar fix');
+        setFixError('Error desconocido al ejecutar fix');
       }
     } finally {
       setFixRunning(false);
     }
   };
 
-  if (loading) {
+  if (loading && !stats) {
     return <LoadingState />;
   }
 
-  if (error) {
-    return <ErrorState message={error} onRetry={loadData} />;
+  if (error && !stats) {
+    return <ErrorState message={error} onRetry={() => refetchStats()} />;
   }
 
   if (!stats) {
@@ -161,7 +141,9 @@ export default function DashboardPage() {
     );
   }
 
-  const matchRate = stats.conversion_rate;
+  const matchRate = stats?.conversion_rate ?? 0;
+  const totalPersons = stats?.total_persons ?? 0;
+  const totalUnmatched = stats?.total_unmatched ?? 0;
 
   return (
     <div className="space-y-8">
@@ -180,16 +162,16 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
           title="Personas Identificadas"
-          value={stats.total_persons.toLocaleString()}
+          value={totalPersons.toLocaleString()}
           subtitle="Registros únicos"
           variant="brand"
           icon={Icons.users}
         />
         <StatCard
           title="Sin Resolver"
-          value={stats.total_unmatched.toLocaleString()}
+          value={totalUnmatched.toLocaleString()}
           subtitle="Pendientes de match"
-          variant={stats.total_unmatched > 0 ? 'warning' : 'success'}
+          variant={totalUnmatched > 0 ? 'warning' : 'success'}
           icon={Icons.warning}
         />
         <StatCard
@@ -323,7 +305,7 @@ export default function DashboardPage() {
       )}
 
       {/* Desglose por Fuente */}
-      {personsBySource && (
+      {personsBySource?.links_by_source && (
         <div className="card">
           <div className="card-header">
             <h2 className="text-lg font-semibold text-slate-900">Desglose de Personas por Fuente</h2>
@@ -336,14 +318,14 @@ export default function DashboardPage() {
                   Links por Fuente
                 </h3>
                 <div className="space-y-3">
-                  {Object.entries(personsBySource.links_by_source).map(([source, count]) => (
+                  {Object.entries(personsBySource.links_by_source ?? {}).map(([source, count]) => (
                     <div key={source} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
                       <span className="text-sm text-slate-600">
                         {source === 'module_ct_cabinet_leads' ? 'Cabinet Leads' : 
                          source === 'module_ct_scouting_daily' ? 'Scouting Daily' : 
                          source === 'drivers' ? 'Drivers' : source}
                       </span>
-                      <span className="font-semibold text-slate-900">{count.toLocaleString()}</span>
+                      <span className="font-semibold text-slate-900">{(count ?? 0).toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
@@ -356,32 +338,32 @@ export default function DashboardPage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
                     <span className="text-sm text-slate-600">Con Cabinet Leads</span>
-                    <span className="font-semibold text-slate-900">{personsBySource.persons_with_cabinet_leads.toLocaleString()}</span>
+                    <span className="font-semibold text-slate-900">{(personsBySource.persons_with_cabinet_leads ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
                     <span className="text-sm text-slate-600">Con Scouting Daily</span>
-                    <span className="font-semibold text-slate-900">{personsBySource.persons_with_scouting_daily.toLocaleString()}</span>
+                    <span className="font-semibold text-slate-900">{(personsBySource.persons_with_scouting_daily ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
                     <span className="text-sm text-slate-600">Con Drivers</span>
-                    <span className="font-semibold text-slate-900">{personsBySource.persons_with_drivers.toLocaleString()}</span>
+                    <span className="font-semibold text-slate-900">{(personsBySource.persons_with_drivers ?? 0).toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-cyan-50 rounded-lg border border-cyan-200">
                     <span className="text-sm font-medium text-cyan-800">Solo Drivers (sin leads)</span>
-                    <Badge variant="info">{personsBySource.persons_only_drivers.toLocaleString()}</Badge>
+                    <Badge variant="info">{(personsBySource.persons_only_drivers ?? 0).toLocaleString()}</Badge>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-emerald-50 rounded-lg border border-emerald-200">
                     <span className="text-sm font-medium text-emerald-800">Con Cabinet o Scouting</span>
-                    <Badge variant="success">{personsBySource.persons_with_cabinet_or_scouting.toLocaleString()}</Badge>
+                    <Badge variant="success">{(personsBySource.persons_with_cabinet_or_scouting ?? 0).toLocaleString()}</Badge>
                   </div>
                 </div>
               </div>
             </div>
             <div className="mt-6 p-4 bg-slate-50 rounded-lg">
               <p className="text-sm text-slate-600">
-                <strong className="text-slate-700">Nota:</strong> El total de {personsBySource.total_persons.toLocaleString()} personas incluye todas las fuentes.
-                {personsBySource.persons_only_drivers > 0 && (
-                  <> {personsBySource.persons_only_drivers.toLocaleString()} personas solo tienen links de drivers (están en el parque pero no vinieron de leads).</>
+                <strong className="text-slate-700">Nota:</strong> El total de {(personsBySource.total_persons ?? 0).toLocaleString()} personas incluye todas las fuentes.
+                {(personsBySource.persons_only_drivers ?? 0) > 0 && (
+                  <> {(personsBySource.persons_only_drivers ?? 0).toLocaleString()} personas solo tienen links de drivers (están en el parque pero no vinieron de leads).</>
                 )}
               </p>
             </div>
