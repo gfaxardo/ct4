@@ -32,6 +32,7 @@ import Badge from '@/components/Badge';
 import Tabs, { TabPanel } from '@/components/Tabs';
 import CabinetLimboSection from '@/components/CabinetLimboSection';
 import CabinetClaimsGapSection from '@/components/CabinetClaimsGapSection';
+import { StatCardSkeleton, TableSkeleton, LoadingSpinner } from '@/components/Skeleton';
 
 // Icons for tabs
 const DashboardIcon = () => (
@@ -495,7 +496,19 @@ export default function CobranzaYangoPage() {
             <TabPanel id="resumen" activeTab={activeTab}>
               <div className="space-y-6">
                 {/* Métricas del Gap del Embudo */}
-                {!loadingGap && funnelGap && (
+                {loadingGap ? (
+                  <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-5 h-5 bg-amber-200 rounded animate-pulse" />
+                      <div className="h-6 w-48 bg-amber-200 rounded animate-pulse" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <StatCardSkeleton />
+                      <StatCardSkeleton />
+                      <StatCardSkeleton />
+                    </div>
+                  </div>
+                ) : funnelGap ? (
                   <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
                     <h2 className="text-lg font-semibold text-amber-900 mb-4 flex items-center gap-2">
                       <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -529,7 +542,7 @@ export default function CobranzaYangoPage() {
                       </div>
                     </div>
                   </div>
-                )}
+                ) : null}
 
                 {/* Summary Cards */}
                 {data && (
@@ -544,12 +557,9 @@ export default function CobranzaYangoPage() {
                     {/* Scout metrics */}
                     {loadingScoutMetrics ? (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {[1, 2, 3].map(i => (
-                          <div key={i} className="card p-5 animate-pulse">
-                            <div className="h-4 bg-slate-200 rounded w-24 mb-2" />
-                            <div className="h-8 bg-slate-200 rounded w-16" />
-                          </div>
-                        ))}
+                        <StatCardSkeleton />
+                        <StatCardSkeleton />
+                        <StatCardSkeleton />
                       </div>
                     ) : scoutMetrics ? (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -557,7 +567,11 @@ export default function CobranzaYangoPage() {
                         <StatCard title="Drivers sin Scout" value={scoutMetrics.metrics.drivers_without_scout.toString()} variant="warning" />
                         <StatCard title="Total Drivers" value={scoutMetrics.metrics.total_drivers.toString()} />
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-700 text-sm">
+                        <span className="font-medium">⚠️ Métricas de scout no disponibles.</span> El endpoint puede estar cargando.
+                      </div>
+                    )}
 
                     {/* Resumen: Filtrado vs Total */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -613,7 +627,9 @@ export default function CobranzaYangoPage() {
                   )}
                 </div>
                 {loadingWeeklyKpis ? (
-                  <div className="p-8 text-center text-slate-500">Cargando KPIs semanales...</div>
+                  <div className="p-4">
+                    <LoadingSpinner text="Cargando KPIs semanales..." />
+                  </div>
                 ) : weeklyKpis && weeklyKpis.weeks.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="table-modern">
@@ -641,12 +657,12 @@ export default function CobranzaYangoPage() {
                             <td className="font-medium">{new Date(week.week_start).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                             <td>{week.total_rows}</td>
                             <td>{week.with_scout}</td>
-                            <td><Badge variant={week.pct_with_scout >= 90 ? 'success' : week.pct_with_scout >= 70 ? 'warning' : 'error'}>{week.pct_with_scout.toFixed(1)}%</Badge></td>
-                            <td className="text-right font-semibold text-rose-600">S/ {week.debt_sum.toFixed(2)}</td>
+                            <td><Badge variant={week.pct_with_scout >= 90 ? 'success' : week.pct_with_scout >= 70 ? 'warning' : 'error'}>{Number(week.pct_with_scout).toFixed(1)}%</Badge></td>
+                            <td className="text-right font-semibold text-rose-600">S/ {Number(week.debt_sum).toFixed(2)}</td>
                             <td>{week.reached_m1}</td>
                             <td>{week.reached_m5}</td>
                             <td>{week.reached_m25}</td>
-                            <td className="text-right font-semibold text-emerald-600">S/ {week.paid_sum.toFixed(2)}</td>
+                            <td className="text-right font-semibold text-emerald-600">S/ {Number(week.paid_sum).toFixed(2)}</td>
                             <td>
                               <button className="text-cyan-600 hover:text-cyan-800 text-sm underline" onClick={(e) => { e.stopPropagation(); handleWeekClick(week.week_start); }}>
                                 Filtrar

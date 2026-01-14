@@ -13,6 +13,7 @@ from app.api.v1 import (
     identity_audit,
     liquidation,
     ops,
+    ops_payments,
     scouts,
     yango_payments,
 )
@@ -30,4 +31,5 @@ router.include_router(liquidation.router, prefix="/liquidation", tags=["liquidat
 router.include_router(yango_payments.router, prefix="/yango", tags=["yango"])
 router.include_router(cabinet_leads.router, prefix="/cabinet-leads", tags=["cabinet-leads"])
 router.include_router(scouts.router, prefix="/scouts", tags=["scouts"])
+router.include_router(ops_payments.router, prefix="/payments", tags=["ops-payments"])
 
