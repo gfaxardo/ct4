@@ -9,21 +9,8 @@
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  getCabinetFinancial14d,
-  exportCabinetFinancial14dCSV,
-  getFunnelGapMetrics,
-  getCobranzaYangoScoutAttributionMetrics,
-  getCobranzaYangoWeeklyKpis,
-  getIdentityGaps,
-  getIdentityGapAlerts,
-  ApiError,
-} from '@/lib/api';
-import type { FunnelGapMetrics, ScoutAttributionMetricsResponse, WeeklyKpisResponse, IdentityGapResponse, IdentityGapAlertsResponse } from '@/lib/api';
-import type {
-  CabinetFinancialResponse,
-  CabinetFinancialRow,
-} from '@/lib/types';
+import { exportCabinetFinancial14dCSV, ApiError } from '@/lib/api';
+import type { CabinetFinancialRow } from '@/lib/types';
 import StatCard from '@/components/StatCard';
 import DataTable from '@/components/DataTable';
 import Filters from '@/components/Filters';
@@ -32,7 +19,15 @@ import Badge from '@/components/Badge';
 import Tabs, { TabPanel } from '@/components/Tabs';
 import CabinetLimboSection from '@/components/CabinetLimboSection';
 import CabinetClaimsGapSection from '@/components/CabinetClaimsGapSection';
-import { StatCardSkeleton, TableSkeleton, LoadingSpinner } from '@/components/Skeleton';
+import { StatCardSkeleton, LoadingSpinner } from '@/components/Skeleton';
+import {
+  useCabinetFinancial,
+  useFunnelGap,
+  useScoutAttributionMetrics,
+  useWeeklyKpis,
+  useIdentityGaps,
+  useIdentityGapAlerts,
+} from '@/lib/hooks/use-cobranza-yango';
 
 // Icons for tabs
 const DashboardIcon = () => (
@@ -61,29 +56,17 @@ const RecoveryIcon = () => (
 
 export default function CobranzaYangoPage() {
   const router = useRouter();
-  const [data, setData] = useState<CabinetFinancialResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     only_with_debt: true,
-    reached_milestone: '',
+    reached_milestone: '' as '' | 'm1' | 'm5' | 'm25',
     scout_id: '',
     week_start: '',
   });
   const [offset, setOffset] = useState(0);
-  const [limit, setLimit] = useState(100);
+  const [limit] = useState(100);
   const [exporting, setExporting] = useState(false);
-  const [funnelGap, setFunnelGap] = useState<FunnelGapMetrics | null>(null);
-  const [loadingGap, setLoadingGap] = useState(true);
-  const [scoutMetrics, setScoutMetrics] = useState<ScoutAttributionMetricsResponse | null>(null);
-  const [loadingScoutMetrics, setLoadingScoutMetrics] = useState(true);
-  const [weeklyKpis, setWeeklyKpis] = useState<WeeklyKpisResponse | null>(null);
-  const [loadingWeeklyKpis, setLoadingWeeklyKpis] = useState(true);
-  const [identityGaps, setIdentityGaps] = useState<IdentityGapResponse | null>(null);
-  const [loadingIdentityGaps, setLoadingIdentityGaps] = useState(true);
-  const [identityGapAlerts, setIdentityGapAlerts] = useState<IdentityGapAlertsResponse | null>(null);
-  const [loadingIdentityGapAlerts, setLoadingIdentityGapAlerts] = useState(true);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const [debouncedFilters, setDebouncedFilters] = useState(filters);
   
@@ -95,130 +78,53 @@ export default function CobranzaYangoPage() {
     return () => clearTimeout(timer);
   }, [filters]);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await getCabinetFinancial14d({
-          only_with_debt: debouncedFilters.only_with_debt,
-          reached_milestone: debouncedFilters.reached_milestone ? debouncedFilters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
-          scout_id: debouncedFilters.scout_id ? parseInt(debouncedFilters.scout_id) : undefined,
-          week_start: debouncedFilters.week_start || undefined,
-          limit,
-          offset,
-          include_summary: true,
-          use_materialized: true,
-        });
-        setData(response);
-      } catch (err) {
-        if (err instanceof ApiError) {
-          if (err.status === 400) {
-            setError('Parámetros inválidos');
-          } else if (err.status === 500) {
-            setError('Error al cargar cobranza Yango');
-          } else {
-            setError(`Error ${err.status}: ${err.detail || err.message}`);
-          }
-        } else {
-          setError('Error desconocido');
-        }
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, [debouncedFilters, offset, limit]);
+  // React Query hooks with caching
+  const { 
+    data, 
+    isLoading: loading, 
+    error: dataError 
+  } = useCabinetFinancial({
+    only_with_debt: debouncedFilters.only_with_debt,
+    reached_milestone: debouncedFilters.reached_milestone || undefined,
+    scout_id: debouncedFilters.scout_id ? parseInt(debouncedFilters.scout_id) : undefined,
+    week_start: debouncedFilters.week_start || undefined,
+    limit,
+    offset,
+  });
 
-  useEffect(() => {
-    async function loadFunnelGap() {
-      try {
-        setLoadingGap(true);
-        const gapData = await getFunnelGapMetrics();
-        setFunnelGap(gapData);
-      } catch (err) {
-        console.error('Error cargando métricas del gap:', err);
-      } finally {
-        setLoadingGap(false);
-      }
-    }
-    loadFunnelGap();
-  }, []);
+  const { 
+    data: funnelGap, 
+    isLoading: loadingGap 
+  } = useFunnelGap();
 
-  useEffect(() => {
-    async function loadScoutMetrics() {
-      try {
-        setLoadingScoutMetrics(true);
-        const metrics = await getCobranzaYangoScoutAttributionMetrics({
-          only_with_debt: debouncedFilters.only_with_debt,
-          reached_milestone: debouncedFilters.reached_milestone ? debouncedFilters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
-          scout_id: debouncedFilters.scout_id ? parseInt(debouncedFilters.scout_id) : undefined,
-          use_materialized: true,
-        });
-        setScoutMetrics(metrics);
-      } catch (err) {
-        console.error('Error cargando métricas de scout:', err);
-      } finally {
-        setLoadingScoutMetrics(false);
-      }
-    }
-    loadScoutMetrics();
-  }, [debouncedFilters]);
+  const { 
+    data: scoutMetrics, 
+    isLoading: loadingScoutMetrics 
+  } = useScoutAttributionMetrics({
+    only_with_debt: debouncedFilters.only_with_debt,
+    reached_milestone: debouncedFilters.reached_milestone || undefined,
+    scout_id: debouncedFilters.scout_id ? parseInt(debouncedFilters.scout_id) : undefined,
+  });
 
-  useEffect(() => {
-    async function loadWeeklyKpis() {
-      try {
-        setLoadingWeeklyKpis(true);
-        const kpis = await getCobranzaYangoWeeklyKpis({
-          only_with_debt: debouncedFilters.only_with_debt,
-          reached_milestone: debouncedFilters.reached_milestone ? debouncedFilters.reached_milestone as 'm1' | 'm5' | 'm25' : undefined,
-          scout_id: debouncedFilters.scout_id ? parseInt(debouncedFilters.scout_id) : undefined,
-          limit_weeks: 52,
-          use_materialized: true,
-        });
-        setWeeklyKpis(kpis);
-      } catch (err) {
-        console.error('Error cargando KPIs semanales:', err);
-      } finally {
-        setLoadingWeeklyKpis(false);
-      }
-    }
-    loadWeeklyKpis();
-  }, [debouncedFilters]);
+  const { 
+    data: weeklyKpis, 
+    isLoading: loadingWeeklyKpis 
+  } = useWeeklyKpis({
+    only_with_debt: debouncedFilters.only_with_debt,
+    reached_milestone: debouncedFilters.reached_milestone || undefined,
+    scout_id: debouncedFilters.scout_id ? parseInt(debouncedFilters.scout_id) : undefined,
+    limit_weeks: 52,
+  });
 
-  useEffect(() => {
-    async function loadIdentityGaps() {
-      try {
-        setLoadingIdentityGaps(true);
-        const gaps = await getIdentityGaps({ page: 1, page_size: 100 });
-        setIdentityGaps(gaps);
-      } catch (err) {
-        console.error('Error cargando brechas de identidad:', err);
-      } finally {
-        setLoadingIdentityGaps(false);
-      }
-    }
-    loadIdentityGaps();
-    const interval = setInterval(loadIdentityGaps, 60000);
-    return () => clearInterval(interval);
-  }, []);
+  const { 
+    data: identityGaps, 
+    isLoading: loadingIdentityGaps 
+  } = useIdentityGaps(1, 100);
 
-  useEffect(() => {
-    async function loadIdentityGapAlerts() {
-      try {
-        setLoadingIdentityGapAlerts(true);
-        const alerts = await getIdentityGapAlerts();
-        setIdentityGapAlerts(alerts);
-      } catch (err) {
-        console.error('Error cargando alertas de brechas:', err);
-      } finally {
-        setLoadingIdentityGapAlerts(false);
-      }
-    }
-    loadIdentityGapAlerts();
-    const interval = setInterval(loadIdentityGapAlerts, 60000);
-    return () => clearInterval(interval);
-  }, []);
+  const { 
+    data: identityGapAlerts, 
+    isLoading: loadingIdentityGapAlerts 
+  } = useIdentityGapAlerts();
 
   const handleExport = async () => {
     try {
@@ -508,7 +414,7 @@ export default function CobranzaYangoPage() {
                       <StatCardSkeleton />
                     </div>
                   </div>
-                ) : funnelGap ? (
+                ) : funnelGap && funnelGap.total_leads !== undefined ? (
                   <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
                     <h2 className="text-lg font-semibold text-amber-900 mb-4 flex items-center gap-2">
                       <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -519,26 +425,26 @@ export default function CobranzaYangoPage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                       <div className="bg-white/80 rounded-xl p-4 border border-slate-200/50">
                         <div className="text-sm text-slate-600 mb-1">Total de Leads</div>
-                        <div className="text-2xl font-bold text-slate-900">{funnelGap.total_leads.toLocaleString()}</div>
+                        <div className="text-2xl font-bold text-slate-900">{funnelGap.total_leads?.toLocaleString() ?? 0}</div>
                       </div>
                       <div className="bg-white/80 rounded-xl p-4 border border-rose-200/50">
                         <div className="text-sm text-rose-600 mb-1">Sin Identidad ni Claims</div>
-                        <div className="text-2xl font-bold text-rose-700">{funnelGap.leads_without_both.toLocaleString()}</div>
-                        <div className="text-sm text-rose-600 mt-1">({funnelGap.percentages.without_both}%)</div>
+                        <div className="text-2xl font-bold text-rose-700">{funnelGap.leads_without_both?.toLocaleString() ?? 0}</div>
+                        <div className="text-sm text-rose-600 mt-1">({funnelGap.percentages?.without_both ?? 0}%)</div>
                       </div>
                       <div className="bg-white/80 rounded-xl p-4 border border-emerald-200/50">
                         <div className="text-sm text-emerald-600 mb-1">Con Identidad y Claims</div>
-                        <div className="text-2xl font-bold text-emerald-700">{funnelGap.leads_with_claims.toLocaleString()}</div>
-                        <div className="text-sm text-emerald-600 mt-1">({funnelGap.percentages.with_claims}%)</div>
+                        <div className="text-2xl font-bold text-emerald-700">{funnelGap.leads_with_claims?.toLocaleString() ?? 0}</div>
+                        <div className="text-sm text-emerald-600 mt-1">({funnelGap.percentages?.with_claims ?? 0}%)</div>
                       </div>
                     </div>
                     <div className="bg-white/60 rounded-lg p-4">
                       <p className="text-sm font-medium text-amber-800 mb-2">Desglose:</p>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-amber-700">
-                        <div>Con identidad: <strong>{funnelGap.leads_with_identity.toLocaleString()}</strong> ({funnelGap.percentages.with_identity}%)</div>
-                        <div>Sin identidad: <strong>{funnelGap.leads_without_identity.toLocaleString()}</strong> ({funnelGap.percentages.without_identity}%)</div>
-                        <div>Con claims: <strong>{funnelGap.leads_with_claims.toLocaleString()}</strong> ({funnelGap.percentages.with_claims}%)</div>
-                        <div>Sin claims: <strong>{funnelGap.leads_without_claims.toLocaleString()}</strong> ({funnelGap.percentages.without_claims}%)</div>
+                        <div>Con identidad: <strong>{funnelGap.leads_with_identity?.toLocaleString() ?? 0}</strong> ({funnelGap.percentages?.with_identity ?? 0}%)</div>
+                        <div>Sin identidad: <strong>{funnelGap.leads_without_identity?.toLocaleString() ?? 0}</strong> ({funnelGap.percentages?.without_identity ?? 0}%)</div>
+                        <div>Con claims: <strong>{funnelGap.leads_with_claims?.toLocaleString() ?? 0}</strong> ({funnelGap.percentages?.with_claims ?? 0}%)</div>
+                        <div>Sin claims: <strong>{funnelGap.leads_without_claims?.toLocaleString() ?? 0}</strong> ({funnelGap.percentages?.without_claims ?? 0}%)</div>
                       </div>
                     </div>
                   </div>
@@ -561,11 +467,11 @@ export default function CobranzaYangoPage() {
                         <StatCardSkeleton />
                         <StatCardSkeleton />
                       </div>
-                    ) : scoutMetrics ? (
+                    ) : scoutMetrics?.metrics ? (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <StatCard title="Drivers con Scout" value={`${scoutMetrics.metrics.drivers_with_scout} (${scoutMetrics.metrics.pct_with_scout.toFixed(1)}%)`} variant="success" />
-                        <StatCard title="Drivers sin Scout" value={scoutMetrics.metrics.drivers_without_scout.toString()} variant="warning" />
-                        <StatCard title="Total Drivers" value={scoutMetrics.metrics.total_drivers.toString()} />
+                        <StatCard title="Drivers con Scout" value={`${scoutMetrics.metrics.drivers_with_scout} (${scoutMetrics.metrics.pct_with_scout?.toFixed(1) ?? 0}%)`} variant="success" />
+                        <StatCard title="Drivers sin Scout" value={String(scoutMetrics.metrics.drivers_without_scout ?? 0)} variant="warning" />
+                        <StatCard title="Total Drivers" value={String(scoutMetrics.metrics.total_drivers ?? 0)} />
                       </div>
                     ) : (
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-700 text-sm">
@@ -581,12 +487,12 @@ export default function CobranzaYangoPage() {
                         </div>
                         <div className="card-body">
                           <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div><span className="text-slate-500">Total Drivers:</span> <span className="font-bold">{data.meta.total}</span></div>
-                            <div><span className="text-slate-500">Con Deuda:</span> <span className="font-bold text-rose-600">{data.summary?.drivers_with_debt || 0}</span></div>
-                            <div><span className="text-slate-500">M1:</span> <span className="font-bold">{data.summary?.drivers_m1 || 0}</span></div>
-                            <div><span className="text-slate-500">M5:</span> <span className="font-bold">{data.summary?.drivers_m5 || 0}</span></div>
-                            <div><span className="text-slate-500">M25:</span> <span className="font-bold">{data.summary?.drivers_m25 || 0}</span></div>
-                            <div><span className="text-slate-500">Deuda:</span> <span className="font-bold text-rose-600">S/ {(Number(data.summary?.total_debt_yango) || 0).toFixed(2)}</span></div>
+                            <div><span className="text-slate-500">Total Drivers:</span> <span className="font-bold">{data?.meta?.total ?? 0}</span></div>
+                            <div><span className="text-slate-500">Con Deuda:</span> <span className="font-bold text-rose-600">{data?.summary?.drivers_with_debt ?? 0}</span></div>
+                            <div><span className="text-slate-500">M1:</span> <span className="font-bold">{data?.summary?.drivers_m1 ?? 0}</span></div>
+                            <div><span className="text-slate-500">M5:</span> <span className="font-bold">{data?.summary?.drivers_m5 ?? 0}</span></div>
+                            <div><span className="text-slate-500">M25:</span> <span className="font-bold">{data?.summary?.drivers_m25 ?? 0}</span></div>
+                            <div><span className="text-slate-500">Deuda:</span> <span className="font-bold text-rose-600">S/ {(Number(data?.summary?.total_debt_yango) || 0).toFixed(2)}</span></div>
                           </div>
                         </div>
                       </div>
@@ -630,7 +536,7 @@ export default function CobranzaYangoPage() {
                   <div className="p-4">
                     <LoadingSpinner text="Cargando KPIs semanales..." />
                   </div>
-                ) : weeklyKpis && weeklyKpis.weeks.length > 0 ? (
+                ) : weeklyKpis?.weeks && weeklyKpis.weeks.length > 0 ? (
                   <div className="overflow-x-auto">
                     <table className="table-modern">
                       <thead>
@@ -727,9 +633,9 @@ export default function CobranzaYangoPage() {
                   emptyMessage="No hay drivers con deuda pendiente que coincidan con los filtros"
                 />
 
-                {!loading && data && data.data.length > 0 && (
+                {!loading && data?.data && data.data.length > 0 && (
                   <Pagination
-                    total={data.meta.total}
+                    total={data?.meta?.total ?? 0}
                     limit={limit}
                     offset={offset}
                     onPageChange={(newOffset) => setOffset(newOffset)}
@@ -760,26 +666,26 @@ export default function CobranzaYangoPage() {
                   <div className="card-body">
                     {loadingIdentityGaps ? (
                       <div className="text-center py-8 text-slate-500">Cargando métricas de brechas...</div>
-                    ) : identityGaps ? (
+                    ) : identityGaps?.totals ? (
                       <>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                           <div className="bg-slate-50 rounded-xl p-4">
                             <div className="text-sm text-slate-600 mb-1">Total Leads</div>
-                            <div className="text-2xl font-bold text-slate-900">{identityGaps.totals.total_leads.toLocaleString()}</div>
+                            <div className="text-2xl font-bold text-slate-900">{(identityGaps.totals.total_leads ?? 0).toLocaleString()}</div>
                           </div>
                           <div className="bg-rose-50 rounded-xl p-4 border border-rose-200/50">
                             <div className="text-sm text-rose-600 mb-1">Unresolved</div>
-                            <div className="text-2xl font-bold text-rose-700">{identityGaps.totals.unresolved.toLocaleString()}</div>
-                            <div className="text-sm text-rose-600">({identityGaps.totals.pct_unresolved.toFixed(1)}%)</div>
+                            <div className="text-2xl font-bold text-rose-700">{(identityGaps.totals.unresolved ?? 0).toLocaleString()}</div>
+                            <div className="text-sm text-rose-600">({(identityGaps.totals.pct_unresolved ?? 0).toFixed(1)}%)</div>
                           </div>
                           <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200/50">
                             <div className="text-sm text-emerald-600 mb-1">Resolved</div>
-                            <div className="text-2xl font-bold text-emerald-700">{identityGaps.totals.resolved.toLocaleString()}</div>
+                            <div className="text-2xl font-bold text-emerald-700">{(identityGaps.totals.resolved ?? 0).toLocaleString()}</div>
                           </div>
                           <div className="bg-amber-50 rounded-xl p-4 border border-amber-200/50">
                             <div className="text-sm text-amber-600 mb-1">High Risk</div>
                             <div className="text-2xl font-bold text-amber-700">
-                              {identityGaps.breakdown.filter(b => b.risk_level === 'high').reduce((sum, b) => sum + b.count, 0).toLocaleString()}
+                              {(identityGaps.breakdown?.filter(b => b.risk_level === 'high').reduce((sum, b) => sum + b.count, 0) ?? 0).toLocaleString()}
                             </div>
                           </div>
                         </div>
@@ -787,28 +693,28 @@ export default function CobranzaYangoPage() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                           <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-200/50">
                             <div className="text-sm text-cyan-600 mb-1">Matched Last 24h</div>
-                            <div className="text-2xl font-bold text-cyan-700">{identityGaps.totals.matched_last_24h.toLocaleString()}</div>
+                            <div className="text-2xl font-bold text-cyan-700">{(identityGaps.totals.matched_last_24h ?? 0).toLocaleString()}</div>
                           </div>
                           <div className={`rounded-xl p-4 border ${
-                            identityGaps.totals.job_freshness_hours === null ? 'bg-rose-50 border-rose-200' :
+                            identityGaps.totals.job_freshness_hours == null ? 'bg-rose-50 border-rose-200' :
                             identityGaps.totals.job_freshness_hours > 24 ? 'bg-amber-50 border-amber-200' :
                             'bg-emerald-50 border-emerald-200'
                           }`}>
                             <div className="text-sm mb-1">Job Freshness</div>
                             <div className="text-2xl font-bold">
-                              {identityGaps.totals.job_freshness_hours === null ? 'NUNCA' : `${identityGaps.totals.job_freshness_hours.toFixed(1)}h`}
+                              {identityGaps.totals.job_freshness_hours == null ? 'NUNCA' : `${identityGaps.totals.job_freshness_hours.toFixed(1)}h`}
                             </div>
                             <div className="text-xs mt-1">
-                              {identityGaps.totals.job_freshness_hours === null ? 'Job nunca ha corrido' :
+                              {identityGaps.totals.job_freshness_hours == null ? 'Job nunca ha corrido' :
                                identityGaps.totals.job_freshness_hours > 24 ? '⚠️ STALE (>24h)' : '✅ OK (<24h)'}
                             </div>
                           </div>
                           <div className="bg-violet-50 rounded-xl p-4 border border-violet-200/50">
                             <div className="text-sm text-violet-600 mb-1">Estado del Recovery</div>
                             <div className="text-lg font-bold text-violet-700">
-                              {identityGaps.totals.matched_last_24h > 0 ? '✅ ACTIVO' :
-                               identityGaps.totals.job_freshness_hours === null ? '❌ NO CONFIGURADO' :
-                               identityGaps.totals.unresolved > 0 ? '⚠️ SIN SEÑAL' : '✅ COMPLETO'}
+                              {(identityGaps.totals.matched_last_24h ?? 0) > 0 ? '✅ ACTIVO' :
+                               identityGaps.totals.job_freshness_hours == null ? '❌ NO CONFIGURADO' :
+                               (identityGaps.totals.unresolved ?? 0) > 0 ? '⚠️ SIN SEÑAL' : '✅ COMPLETO'}
                             </div>
                           </div>
                         </div>
@@ -827,7 +733,7 @@ export default function CobranzaYangoPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {identityGaps.items.slice(0, 10).map((item) => (
+                              {(identityGaps.items ?? []).slice(0, 10).map((item) => (
                                 <tr key={item.lead_id}>
                                   <td className="font-mono text-xs">{item.lead_id.substring(0, 12)}...</td>
                                   <td>{new Date(item.lead_date).toLocaleDateString('es-ES')}</td>
@@ -849,9 +755,9 @@ export default function CobranzaYangoPage() {
                             </tbody>
                           </table>
                         </div>
-                        {identityGaps.items.length > 10 && (
+                        {(identityGaps.items?.length ?? 0) > 10 && (
                           <p className="text-center text-sm text-slate-500 mt-4">
-                            Mostrando 10 de {identityGaps.items.length} brechas.
+                            Mostrando 10 de {identityGaps.items?.length ?? 0} brechas.
                           </p>
                         )}
                       </>
@@ -864,7 +770,7 @@ export default function CobranzaYangoPage() {
                         <h3 className="text-lg font-semibold text-slate-900 mb-4">Alertas Activas</h3>
                         {loadingIdentityGapAlerts ? (
                           <div className="text-center py-4 text-slate-500">Cargando alertas...</div>
-                        ) : identityGapAlerts && identityGapAlerts.items.length > 0 ? (
+                        ) : identityGapAlerts?.items && identityGapAlerts.items.length > 0 ? (
                           <div className="space-y-2 max-h-64 overflow-y-auto">
                             {identityGapAlerts.items.slice(0, 10).map((alert) => (
                               <div key={alert.lead_id} className={`p-4 rounded-xl border ${

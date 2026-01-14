@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import Sidebar from '@/components/Sidebar'
 import Topbar from '@/components/Topbar'
+import { Providers } from './providers'
 
 export const metadata: Metadata = {
   title: 'CT4 Identity System',
@@ -20,13 +21,15 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="font-sans" suppressHydrationWarning>
-        <Sidebar />
-        <Topbar />
-        <main className="ml-64 mt-16 min-h-[calc(100vh-4rem)]">
-          <div className="p-6 animate-fade-in">
-            {children}
-          </div>
-        </main>
+        <Providers>
+          <Sidebar />
+          <Topbar />
+          <main className="ml-64 mt-16 min-h-[calc(100vh-4rem)]">
+            <div className="p-6 animate-fade-in">
+              {children}
+            </div>
+          </main>
+        </Providers>
       </body>
     </html>
   )
