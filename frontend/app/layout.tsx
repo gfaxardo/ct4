@@ -13,14 +13,19 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  // Note: Suspense boundary needed for useSearchParams in client components
   return (
-    <html lang="es">
-      <body>
+    <html lang="es" className="antialiased">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
+      <body className="font-sans">
         <Sidebar />
         <Topbar />
-        <main className="ml-64 mt-16 p-6">
-          {children}
+        <main className="ml-64 mt-16 min-h-[calc(100vh-4rem)]">
+          <div className="p-6 animate-fade-in">
+            {children}
+          </div>
         </main>
       </body>
     </html>

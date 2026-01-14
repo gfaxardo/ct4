@@ -1,27 +1,68 @@
 /**
- * Badge - Componente para mostrar estados/etiquetas
+ * Badge - Componente para mostrar estados/etiquetas con diseño moderno
  */
 
 interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'error' | 'info';
+  variant?: 'default' | 'success' | 'warning' | 'error' | 'info' | 'purple' | 'brand';
+  size?: 'sm' | 'md' | 'lg';
+  dot?: boolean;
   className?: string;
 }
 
-export default function Badge({ children, variant = 'default', className = '' }: BadgeProps) {
-  const variants = {
-    default: 'bg-gray-100 text-gray-800',
-    success: 'bg-green-100 text-green-800',
-    warning: 'bg-yellow-100 text-yellow-800',
-    error: 'bg-red-100 text-red-800',
-    info: 'bg-blue-100 text-blue-800',
-  };
+const variants = {
+  default: 'bg-slate-100 text-slate-700 ring-slate-200',
+  success: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  warning: 'bg-amber-50 text-amber-700 ring-amber-200',
+  error: 'bg-rose-50 text-rose-700 ring-rose-200',
+  info: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
+  purple: 'bg-violet-50 text-violet-700 ring-violet-200',
+  brand: 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-white ring-cyan-300',
+};
 
-  // Si el variant no existe, usar default
+const sizes = {
+  sm: 'px-2 py-0.5 text-[10px]',
+  md: 'px-2.5 py-1 text-xs',
+  lg: 'px-3 py-1.5 text-sm',
+};
+
+const dotColors = {
+  default: 'bg-slate-400',
+  success: 'bg-emerald-500',
+  warning: 'bg-amber-500',
+  error: 'bg-rose-500',
+  info: 'bg-cyan-500',
+  purple: 'bg-violet-500',
+  brand: 'bg-white',
+};
+
+export default function Badge({ 
+  children, 
+  variant = 'default', 
+  size = 'md',
+  dot = false,
+  className = '' 
+}: BadgeProps) {
   const variantClass = variants[variant] || variants.default;
+  const sizeClass = sizes[size];
+  const dotColor = dotColors[variant] || dotColors.default;
 
   return (
-    <span className={`px-2 py-1 text-xs font-semibold rounded ${variantClass} ${className}`}>
+    <span className={`
+      inline-flex items-center gap-1.5
+      font-semibold rounded-full
+      ring-1 ring-inset
+      transition-colors duration-200
+      ${variantClass} 
+      ${sizeClass}
+      ${className}
+    `}>
+      {dot && (
+        <span className={`
+          w-1.5 h-1.5 rounded-full ${dotColor}
+          ${variant === 'brand' ? '' : 'animate-pulse'}
+        `} />
+      )}
       {children}
     </span>
   );
