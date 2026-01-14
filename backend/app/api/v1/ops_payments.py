@@ -2038,19 +2038,85 @@ def get_cabinet_limbo(
             params["lead_date_to"] = lead_date_to
         
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        params["limit"] = limit
+        params["offset"] = offset
         
-        # Query para total (sin limit/offset)
-        count_query = text(f"""
-            SELECT COUNT(*) 
-            FROM ops.v_cabinet_leads_limbo
-            WHERE {where_clause}
-        """)
-        total_result = db.execute(count_query, params)
-        total = total_result.scalar() or 0
-        
-        # Query para datos (con limit/offset y orden)
-        data_query = text(f"""
+        # OPTIMIZATION: Single query with window function for total count and summary
+        # This avoids 3 separate scans of the view
+        combined_query = text(f"""
+            WITH filtered_data AS (
+                SELECT 
+                    lead_id,
+                    lead_source_pk,
+                    lead_date,
+                    week_start,
+                    park_phone,
+                    asset_plate_number,
+                    lead_name,
+                    person_key::text AS person_key,
+                    driver_id,
+                    trips_14d,
+                    window_end_14d,
+                    reached_m1_14d,
+                    reached_m5_14d,
+                    reached_m25_14d,
+                    expected_amount_14d,
+                    has_claim_m1,
+                    has_claim_m5,
+                    has_claim_m25,
+                    limbo_stage,
+                    limbo_reason_detail
+                FROM ops.v_cabinet_leads_limbo
+                WHERE {where_clause}
+            ),
+            summary_stats AS (
+                SELECT
+                    COUNT(*) AS total_leads,
+                    COUNT(*) FILTER (WHERE limbo_stage = 'NO_IDENTITY') AS limbo_no_identity,
+                    COUNT(*) FILTER (WHERE limbo_stage = 'NO_DRIVER') AS limbo_no_driver,
+                    COUNT(*) FILTER (WHERE limbo_stage = 'NO_TRIPS_14D') AS limbo_no_trips_14d,
+                    COUNT(*) FILTER (WHERE limbo_stage = 'TRIPS_NO_CLAIM') AS limbo_trips_no_claim,
+                    COUNT(*) FILTER (WHERE limbo_stage = 'OK') AS limbo_ok
+                FROM filtered_data
+            ),
+            paginated_data AS (
+                SELECT *
+                FROM filtered_data
+                ORDER BY week_start DESC, lead_date DESC, lead_id
+                LIMIT :limit OFFSET :offset
+            )
             SELECT 
+                'summary' AS row_type,
+                NULL AS lead_id,
+                NULL AS lead_source_pk,
+                NULL::date AS lead_date,
+                NULL::date AS week_start,
+                NULL AS park_phone,
+                NULL AS asset_plate_number,
+                NULL AS lead_name,
+                NULL AS person_key,
+                NULL AS driver_id,
+                NULL::int AS trips_14d,
+                NULL::date AS window_end_14d,
+                NULL::bool AS reached_m1_14d,
+                NULL::bool AS reached_m5_14d,
+                NULL::bool AS reached_m25_14d,
+                NULL::numeric AS expected_amount_14d,
+                NULL::bool AS has_claim_m1,
+                NULL::bool AS has_claim_m5,
+                NULL::bool AS has_claim_m25,
+                NULL AS limbo_stage,
+                NULL AS limbo_reason_detail,
+                total_leads::int,
+                limbo_no_identity::int,
+                limbo_no_driver::int,
+                limbo_no_trips_14d::int,
+                limbo_trips_no_claim::int,
+                limbo_ok::int
+            FROM summary_stats
+            UNION ALL
+            SELECT 
+                'data' AS row_type,
                 lead_id,
                 lead_source_pk,
                 lead_date,
@@ -2058,7 +2124,7 @@ def get_cabinet_limbo(
                 park_phone,
                 asset_plate_number,
                 lead_name,
-                person_key::text AS person_key,
+                person_key,
                 driver_id,
                 trips_14d,
                 window_end_14d,
@@ -2070,58 +2136,51 @@ def get_cabinet_limbo(
                 has_claim_m5,
                 has_claim_m25,
                 limbo_stage,
-                limbo_reason_detail
-            FROM ops.v_cabinet_leads_limbo
-            WHERE {where_clause}
-            ORDER BY week_start DESC, lead_date DESC, lead_id
-            LIMIT :limit OFFSET :offset
+                limbo_reason_detail,
+                NULL::int AS total_leads,
+                NULL::int AS limbo_no_identity,
+                NULL::int AS limbo_no_driver,
+                NULL::int AS limbo_no_trips_14d,
+                NULL::int AS limbo_trips_no_claim,
+                NULL::int AS limbo_ok
+            FROM paginated_data
         """)
-        params["limit"] = limit
-        params["offset"] = offset
         
-        result = db.execute(data_query, params)
+        result = db.execute(combined_query, params)
         rows = result.fetchall()
         
-        # Convertir a dict
+        # Parse results - first row is summary, rest is data
+        summary_row = None
         data = []
         for row in rows:
-            data.append({
-                "lead_id": row.lead_id,
-                "lead_source_pk": row.lead_source_pk,
-                "lead_date": row.lead_date,
-                "week_start": row.week_start,
-                "park_phone": row.park_phone,
-                "asset_plate_number": row.asset_plate_number,
-                "lead_name": row.lead_name,
-                "person_key": row.person_key,
-                "driver_id": row.driver_id,
-                "trips_14d": row.trips_14d or 0,
-                "window_end_14d": row.window_end_14d,
-                "reached_m1_14d": row.reached_m1_14d or False,
-                "reached_m5_14d": row.reached_m5_14d or False,
-                "reached_m25_14d": row.reached_m25_14d or False,
-                "expected_amount_14d": row.expected_amount_14d or 0,
-                "has_claim_m1": row.has_claim_m1 or False,
-                "has_claim_m5": row.has_claim_m5 or False,
-                "has_claim_m25": row.has_claim_m25 or False,
-                "limbo_stage": row.limbo_stage,
-                "limbo_reason_detail": row.limbo_reason_detail
-            })
+            if row.row_type == 'summary':
+                summary_row = row
+            else:
+                data.append({
+                    "lead_id": row.lead_id,
+                    "lead_source_pk": row.lead_source_pk,
+                    "lead_date": row.lead_date,
+                    "week_start": row.week_start,
+                    "park_phone": row.park_phone,
+                    "asset_plate_number": row.asset_plate_number,
+                    "lead_name": row.lead_name,
+                    "person_key": row.person_key,
+                    "driver_id": row.driver_id,
+                    "trips_14d": row.trips_14d or 0,
+                    "window_end_14d": row.window_end_14d,
+                    "reached_m1_14d": row.reached_m1_14d or False,
+                    "reached_m5_14d": row.reached_m5_14d or False,
+                    "reached_m25_14d": row.reached_m25_14d or False,
+                    "expected_amount_14d": row.expected_amount_14d or 0,
+                    "has_claim_m1": row.has_claim_m1 or False,
+                    "has_claim_m5": row.has_claim_m5 or False,
+                    "has_claim_m25": row.has_claim_m25 or False,
+                    "limbo_stage": row.limbo_stage,
+                    "limbo_reason_detail": row.limbo_reason_detail
+                })
         
-        # Query para summary (conteos por limbo_stage)
-        summary_query = text(f"""
-            SELECT 
-                COUNT(*) AS total_leads,
-                COUNT(*) FILTER (WHERE limbo_stage = 'NO_IDENTITY') AS limbo_no_identity,
-                COUNT(*) FILTER (WHERE limbo_stage = 'NO_DRIVER') AS limbo_no_driver,
-                COUNT(*) FILTER (WHERE limbo_stage = 'NO_TRIPS_14D') AS limbo_no_trips_14d,
-                COUNT(*) FILTER (WHERE limbo_stage = 'TRIPS_NO_CLAIM') AS limbo_trips_no_claim,
-                COUNT(*) FILTER (WHERE limbo_stage = 'OK') AS limbo_ok
-            FROM ops.v_cabinet_leads_limbo
-            WHERE {where_clause}
-        """)
-        summary_result = db.execute(summary_query, params)
-        summary_row = summary_result.fetchone()
+        # Extract summary and total
+        total = summary_row.total_leads if summary_row else 0
         
         summary = CabinetLimboSummary(
             total_leads=summary_row.total_leads or 0,
