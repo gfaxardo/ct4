@@ -26,7 +26,7 @@ export function useIdentityStats() {
 /**
  * Hook for global metrics with caching
  */
-export function useGlobalMetrics(mode: 'summary' | 'weekly' | 'breakdowns') {
+export function useGlobalMetrics(mode: 'weekly' | 'breakdowns') {
   return useQuery({
     queryKey: [...queryKeys.dashboardMetrics, mode],
     queryFn: () => getGlobalMetrics({ mode }), // Fix: pass as object

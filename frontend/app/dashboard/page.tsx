@@ -87,7 +87,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 }
 
 export default function DashboardPage() {
-  const [mode, setMode] = useState<'summary' | 'weekly' | 'breakdowns'>('breakdowns');
+  const [mode, setMode] = useState<'weekly' | 'breakdowns'>('breakdowns');
   const [fixRunning, setFixRunning] = useState(false);
   const [fixError, setFixError] = useState<string | null>(null);
 
@@ -185,7 +185,7 @@ export default function DashboardPage() {
 
       {/* Mode Selector */}
       <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg w-fit">
-        {(['summary', 'weekly', 'breakdowns'] as const).map((m) => (
+        {(['breakdowns', 'weekly'] as const).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
@@ -198,7 +198,7 @@ export default function DashboardPage() {
               }
             `}
           >
-            {m === 'summary' ? 'Resumen' : m === 'weekly' ? 'Semanal' : 'Breakdowns'}
+            {m === 'weekly' ? 'Semanal' : 'Resumen'}
           </button>
         ))}
       </div>
@@ -443,7 +443,7 @@ export default function DashboardPage() {
       )}
 
       {/* Breakdowns */}
-      {(mode === 'summary' || mode === 'breakdowns') && metrics?.breakdowns && (
+      {mode === 'breakdowns' && metrics?.breakdowns && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="card">
             <div className="card-header">
