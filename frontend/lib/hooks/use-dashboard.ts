@@ -29,7 +29,7 @@ export function useIdentityStats() {
 export function useGlobalMetrics(mode: 'summary' | 'weekly' | 'breakdowns') {
   return useQuery({
     queryKey: [...queryKeys.dashboardMetrics, mode],
-    queryFn: () => getGlobalMetrics(mode),
+    queryFn: () => getGlobalMetrics({ mode }), // Fix: pass as object
     staleTime: 3 * 60 * 1000, // 3 minutes
   });
 }
