@@ -296,14 +296,14 @@ def get_driver_matrix(
     # Query para contar total
     count_sql = f"""
         SELECT COUNT(*) AS total
-        FROM ops.v_payments_driver_matrix_cabinet
+        FROM ops.mv_payments_driver_matrix_cabinet
         {where_clause}
     """
     
     # Query para obtener datos con ORDER BY
     sql = f"""
         SELECT *
-        FROM ops.v_payments_driver_matrix_cabinet
+        FROM ops.mv_payments_driver_matrix_cabinet
         {where_clause}
         ORDER BY week_start DESC NULLS LAST, driver_name ASC NULLS LAST
         LIMIT :limit OFFSET :offset
@@ -349,7 +349,7 @@ def get_driver_matrix(
             COUNT(DISTINCT CASE WHEN m1_achieved_flag = true AND m1_yango_payment_status IS NULL THEN driver_id END) AS achieved_m1_without_claim_count,
             COUNT(DISTINCT CASE WHEN m5_achieved_flag = true AND m5_yango_payment_status IS NULL THEN driver_id END) AS achieved_m5_without_claim_count,
             COUNT(DISTINCT CASE WHEN m25_achieved_flag = true AND m25_yango_payment_status IS NULL THEN driver_id END) AS achieved_m25_without_claim_count
-        FROM ops.v_payments_driver_matrix_cabinet
+        FROM ops.mv_payments_driver_matrix_cabinet
         {where_clause}
     """
     
@@ -477,7 +477,7 @@ def export_driver_matrix(
     # Query para obtener todos los datos (sin paginación)
     sql = f"""
         SELECT *
-        FROM ops.v_payments_driver_matrix_cabinet
+        FROM ops.mv_payments_driver_matrix_cabinet
         {where_clause}
         ORDER BY week_start DESC NULLS LAST, driver_name ASC NULLS LAST
     """
