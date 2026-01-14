@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 CRITICAL_MVS = [
     {"schema": "ops", "name": "mv_cabinet_financial_14d", "priority": 1},
     {"schema": "ops", "name": "mv_yango_cabinet_claims_for_collection", "priority": 1},
+    {"schema": "ops", "name": "mv_payment_calculation", "priority": 1},  # driver-matrix
     {"schema": "ops", "name": "mv_driver_name_index", "priority": 2},
     {"schema": "ops", "name": "mv_yango_payments_ledger_latest_enriched", "priority": 2},
     {"schema": "ops", "name": "mv_yango_payments_ledger_latest", "priority": 2},

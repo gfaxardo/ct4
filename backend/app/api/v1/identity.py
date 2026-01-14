@@ -185,14 +185,28 @@ def list_persons(
 
 @router.get("/stats", response_model=StatsResponse)
 def get_stats(db: Session = Depends(get_db)):
-    total_persons = db.query(IdentityRegistry).count()
-    total_unmatched = db.query(IdentityUnmatched).filter(IdentityUnmatched.status == UnmatchedStatus.OPEN).count()
-    total_links = db.query(IdentityLink).count()
+    """
+    Obtiene estadísticas del sistema de identidad.
+    Optimizado: una sola query en lugar de 5 queries separadas.
+    """
+    # Query optimizada - combina todos los conteos en una sola consulta
+    stats_query = text("""
+        SELECT
+            (SELECT COUNT(*) FROM canon.identity_registry) AS total_persons,
+            (SELECT COUNT(*) FROM canon.identity_unmatched WHERE status = 'OPEN') AS total_unmatched,
+            (SELECT COUNT(*) FROM canon.identity_links) AS total_links,
+            (SELECT COUNT(*) FROM canon.identity_links WHERE source_table = 'drivers') AS drivers_links,
+            (SELECT COUNT(*) FROM canon.identity_links 
+             WHERE source_table IN ('module_ct_cabinet_leads', 'module_ct_scouting_daily')) AS cabinet_scouting_links
+    """)
     
-    drivers_links = db.query(IdentityLink).filter(IdentityLink.source_table == "drivers").count()
-    cabinet_scouting_links = db.query(IdentityLink).filter(
-        IdentityLink.source_table.in_(["module_ct_cabinet_leads", "module_ct_scouting_daily"])
-    ).count()
+    result = db.execute(stats_query).fetchone()
+    
+    total_persons = result.total_persons or 0
+    total_unmatched = result.total_unmatched or 0
+    total_links = result.total_links or 0
+    drivers_links = result.drivers_links or 0
+    cabinet_scouting_links = result.cabinet_scouting_links or 0
     
     conversion_rate = 0.0
     if cabinet_scouting_links > 0:

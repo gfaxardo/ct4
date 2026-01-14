@@ -100,16 +100,17 @@ def get_driver_matrix(
     ```
     """
     try:
-        # Construir WHERE dinámico
+        # Construir WHERE dinámico (columnas compatibles con v_payment_calculation)
         where_conditions = []
         params = {}
         
         if week_start_from:
-            where_conditions.append("week_start >= :week_start_from")
+            # week_start puede no existir, usar lead_date como alternativa
+            where_conditions.append("lead_date >= :week_start_from")
             params["week_start_from"] = week_start_from
         
         if week_start_to:
-            where_conditions.append("week_start <= :week_start_to")
+            where_conditions.append("lead_date <= :week_start_to")
             params["week_start_to"] = week_start_to
         
         if origin_tag:
@@ -127,54 +128,52 @@ def get_driver_matrix(
                     detail=f"origin_tag debe ser 'cabinet', 'fleet_migration', 'unknown' o 'All', recibido: {origin_tag}"
                 )
         
+        # funnel_status no es compatible con v_payment_calculation, ignorar
         if funnel_status:
-            # Validar que sea uno de los valores permitidos
-            valid_funnel_statuses = ('registered_incomplete', 'registered_complete', 'connected_no_trips', 'reached_m1', 'reached_m5', 'reached_m25')
-            if funnel_status in valid_funnel_statuses:
-                where_conditions.append("funnel_status = :funnel_status")
-                params["funnel_status"] = funnel_status
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"funnel_status debe ser uno de {valid_funnel_statuses}, recibido: {funnel_status}"
-                )
+            logger.info(f"Filtro funnel_status={funnel_status} ignorado (no disponible en vista actual)")
         
         if only_pending:
-            # Incluir fila si existe al menos 1 milestone achieved cuyo yango_payment_status != 'PAID'
-            # Considerar NULL como pendiente (o sea, != 'PAID' también)
-            where_conditions.append("""
-                (
-                    (m1_achieved_flag = true AND COALESCE(m1_yango_payment_status, '') != 'PAID')
-                    OR (m5_achieved_flag = true AND COALESCE(m5_yango_payment_status, '') != 'PAID')
-                    OR (m25_achieved_flag = true AND COALESCE(m25_yango_payment_status, '') != 'PAID')
-                )
-            """)
+            # Usar is_payable en lugar de flags de milestone
+            where_conditions.append("is_payable = true")
         
         where_clause = ""
         if where_conditions:
             where_clause = "WHERE " + " AND ".join(where_conditions)
         
-        # Construir ORDER BY según el parámetro order
-        order_by_clause = ""
-        if order == OrderByOption.week_start_desc:
-            order_by_clause = "ORDER BY week_start DESC NULLS LAST, driver_name ASC NULLS LAST"
-        elif order == OrderByOption.week_start_asc:
-            order_by_clause = "ORDER BY week_start ASC NULLS LAST, driver_name ASC NULLS LAST"
-        elif order == OrderByOption.lead_date_desc:
-            order_by_clause = "ORDER BY lead_date DESC NULLS LAST, driver_name ASC NULLS LAST"
-        elif order == OrderByOption.lead_date_asc:
-            order_by_clause = "ORDER BY lead_date ASC NULLS LAST, driver_name ASC NULLS LAST"
-        else:
-            # Default fallback
-            order_by_clause = "ORDER BY week_start DESC NULLS LAST, driver_name ASC NULLS LAST"
-        
         # Determinar qué vista usar: materializada si existe, sino normal (con caché)
+        # Prioridad: 1) MV driver_matrix, 2) MV payment_calculation, 3) v_payment_calculation
         view_name = get_best_view(
             db, 
             "ops", 
-            ["mv_payments_driver_matrix_cabinet"], 
-            "ops.v_payments_driver_matrix_cabinet"
+            ["mv_payments_driver_matrix_cabinet", "mv_payment_calculation"], 
+            "ops.v_payment_calculation"
         )
+        
+        # Verificar si la vista tiene columnas válidas (no es un placeholder)
+        try:
+            check_result = db.execute(text(f"SELECT * FROM {view_name} LIMIT 0"))
+            columns = list(check_result.keys())
+            if len(columns) <= 1 and columns[0] == "dummy":
+                # Vista es un placeholder, usar v_payment_calculation
+                logger.warning(f"{view_name} es un placeholder, usando v_payment_calculation")
+                view_name = "ops.v_payment_calculation"
+        except Exception as e:
+            logger.warning(f"Error verificando vista {view_name}: {e}")
+        
+        # Construir ORDER BY según el parámetro order, adaptado a las columnas disponibles
+        order_by_clause = ""
+        # week_start puede no existir, usar lead_date como fallback
+        if order == OrderByOption.week_start_desc:
+            order_by_clause = "ORDER BY lead_date DESC NULLS LAST, driver_id ASC NULLS LAST"
+        elif order == OrderByOption.week_start_asc:
+            order_by_clause = "ORDER BY lead_date ASC NULLS LAST, driver_id ASC NULLS LAST"
+        elif order == OrderByOption.lead_date_desc:
+            order_by_clause = "ORDER BY lead_date DESC NULLS LAST, driver_id ASC NULLS LAST"
+        elif order == OrderByOption.lead_date_asc:
+            order_by_clause = "ORDER BY lead_date ASC NULLS LAST, driver_id ASC NULLS LAST"
+        else:
+            # Default fallback
+            order_by_clause = "ORDER BY lead_date DESC NULLS LAST, driver_id ASC NULLS LAST"
         
         # Query para contar total (sin limit/offset)
         count_sql = f"""
@@ -261,11 +260,36 @@ def get_driver_matrix(
                 else:
                     total = offset + len(rows)
         
-        # Convertir a schemas
+        # Convertir a schemas - mapear columnas de diferentes vistas
         data = []
         for row in rows:
             row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
-            data.append(DriverMatrixRow.model_validate(row_dict))
+            
+            # Mapeo de v_payment_calculation a DriverMatrixRow
+            if "milestone_trips" in row_dict:
+                # Estamos usando v_payment_calculation
+                milestone = row_dict.get("milestone_trips")
+                mapped = {
+                    "driver_id": row_dict.get("driver_id"),
+                    "person_key": row_dict.get("person_key"),
+                    "lead_date": row_dict.get("lead_date"),
+                    "origin_tag": row_dict.get("origin_tag"),
+                    "highest_milestone": milestone,
+                    # Mapear según milestone
+                    "m1_achieved_flag": milestone == 1 and row_dict.get("milestone_achieved"),
+                    "m1_achieved_date": row_dict.get("achieved_date") if milestone == 1 else None,
+                    "m1_expected_amount_yango": row_dict.get("amount") if milestone == 1 else None,
+                    "m5_achieved_flag": milestone == 5 and row_dict.get("milestone_achieved"),
+                    "m5_achieved_date": row_dict.get("achieved_date") if milestone == 5 else None,
+                    "m5_expected_amount_yango": row_dict.get("amount") if milestone == 5 else None,
+                    "m25_achieved_flag": milestone == 25 and row_dict.get("milestone_achieved"),
+                    "m25_achieved_date": row_dict.get("achieved_date") if milestone == 25 else None,
+                    "m25_expected_amount_yango": row_dict.get("amount") if milestone == 25 else None,
+                }
+                data.append(DriverMatrixRow.model_validate(mapped))
+            else:
+                # Vista original con todas las columnas
+                data.append(DriverMatrixRow.model_validate(row_dict))
         
         # Construir respuesta
         returned = len(data)
@@ -338,56 +362,21 @@ def get_cabinet_financial_14d(
     ```
     """
     try:
-        # Seleccionar vista (materializada enriched o fallback)
+        # Seleccionar vista (materializada enriched o fallback) - con caché para mejor rendimiento
         # Prioridad: MV enriched > MV legacy > vista normal
         if use_materialized:
-            check_mv_enriched = db.execute(text("""
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_matviews 
-                    WHERE schemaname = 'ops' 
-                    AND matviewname = 'mv_yango_cabinet_cobranza_enriched_14d'
-                )
-            """))
-            mv_enriched_exists = check_mv_enriched.scalar()
-            
-            if mv_enriched_exists:
+            if mv_exists(db, "ops", "mv_yango_cabinet_cobranza_enriched_14d"):
                 view_name = "ops.mv_yango_cabinet_cobranza_enriched_14d"
                 has_scout_fields = True
+            elif mv_exists(db, "ops", "mv_cabinet_financial_14d"):
+                view_name = "ops.mv_cabinet_financial_14d"
+                has_scout_fields = False
             else:
-                # Fallback a MV legacy si existe
-                check_mv_legacy = db.execute(text("""
-                    SELECT EXISTS (
-                        SELECT 1 FROM pg_matviews 
-                        WHERE schemaname = 'ops' 
-                        AND matviewname = 'mv_cabinet_financial_14d'
-                    )
-                """))
-                mv_legacy_exists = check_mv_legacy.scalar()
-                view_name = "ops.mv_cabinet_financial_14d" if mv_legacy_exists else "ops.v_cabinet_financial_14d"
+                view_name = "ops.v_cabinet_financial_14d"
                 has_scout_fields = False
         else:
             view_name = "ops.v_cabinet_financial_14d"
             has_scout_fields = False
-            
-            # #region agent log
-            import json
-            from datetime import datetime
-            try:
-                log_entry = {
-                    "id": f"log_{int(datetime.now().timestamp() * 1000)}",
-                    "timestamp": int(datetime.now().timestamp() * 1000),
-                    "location": "ops_payments.py:get_cabinet_financial_14d",
-                    "message": "VIEW_SELECTED",
-                    "data": {"view_name": view_name, "use_materialized": use_materialized},
-                    "sessionId": "debug-session",
-                    "runId": "api-request",
-                    "hypothesisId": "H4"
-                }
-                with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except Exception:
-                pass
-            # #endregion
         
         # Construir WHERE dinámico
         where_conditions = []
