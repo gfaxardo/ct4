@@ -1667,6 +1667,8 @@ def get_funnel_gap_metrics(
     """
     try:
         # Query para calcular métricas del gap
+        # Note: This query uses CTEs with JOINs to v_claims_payment_status_cabinet
+        # Performance depends on MV availability for that view
         sql = text("""
             WITH leads_with_identity AS (
                 SELECT DISTINCT
