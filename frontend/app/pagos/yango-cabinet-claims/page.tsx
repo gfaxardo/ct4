@@ -18,6 +18,7 @@ import type {
   YangoCabinetClaimDrilldownResponse,
 } from '@/lib/types';
 import Badge from '@/components/Badge';
+import Modal from '@/components/Modal';
 import { PageLoadingOverlay, StandardPageSkeleton } from '@/components/Skeleton';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -420,38 +421,18 @@ export default function YangoCabinetClaimsPage() {
         )}
       </div>
 
-      {/* Drilldown Modal */}
-      {showDrilldownModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl font-bold text-slate-800">Detalle del Claim</h2>
-                  {selectedClaim && (
-                    <p className="text-sm text-slate-500 mt-0.5">
-                      {selectedClaim.driver_name} • Milestone {selectedClaim.milestone_value}
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={() => {
-                    setShowDrilldownModal(false);
-                    setSelectedClaim(null);
-                  }}
-                  className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
-                >
-                  <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(85vh-80px)]">
-              {drilldownLoading ? (
+      {/* Drilldown Modal - Usando Portal para overlay correcto */}
+      <Modal
+        isOpen={showDrilldownModal}
+        onClose={() => {
+          setShowDrilldownModal(false);
+          setSelectedClaim(null);
+        }}
+        title={selectedClaim ? `Detalle: ${selectedClaim.driver_name} • M${selectedClaim.milestone_value}` : 'Detalle del Claim'}
+        size="full"
+      >
+        <div className="p-6">
+          {drilldownLoading ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <div className="relative w-12 h-12 mb-4">
                     <div className="absolute inset-0 border-4 border-slate-200 rounded-full" />
@@ -563,11 +544,9 @@ export default function YangoCabinetClaimsPage() {
                     </div>
                   )}
                 </div>
-              ) : null}
-            </div>
-          </div>
+          ) : null}
         </div>
-      )}
+      </Modal>
     </div>
   );
 }
