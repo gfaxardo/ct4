@@ -193,7 +193,6 @@ export default function Sidebar() {
           </div>
           <div>
             <h1 className="text-base font-bold text-white tracking-tight">CT4 Identity</h1>
-            <p className="text-[11px] text-slate-500 font-medium tracking-wide uppercase">Sistema Canónico</p>
           </div>
         </div>
       </div>
