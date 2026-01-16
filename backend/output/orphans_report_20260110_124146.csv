@@ -1,6 +1,0 @@
-driver_id,person_key,creation_rule,lead_events_count,action,status,error
-96613a3d4bba4abe8e6dba6efb6d57b2,c2a949bf-6f47-4c4a-9863-4c3de44fb8c2,R1_PHONE_EXACT,0,quarantined,quarantined,
-ad68e5257b2445d5a029271bc12396d1,808220d0-6023-48a0-8514-36d6e5c6ca4e,R1_PHONE_EXACT,0,quarantined,quarantined,
-3e55141de12046b4bf0cf22370dfd71f,9e8ecc31-827e-4668-b4da-e201a9ce95fe,R1_PHONE_EXACT,0,quarantined,quarantined,
-a03d0dde93024c7eb54ab4e883cb46a5,ef3e92d0-66f6-4eec-a5d3-f5bc658749f7,R1_PHONE_EXACT,0,quarantined,quarantined,
-aa9abdb5d84c45f7b3ef491f76b32623,a9564318-1cbf-4d0a-bb97-8e858f8521ca,R1_PHONE_EXACT,0,quarantined,quarantined,
