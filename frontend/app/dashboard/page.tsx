@@ -8,7 +8,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { runOrphansFix, ApiError } from '@/lib/api';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import Link from 'next/link';
@@ -17,7 +16,6 @@ import {
   useGlobalMetrics,
   usePersonsBySource,
   useDriversWithoutLeads,
-  useOrphansMetrics,
 } from '@/lib/hooks/use-dashboard';
 import { PageLoadingOverlay } from '@/components/Skeleton';
 
@@ -77,8 +75,6 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 
 export default function DashboardPage() {
   const [mode, setMode] = useState<'weekly' | 'breakdowns'>('breakdowns');
-  const [fixRunning, setFixRunning] = useState(false);
-  const [fixError, setFixError] = useState<string | null>(null);
   
   // Minimum loading time to ensure skeleton is visible
   const [minLoadingComplete, setMinLoadingComplete] = useState(false);
@@ -113,12 +109,6 @@ export default function DashboardPage() {
     data: driversWithoutLeads, 
     isFetching: fetchingDrivers 
   } = useDriversWithoutLeads();
-  
-  const { 
-    data: orphansMetrics, 
-    isFetching: fetchingOrphans, 
-    refetch: refetchOrphans 
-  } = useOrphansMetrics();
 
   // Show skeleton when:
   // 1. We haven't passed minimum loading time yet, OR
@@ -126,33 +116,9 @@ export default function DashboardPage() {
   const showSkeleton = !minLoadingComplete || (!stats && fetchingStats);
   
   // Show spinner when we have data but are refetching in background
-  const isRefetching = fetchingStats || fetchingMetrics || fetchingPersons || fetchingDrivers || fetchingOrphans;
+  const isRefetching = fetchingStats || fetchingMetrics || fetchingPersons || fetchingDrivers;
   
   const error = statsError ? (statsError as Error).message : null;
-
-  const handleRunFix = async (execute: boolean = false) => {
-    try {
-      setFixRunning(true);
-      setFixError(null);
-      const result = await runOrphansFix({ execute, limit: 100 });
-      if (result && !result.dry_run) {
-        // Refetch orphans data after fix
-        setTimeout(() => {
-          refetchOrphans();
-          refetchStats();
-        }, 2000);
-      }
-      alert(`Fix ${execute ? 'ejecutado' : 'dry-run'} completado. Ver consola para detalles.`);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setFixError(`Error al ejecutar fix: ${err.detail || err.message}`);
-      } else {
-        setFixError('Error desconocido al ejecutar fix');
-      }
-    } finally {
-      setFixRunning(false);
-    }
-  };
 
   // Show loading overlay on initial page load
   if (showSkeleton) {
@@ -244,106 +210,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Métricas de Drivers Huérfanos (Orphans) */}
-      {mode === 'breakdowns' && orphansMetrics && orphansMetrics.total_orphans > 0 && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-6">
-          <div className="flex justify-between items-start mb-6">
-            <div className="flex items-start gap-4">
-              <div className="p-3 rounded-xl bg-amber-100">
-                <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-amber-900">Drivers Huérfanos</h2>
-                <p className="text-sm text-amber-700 mt-1">
-                  Drivers detectados sin leads asociados. Los en cuarentena están excluidos del funnel.
-                </p>
-              </div>
-            </div>
-            <Link 
-              href="/orphans" 
-              className="flex items-center gap-1 text-sm font-medium text-amber-700 hover:text-amber-900 transition-colors"
-            >
-              Ver todos {Icons.arrow}
-            </Link>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white/80 rounded-xl p-4 border border-amber-200/50">
-              <div className="text-sm text-amber-600 mb-1">Total</div>
-              <div className="text-2xl font-bold text-amber-900">{orphansMetrics.total_orphans.toLocaleString()}</div>
-            </div>
-            <div className="bg-white/80 rounded-xl p-4 border border-rose-200/50">
-              <div className="text-sm text-rose-600 mb-1">En Cuarentena</div>
-              <div className="text-2xl font-bold text-rose-800">{orphansMetrics.quarantined.toLocaleString()}</div>
-            </div>
-            <div className="bg-white/80 rounded-xl p-4 border border-emerald-200/50">
-              <div className="text-sm text-emerald-600 mb-1">Resueltos</div>
-              <div className="text-2xl font-bold text-emerald-800">
-                {(orphansMetrics.resolved_relinked + orphansMetrics.resolved_created_lead).toLocaleString()}
-              </div>
-            </div>
-            <div className="bg-white/80 rounded-xl p-4 border border-cyan-200/50">
-              <div className="text-sm text-cyan-600 mb-1">Con Lead Events</div>
-              <div className="text-2xl font-bold text-cyan-800">{orphansMetrics.with_lead_events.toLocaleString()}</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div className="bg-white/60 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-amber-800 mb-3">Por Estado</h3>
-              <div className="space-y-2">
-                {Object.entries(orphansMetrics.by_status).filter(([, count]) => count > 0).map(([status, count]) => (
-                  <div key={status} className="flex justify-between items-center">
-                    <span className="text-sm text-amber-700 capitalize">{status.replace('_', ' ')}</span>
-                    <Badge variant="warning">{count}</Badge>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-white/60 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-amber-800 mb-3">Por Razón</h3>
-              <div className="space-y-2">
-                {Object.entries(orphansMetrics.by_reason).filter(([, count]) => count > 0).map(([reason, count]) => (
-                  <div key={reason} className="flex justify-between items-center">
-                    <span className="text-sm text-amber-700 capitalize">{reason.replace(/_/g, ' ')}</span>
-                    <Badge variant="warning">{count}</Badge>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between pt-4 border-t border-amber-200/50">
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleRunFix(false)}
-                disabled={fixRunning}
-                className="btn btn-secondary text-sm"
-              >
-                {fixRunning ? 'Ejecutando...' : 'Dry Run'}
-              </button>
-              <button
-                onClick={() => {
-                  if (confirm('¿Ejecutar el fix? Esto aplicará cambios en la base de datos.')) {
-                    handleRunFix(true);
-                  }
-                }}
-                disabled={fixRunning}
-                className="btn btn-warning text-sm"
-              >
-                {fixRunning ? 'Ejecutando...' : 'Ejecutar Fix'}
-              </button>
-            </div>
-            {orphansMetrics.last_updated_at && (
-              <span className="text-xs text-amber-600">
-                Última actualización: {new Date(orphansMetrics.last_updated_at).toLocaleString()}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Desglose por Fuente */}
       {personsBySource?.links_by_source && (
