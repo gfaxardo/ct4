@@ -16,13 +16,25 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Configuración
-BACKEND_PORT=8001
-FRONTEND_PORT=3001
-PUBLIC_IP="5.161.229.77"
-
 # Directorio base
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Cargar configuración desde config.sh si existe
+if [ -f "$BASE_DIR/config.sh" ]; then
+    echo -e "${CYAN}Cargando configuración desde config.sh...${NC}"
+    source "$BASE_DIR/config.sh"
+else
+    echo -e "${YELLOW}ADVERTENCIA: No se encontró config.sh${NC}"
+    echo -e "${YELLOW}Copia config.sh.example a config.sh y configura tus credenciales:${NC}"
+    echo -e "  cp config.sh.example config.sh"
+    echo ""
+fi
+
+# Valores por defecto si no están en config.sh
+BACKEND_PORT="${BACKEND_PORT:-8001}"
+FRONTEND_PORT="${FRONTEND_PORT:-3001}"
+PUBLIC_IP="${PUBLIC_IP:-localhost}"
+DATABASE_URL="${DATABASE_URL:-postgresql://ct4_user:ct4_pass@localhost:5432/ct4_db}"
 
 echo -e "${CYAN}"
 echo "=============================================="
@@ -76,10 +88,12 @@ if [ requirements.txt -nt venv/.installed ] 2>/dev/null || [ ! -f venv/.installe
     touch venv/.installed
 fi
 
-# Variables de entorno
-export DATABASE_URL="${DATABASE_URL:-postgresql://ct4_user:ct4_pass@localhost:5432/ct4_db}"
-export AUTO_PROCESS_LEADS="true"
-export AUTO_PROCESS_INTERVAL_MINUTES="5"
+# Exportar variables de entorno
+export DATABASE_URL="$DATABASE_URL"
+export AUTO_PROCESS_LEADS="${AUTO_PROCESS_LEADS:-true}"
+export AUTO_PROCESS_INTERVAL_MINUTES="${AUTO_PROCESS_INTERVAL_MINUTES:-5}"
+
+echo -e "  DATABASE_URL: ${DATABASE_URL:0:50}..."
 
 # Crear directorio de logs
 mkdir -p "$BASE_DIR/backend/logs"

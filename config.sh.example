@@ -1,0 +1,22 @@
+#!/bin/bash
+# ============================================================================
+# CT4 - Configuración de Variables de Entorno
+# ============================================================================
+# Copia este archivo a config.sh y configura tus valores:
+#   cp config.sh.example config.sh
+#   chmod +x config.sh
+# ============================================================================
+
+# Base de datos PostgreSQL
+export DATABASE_URL="postgresql://usuario:password@localhost:5432/nombre_db"
+
+# IP pública del servidor (cambiar según tu VPS)
+export PUBLIC_IP="5.161.229.77"
+
+# Puertos
+export BACKEND_PORT=8001
+export FRONTEND_PORT=3001
+
+# Auto-procesamiento de leads
+export AUTO_PROCESS_LEADS=true
+export AUTO_PROCESS_INTERVAL_MINUTES=5
