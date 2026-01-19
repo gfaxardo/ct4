@@ -47,8 +47,8 @@ export default function LoginPage() {
       {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden">
         {/* Gradient orbs */}
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-500/20 rounded-full blur-[100px]" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-cyan-500/15 rounded-full blur-[100px]" />
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-[#ef0000]/20 rounded-full blur-[100px]" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-[#ef0000]/15 rounded-full blur-[100px]" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-slate-800/30 rounded-full blur-[120px]" />
         
         {/* Grid pattern */}
@@ -64,19 +64,19 @@ export default function LoginPage() {
       {/* Login Card */}
       <div className="relative w-full max-w-[420px]">
         {/* Glow effect behind card */}
-        <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 via-cyan-500/20 to-emerald-500/20 rounded-3xl blur-xl opacity-50" />
+        <div className="absolute -inset-1 bg-[#ef0000]/15 rounded-3xl blur-xl opacity-60" />
         
         <div className="relative bg-[#111111] border border-white/10 rounded-2xl p-8 shadow-2xl">
           {/* Logo */}
           <div className="flex justify-center mb-8">
             <div className="relative">
-              <div className="w-14 h-14 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/25">
-                <svg className="w-8 h-8 text-black" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <div className="w-14 h-14 bg-[#ef0000] rounded-xl flex items-center justify-center shadow-lg shadow-[#ef0000]/30">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
                 </svg>
               </div>
               {/* Pulse ring */}
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-400 to-cyan-400 rounded-xl animate-ping opacity-20" />
+              <div className="absolute inset-0 bg-[#ef0000] rounded-xl animate-ping opacity-20" />
             </div>
           </div>
 
@@ -117,7 +117,7 @@ export default function LoginPage() {
                   required
                   autoComplete="username"
                   placeholder="Ingresa tu usuario"
-                  className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/25 text-sm transition-all duration-200 focus:outline-none focus:border-emerald-500/50 focus:bg-white/[0.07] focus:ring-2 focus:ring-emerald-500/20 group-hover:border-white/20"
+                  className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/25 text-sm transition-all duration-200 focus:outline-none focus:border-[#ef0000]/50 focus:bg-white/[0.07] focus:ring-2 focus:ring-[#ef0000]/20 group-hover:border-white/20"
                 />
                 <div className="absolute inset-y-0 right-3 flex items-center">
                   <svg className="w-5 h-5 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -140,7 +140,7 @@ export default function LoginPage() {
                   required
                   autoComplete="current-password"
                   placeholder="••••••••••"
-                  className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/25 text-sm transition-all duration-200 focus:outline-none focus:border-emerald-500/50 focus:bg-white/[0.07] focus:ring-2 focus:ring-emerald-500/20 group-hover:border-white/20"
+                  className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/25 text-sm transition-all duration-200 focus:outline-none focus:border-[#ef0000]/50 focus:bg-white/[0.07] focus:ring-2 focus:ring-[#ef0000]/20 group-hover:border-white/20"
                 />
                 <button
                   type="button"
@@ -165,11 +165,11 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading || !username || !password}
-              className="w-full py-3.5 mt-2 bg-gradient-to-r from-emerald-500 to-cyan-500 text-black font-semibold rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/25 hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none flex items-center justify-center gap-2"
+              className="w-full py-3.5 mt-2 bg-[#ef0000] text-white font-semibold rounded-xl transition-all duration-300 hover:bg-[#d50000] hover:shadow-lg hover:shadow-[#ef0000]/30 hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>Verificando...</span>
                 </>
               ) : (
@@ -194,7 +194,7 @@ export default function LoginPage() {
 
       {/* Version badge */}
       <div className="absolute bottom-6 left-6 flex items-center gap-2">
-        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+        <div className="w-2 h-2 bg-[#ef0000] rounded-full animate-pulse" />
         <span className="text-xs text-white/30 font-mono">v1.0.0</span>
       </div>
     </div>
