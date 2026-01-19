@@ -81,14 +81,14 @@ export DATABASE_URL="${DATABASE_URL:-postgresql://ct4_user:ct4_pass@localhost:54
 export AUTO_PROCESS_LEADS="true"
 export AUTO_PROCESS_INTERVAL_MINUTES="5"
 
+# Crear directorio de logs
+mkdir -p "$BASE_DIR/backend/logs"
+
 # Iniciar backend con nohup
 echo -e "${GREEN}Iniciando Backend en puerto $BACKEND_PORT...${NC}"
 nohup "$BASE_DIR/backend/venv/bin/uvicorn" app.main:app --host 0.0.0.0 --port $BACKEND_PORT > "$BASE_DIR/backend/logs/uvicorn.log" 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > "$BASE_DIR/backend/backend.pid"
-
-# Crear directorio de logs si no existe
-mkdir -p "$BASE_DIR/backend/logs"
 
 # Esperar a que inicie
 echo -n "Esperando backend"
