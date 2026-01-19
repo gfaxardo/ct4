@@ -432,7 +432,7 @@ export default function ProcessLeadsPage() {
           </div>
           <div className="flex items-start gap-2">
             <span className="flex-shrink-0 w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-xs font-medium">4</span>
-            <p>El progreso se puede monitorear en la sección de <strong>Corridas</strong></p>
+            <p>El progreso se puede monitorear en <button onClick={() => router.push('/runs')} className="text-cyan-600 hover:text-cyan-700 font-medium underline">Identidad → Auditoría / Runs</button></p>
           </div>
         </div>
       </div>
