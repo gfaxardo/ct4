@@ -81,8 +81,8 @@ def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
         last_processed_query = db.execute(text("""
             SELECT MAX(completed_at)::date 
             FROM ops.ingestion_runs 
-            WHERE status = 'completed' 
-            AND job_type = 'identity_run'
+            WHERE status = 'COMPLETED' 
+            AND job_type = 'IDENTITY_RUN'
         """))
         last_processed_date = last_processed_query.scalar()
         
