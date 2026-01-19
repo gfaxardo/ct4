@@ -77,11 +77,12 @@ def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
         """))
         max_lead_date = max_date_query.scalar()
         
-        # Fecha del último procesado
+        # Fecha del último procesamiento real (última corrida completada)
         last_processed_query = db.execute(text("""
-            SELECT MAX(snapshot_date)::date 
-            FROM canon.identity_links 
-            WHERE source_table = 'module_ct_cabinet_leads'
+            SELECT MAX(completed_at)::date 
+            FROM ops.ingestion_runs 
+            WHERE status = 'completed' 
+            AND job_type = 'identity_run'
         """))
         last_processed_date = last_processed_query.scalar()
         
