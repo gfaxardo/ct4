@@ -100,7 +100,7 @@ export default function ScoutLiquidationPage() {
               a.download = `liquidacion-scouts-${new Date().toISOString().split('T')[0]}.csv`;
               a.click();
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium"
           >
             {Icons.download} Exportar CSV
           </button>
@@ -132,7 +132,7 @@ export default function ScoutLiquidationPage() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {loading && (
           <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
-            <div className="w-8 h-8 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-3 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
           </div>
         )}
         
@@ -201,7 +201,7 @@ export default function ScoutLiquidationPage() {
                       </td>
                       <td className="py-3 px-4 text-center">
                         {item.person_key ? (
-                          <Link href={`/persons/${item.person_key}`} className="text-cyan-600 hover:underline text-sm font-medium">
+                          <Link href={`/persons/${item.person_key}`} className="text-[#ef0000] hover:underline text-sm font-medium">
                             Ver →
                           </Link>
                         ) : (

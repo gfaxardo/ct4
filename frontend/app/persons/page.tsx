@@ -111,7 +111,7 @@ export default function PersonsPage() {
         <button
           onClick={loadPersons}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium disabled:opacity-50"
         >
           {loading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -176,7 +176,7 @@ export default function PersonsPage() {
                 value={filters.phone}
                 onChange={(e) => handleFilterChange('phone', e.target.value)}
                 placeholder="+51..."
-                className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               />
               <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">{Icons.search}</div>
             </div>
@@ -188,7 +188,7 @@ export default function PersonsPage() {
               value={filters.document}
               onChange={(e) => handleFilterChange('document', e.target.value)}
               placeholder="DNI..."
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             />
           </div>
           <div>
@@ -198,7 +198,7 @@ export default function PersonsPage() {
               value={filters.license}
               onChange={(e) => handleFilterChange('license', e.target.value)}
               placeholder="Licencia..."
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             />
           </div>
           <div>
@@ -208,7 +208,7 @@ export default function PersonsPage() {
               value={filters.name}
               onChange={(e) => handleFilterChange('name', e.target.value)}
               placeholder="Buscar..."
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             />
           </div>
           <div>
@@ -216,7 +216,7 @@ export default function PersonsPage() {
             <select
               value={filters.confidence_level}
               onChange={(e) => handleFilterChange('confidence_level', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             >
               <option value="">Todos</option>
               <option value="HIGH">HIGH</option>
@@ -239,7 +239,7 @@ export default function PersonsPage() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {loading && (
           <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
-            <div className="w-8 h-8 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-3 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
@@ -272,7 +272,7 @@ export default function PersonsPage() {
                     className="hover:bg-slate-50/50 transition-colors cursor-pointer"
                     onClick={() => router.push(`/persons/${person.person_key}`)}
                   >
-                    <td className="py-3 px-4 text-sm font-mono text-cyan-600 hover:underline">
+                    <td className="py-3 px-4 text-sm font-mono text-[#ef0000] hover:underline">
                       {person.person_key.substring(0, 8)}...
                     </td>
                     <td className="py-3 px-4 text-sm font-medium text-slate-900">

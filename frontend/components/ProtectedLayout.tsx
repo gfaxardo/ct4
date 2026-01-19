@@ -24,7 +24,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="animate-spin w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <div className="animate-spin w-10 h-10 border-4 border-[#ef0000] border-t-transparent rounded-full mx-auto mb-4"></div>
           <p className="text-slate-600">Cargando...</p>
         </div>
       </div>
@@ -36,7 +36,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="animate-spin w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <div className="animate-spin w-10 h-10 border-4 border-[#ef0000] border-t-transparent rounded-full mx-auto mb-4"></div>
           <p className="text-slate-600">Redirigiendo al login...</p>
         </div>
       </div>

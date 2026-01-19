@@ -222,7 +222,7 @@ function Tab({ label, active, onClick, badge }: TabProps) {
       className={`
         relative px-4 py-3 text-sm font-medium transition-all duration-200
         ${active 
-          ? 'text-cyan-600 border-b-2 border-cyan-500 bg-cyan-50/50' 
+          ? 'text-[#ef0000] border-b-2 border-[#ef0000] bg-red-50/50' 
           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
         }
       `}
@@ -232,7 +232,7 @@ function Tab({ label, active, onClick, badge }: TabProps) {
         {badge !== undefined && badge > 0 && (
           <span className={`
             px-2 py-0.5 text-xs rounded-full
-            ${active ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-100 text-slate-600'}
+            ${active ? 'bg-red-100 text-[#cc0000]' : 'bg-slate-100 text-slate-600'}
           `}>
             {badge}
           </span>
@@ -422,7 +422,7 @@ export default function YangoCabinetPage() {
                       type="date"
                       value={filters.week_start}
                       onChange={(e) => setFilters(prev => ({ ...prev, week_start: e.target.value }))}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#ef0000]/20 focus:border-[#ef0000]"
                     />
                   </div>
                   <div>
@@ -430,7 +430,7 @@ export default function YangoCabinetPage() {
                     <select
                       value={filters.milestone_value}
                       onChange={(e) => setFilters(prev => ({ ...prev, milestone_value: e.target.value }))}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#ef0000]/20 focus:border-[#ef0000]"
                     >
                       <option value="">Todos</option>
                       <option value="1">M1</option>
@@ -443,7 +443,7 @@ export default function YangoCabinetPage() {
                     <select
                       value={filters.mode}
                       onChange={(e) => setFilters(prev => ({ ...prev, mode: e.target.value }))}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-[#ef0000]/20 focus:border-[#ef0000]"
                     >
                       <option value="real">Real</option>
                       <option value="assumed">Assumed</option>
@@ -535,7 +535,7 @@ export default function YangoCabinetPage() {
                             <td className="py-3 px-4">
                               <button
                                 onClick={() => router.push(`/pagos/yango-cabinet/driver/${row.driver_id}`)}
-                                className="text-sm font-medium text-cyan-600 hover:text-cyan-700 hover:underline"
+                                className="text-sm font-medium text-[#ef0000] hover:text-[#cc0000] hover:underline"
                               >
                                 {row.driver_id || '—'}
                               </button>
@@ -610,7 +610,7 @@ export default function YangoCabinetPage() {
                 <div className="flex flex-col items-center justify-center py-12">
                   <div className="relative w-12 h-12 mb-4">
                     <div className="absolute inset-0 border-4 border-slate-200 rounded-full" />
-                    <div className="absolute inset-0 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                    <div className="absolute inset-0 border-4 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
                   </div>
                   <p className="text-slate-600">Cargando reconciliación...</p>
                 </div>
@@ -656,9 +656,9 @@ export default function YangoCabinetPage() {
                   </div>
 
                   {/* Info Panel */}
-                  <div className="bg-gradient-to-r from-slate-50 to-cyan-50/30 rounded-xl border border-slate-200/60 p-4">
+                  <div className="bg-gradient-to-r from-slate-50 to-red-50/30 rounded-xl border border-slate-200/60 p-4">
                     <h3 className="text-sm font-semibold text-slate-900 mb-2 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 text-[#ef0000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       Sobre la Reconciliación
@@ -689,7 +689,7 @@ export default function YangoCabinetPage() {
                               <td className="py-3 px-4">
                                 <button
                                   onClick={() => router.push(`/pagos/yango-cabinet/driver/${row.driver_id}`)}
-                                  className="text-sm font-medium text-cyan-600 hover:text-cyan-700 hover:underline"
+                                  className="text-sm font-medium text-[#ef0000] hover:text-[#cc0000] hover:underline"
                                 >
                                   {row.driver_id || '—'}
                                 </button>

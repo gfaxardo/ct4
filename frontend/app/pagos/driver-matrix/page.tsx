@@ -211,7 +211,7 @@ function DriverMatrixPageContent() {
           <button onClick={handleCopyAPIURL} className="flex items-center gap-2 px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-medium">
             {Icons.copy} API URL
           </button>
-          <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium">
+          <button onClick={handleExportCSV} className="flex items-center gap-2 px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium">
             {Icons.download} CSV
           </button>
         </div>
@@ -244,7 +244,7 @@ function DriverMatrixPageContent() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Origin Tag</label>
-            <select value={filters.origin_tag} onChange={(e) => handleFilterChange('origin_tag', e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500">
+            <select value={filters.origin_tag} onChange={(e) => handleFilterChange('origin_tag', e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000]">
               <option value="">Todos</option>
               <option value="cabinet">cabinet</option>
               <option value="fleet_migration">fleet_migration</option>
@@ -255,14 +255,14 @@ function DriverMatrixPageContent() {
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Solo Pendientes</label>
             <div className="flex items-center h-[38px]">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={filters.only_pending} onChange={(e) => handleFilterChange('only_pending', e.target.checked)} className="h-4 w-4 text-cyan-600 rounded" />
+                <input type="checkbox" checked={filters.only_pending} onChange={(e) => handleFilterChange('only_pending', e.target.checked)} className="h-4 w-4 text-[#ef0000] rounded" />
                 <span className="text-sm text-slate-600">UNPAID only</span>
               </label>
             </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Orden</label>
-            <select value={filters.order} onChange={(e) => handleFilterChange('order', e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500">
+            <select value={filters.order} onChange={(e) => handleFilterChange('order', e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000]">
               <option value="week_start_desc">Week Start (DESC)</option>
               <option value="week_start_asc">Week Start (ASC)</option>
               <option value="lead_date_desc">Lead Date (DESC)</option>
@@ -271,7 +271,7 @@ function DriverMatrixPageContent() {
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Buscar</label>
-            <input type="text" value={filters.search} onChange={(e) => handleFilterChange('search', e.target.value)} placeholder="Nombre o ID" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+            <input type="text" value={filters.search} onChange={(e) => handleFilterChange('search', e.target.value)} placeholder="Nombre o ID" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000]" />
           </div>
           <div className="flex items-end">
             <button onClick={handleResetFilters} className="w-full px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">Limpiar</button>
@@ -283,10 +283,10 @@ function DriverMatrixPageContent() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="border-b border-slate-200 px-4">
           <nav className="flex gap-4">
-            <button onClick={() => handleTabChange('tabla')} className={`py-3 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'tabla' ? 'border-cyan-500 text-cyan-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            <button onClick={() => handleTabChange('tabla')} className={`py-3 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'tabla' ? 'border-[#ef0000] text-[#ef0000]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               Tabla
             </button>
-            <button onClick={() => handleTabChange('kpis')} className={`py-3 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'kpis' ? 'border-cyan-500 text-cyan-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            <button onClick={() => handleTabChange('kpis')} className={`py-3 px-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'kpis' ? 'border-[#ef0000] text-[#ef0000]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               KPIs Detallados
             </button>
           </nav>
@@ -296,7 +296,7 @@ function DriverMatrixPageContent() {
           <div className="relative">
             {loading && (
               <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
-                <div className="w-8 h-8 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-8 h-8 border-3 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
               </div>
             )}
             

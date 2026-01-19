@@ -16,19 +16,25 @@ const config: Config = {
       },
       // Paleta de colores personalizada
       colors: {
-        // Colores primarios - Tema oscuro profesional
+        // Color primario - Rojo Yego
         brand: {
-          50: '#ecfeff',
-          100: '#cffafe',
-          200: '#a5f3fc',
-          300: '#67e8f9',
-          400: '#22d3ee',
-          500: '#06b6d4',
-          600: '#0891b2',
-          700: '#0e7490',
-          800: '#155e75',
-          900: '#164e63',
-          950: '#083344',
+          50: '#fef2f2',
+          100: '#fee2e2',
+          200: '#fecaca',
+          300: '#fca5a5',
+          400: '#f87171',
+          500: '#ef0000',
+          600: '#dc2626',
+          700: '#b91c1c',
+          800: '#991b1b',
+          900: '#7f1d1d',
+          950: '#450a0a',
+        },
+        // Color primario directo
+        primary: {
+          DEFAULT: '#ef0000',
+          light: '#ff3333',
+          dark: '#cc0000',
         },
         // Fondo sidebar oscuro
         sidebar: {
@@ -58,7 +64,7 @@ const config: Config = {
         'soft': '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',
         'card': '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
         'card-hover': '0 10px 40px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
-        'glow-brand': '0 0 20px rgba(6, 182, 212, 0.3)',
+        'glow-brand': '0 0 20px rgba(239, 0, 0, 0.3)',
         'glow-success': '0 0 20px rgba(52, 211, 153, 0.3)',
         'glow-warning': '0 0 20px rgba(251, 191, 36, 0.3)',
         'glow-error': '0 0 20px rgba(251, 113, 133, 0.3)',

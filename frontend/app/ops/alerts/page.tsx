@@ -196,7 +196,7 @@ export default function OpsAlertsPage() {
         <button
           onClick={loadAlerts}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium disabled:opacity-50"
         >
           {loading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -258,7 +258,7 @@ export default function OpsAlertsPage() {
             <select
               value={filters.severity}
               onChange={(e) => handleFilterChange('severity', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             >
               <option value="">Todos</option>
               <option value="error">Error</option>
@@ -271,7 +271,7 @@ export default function OpsAlertsPage() {
             <select
               value={filters.acknowledged}
               onChange={(e) => handleFilterChange('acknowledged', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             >
               <option value="">Todos</option>
               <option value="false">Pendientes</option>
@@ -285,7 +285,7 @@ export default function OpsAlertsPage() {
               value={filters.week_label}
               onChange={(e) => handleFilterChange('week_label', e.target.value)}
               placeholder="2025-W51"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent font-mono"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent font-mono"
             />
           </div>
           <div className="flex items-end">
@@ -303,7 +303,7 @@ export default function OpsAlertsPage() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden relative">
         {loading && (
           <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
-            <div className="w-8 h-8 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-3 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
@@ -365,7 +365,7 @@ export default function OpsAlertsPage() {
                       <button
                         onClick={() => handleAcknowledge(alert.id)}
                         disabled={acknowledgingId === alert.id}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors disabled:opacity-50"
                       >
                         {acknowledgingId === alert.id ? (
                           <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />

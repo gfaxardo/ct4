@@ -17,7 +17,7 @@ const variants = {
   error: 'bg-rose-50 text-rose-700 ring-rose-200',
   info: 'bg-cyan-50 text-cyan-700 ring-cyan-200',
   purple: 'bg-violet-50 text-violet-700 ring-violet-200',
-  brand: 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-white ring-cyan-300',
+  brand: 'bg-gradient-to-r from-[#ef0000] to-emerald-500 text-white ring-cyan-300',
 };
 
 const sizes = {
@@ -31,7 +31,7 @@ const dotColors = {
   success: 'bg-emerald-500',
   warning: 'bg-amber-500',
   error: 'bg-rose-500',
-  info: 'bg-cyan-500',
+  info: 'bg-[#ef0000]',
   purple: 'bg-violet-500',
   brand: 'bg-white',
 };

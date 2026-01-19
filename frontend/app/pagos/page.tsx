@@ -194,7 +194,7 @@ export default function PagosPage() {
               <select
                 value={filters.origin_tag}
                 onChange={(e) => handleFilterChange('origin_tag', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               >
                 <option value="">Todos</option>
                 <option value="cabinet">Cabinet</option>
@@ -206,7 +206,7 @@ export default function PagosPage() {
               <select
                 value={filters.rule_scope}
                 onChange={(e) => handleFilterChange('rule_scope', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               >
                 <option value="">Todos</option>
                 <option value="scout">Scout</option>
@@ -218,7 +218,7 @@ export default function PagosPage() {
               <select
                 value={filters.is_payable}
                 onChange={(e) => handleFilterChange('is_payable', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               >
                 <option value="">Todos</option>
                 <option value="true">Sí</option>
@@ -232,7 +232,7 @@ export default function PagosPage() {
                 value={filters.driver_id}
                 onChange={(e) => handleFilterChange('driver_id', e.target.value)}
                 placeholder="Buscar..."
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               />
             </div>
             <div>
@@ -242,7 +242,7 @@ export default function PagosPage() {
                 value={filters.scout_id}
                 onChange={(e) => handleFilterChange('scout_id', e.target.value)}
                 placeholder="ID..."
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               />
             </div>
             <div>
@@ -251,7 +251,7 @@ export default function PagosPage() {
                 type="date"
                 value={filters.payable_from}
                 onChange={(e) => handleFilterChange('payable_from', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               />
             </div>
             <div>
@@ -260,7 +260,7 @@ export default function PagosPage() {
                 type="date"
                 value={filters.payable_to}
                 onChange={(e) => handleFilterChange('payable_to', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               />
             </div>
             <div>
@@ -268,7 +268,7 @@ export default function PagosPage() {
               <select
                 value={filters.order_by}
                 onChange={(e) => handleFilterChange('order_by', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               >
                 <option value="payable_date">Payable Date</option>
                 <option value="lead_date">Lead Date</option>
@@ -280,7 +280,7 @@ export default function PagosPage() {
               <select
                 value={filters.order_dir}
                 onChange={(e) => handleFilterChange('order_dir', e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               >
                 <option value="desc">Desc</option>
                 <option value="asc">Asc</option>
@@ -301,7 +301,7 @@ export default function PagosPage() {
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           {loading && eligibility && (
             <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
-              <div className="w-8 h-8 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-8 h-8 border-3 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
             </div>
           )}
           
@@ -330,7 +330,7 @@ export default function PagosPage() {
                   paginatedRows.map((row, idx) => (
                     <tr key={`${row.driver_id}-${row.milestone_trips}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3 px-4">
-                        <span className="text-sm font-medium text-cyan-600">
+                        <span className="text-sm font-medium text-[#ef0000]">
                           {row.driver_id ? row.driver_id.substring(0, 16) + '...' : '—'}
                         </span>
                       </td>

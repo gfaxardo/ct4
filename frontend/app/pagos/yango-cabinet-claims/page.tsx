@@ -63,7 +63,7 @@ function StatCard({
   icon?: React.ReactNode;
 }) {
   const colorClasses = {
-    cyan: 'from-cyan-500/10 to-cyan-500/5 border-cyan-200/50',
+    cyan: 'from-[#ef0000]/10 to-[#ef0000]/5 border-red-200/50',
     red: 'from-red-500/10 to-red-500/5 border-red-200/50',
     amber: 'from-amber-500/10 to-amber-500/5 border-amber-200/50',
     emerald: 'from-emerald-500/10 to-emerald-500/5 border-emerald-200/50',
@@ -71,7 +71,7 @@ function StatCard({
   };
   
   const textColors = {
-    cyan: 'text-cyan-600',
+    cyan: 'text-[#ef0000]',
     red: 'text-red-600',
     amber: 'text-amber-600',
     emerald: 'text-emerald-600',
@@ -245,7 +245,7 @@ export default function YangoCabinetClaimsPage() {
               type="date"
               value={filters.date_from}
               onChange={(e) => setFilters({ ...filters, date_from: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000]/20 focus:border-[#ef0000] transition-all"
             />
           </div>
           <div>
@@ -254,7 +254,7 @@ export default function YangoCabinetClaimsPage() {
               type="date"
               value={filters.date_to}
               onChange={(e) => setFilters({ ...filters, date_to: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000]/20 focus:border-[#ef0000] transition-all"
             />
           </div>
           <div>
@@ -262,7 +262,7 @@ export default function YangoCabinetClaimsPage() {
             <select
               value={filters.milestone_value}
               onChange={(e) => setFilters({ ...filters, milestone_value: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000]/20 focus:border-[#ef0000] transition-all"
             >
               <option value="">Todos</option>
               <option value="1">M1 (S/25)</option>
@@ -278,7 +278,7 @@ export default function YangoCabinetClaimsPage() {
                 value={filters.search}
                 onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                 placeholder="Driver ID o nombre..."
-                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000]/20 focus:border-[#ef0000] transition-all"
               />
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
                 <SearchIcon />
@@ -436,7 +436,7 @@ export default function YangoCabinetClaimsPage() {
                 <div className="flex flex-col items-center justify-center py-12">
                   <div className="relative w-12 h-12 mb-4">
                     <div className="absolute inset-0 border-4 border-slate-200 rounded-full" />
-                    <div className="absolute inset-0 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                    <div className="absolute inset-0 border-4 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
                   </div>
                   <p className="text-sm text-slate-500">Cargando detalles del claim...</p>
                 </div>
@@ -496,21 +496,21 @@ export default function YangoCabinetClaimsPage() {
                   {drilldownData.lead_cabinet && (
                     <div>
                       <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">Lead Cabinet</h3>
-                      <div className="bg-gradient-to-br from-cyan-50 to-cyan-100/50 rounded-xl p-4 grid grid-cols-2 gap-4">
+                      <div className="bg-gradient-to-br from-red-50 to-red-100/50 rounded-xl p-4 grid grid-cols-2 gap-4">
                         <div>
-                          <span className="text-xs text-cyan-600">Source PK</span>
+                          <span className="text-xs text-[#ef0000]">Source PK</span>
                           <p className="font-mono text-sm text-slate-700">{drilldownData.lead_cabinet.source_pk || '—'}</p>
                         </div>
                         <div>
-                          <span className="text-xs text-cyan-600">Match Rule</span>
+                          <span className="text-xs text-[#ef0000]">Match Rule</span>
                           <p className="font-medium text-slate-700">{drilldownData.lead_cabinet.match_rule || '—'}</p>
                         </div>
                         <div>
-                          <span className="text-xs text-cyan-600">Match Score</span>
+                          <span className="text-xs text-[#ef0000]">Match Score</span>
                           <p className="font-medium text-slate-700">{drilldownData.lead_cabinet.match_score ?? '—'}</p>
                         </div>
                         <div>
-                          <span className="text-xs text-cyan-600">Confidence</span>
+                          <span className="text-xs text-[#ef0000]">Confidence</span>
                           <p className="font-medium text-slate-700">{drilldownData.lead_cabinet.confidence_level || '—'}</p>
                         </div>
                       </div>

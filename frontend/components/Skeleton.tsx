@@ -138,7 +138,7 @@ export function LoadingSpinner({ size = 'md', text }: { size?: 'sm' | 'md' | 'lg
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-8">
       <div
-        className={`${sizeClasses[size]} border-cyan-500 border-t-transparent rounded-full animate-spin`}
+        className={`${sizeClasses[size]} border-[#ef0000] border-t-transparent rounded-full animate-spin`}
       />
       {text && <p className="text-sm text-slate-500">{text}</p>}
     </div>
@@ -194,7 +194,7 @@ export function PageLoadingOverlay({
         {/* Spinner */}
         <div className="relative w-16 h-16 mx-auto mb-6">
           <div className="absolute inset-0 border-4 border-slate-200 rounded-full" />
-          <div className="absolute inset-0 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+          <div className="absolute inset-0 border-4 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
         </div>
         
         {/* Texto */}
@@ -208,7 +208,7 @@ export function PageLoadingOverlay({
         {/* Indicador de progreso visual */}
         <div className="mt-6 w-48 mx-auto h-1 bg-slate-200 rounded-full overflow-hidden">
           <div 
-            className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 rounded-full animate-pulse"
+            className="h-full bg-gradient-to-r from-[#ff3333] to-[#ef0000] rounded-full animate-pulse"
             style={{ 
               width: '60%',
               animation: 'loading-progress 1.5s ease-in-out infinite'

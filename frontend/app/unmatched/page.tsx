@@ -163,7 +163,7 @@ export default function UnmatchedPage() {
         <button
           onClick={loadUnmatched}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium disabled:opacity-50"
         >
           {loading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -228,7 +228,7 @@ export default function UnmatchedPage() {
                 value={filters.reason_code}
                 onChange={(e) => handleFilterChange('reason_code', e.target.value)}
                 placeholder="NO_CANDIDATES, WEAK_MATCH..."
-                className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
               />
               <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">{Icons.search}</div>
             </div>
@@ -238,7 +238,7 @@ export default function UnmatchedPage() {
             <select
               value={filters.status}
               onChange={(e) => handleFilterChange('status', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             >
               <option value="">Todos</option>
               <option value="OPEN">OPEN</option>
@@ -260,7 +260,7 @@ export default function UnmatchedPage() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden relative">
         {loading && (
           <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
-            <div className="w-8 h-8 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-3 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
           </div>
         )}
 
@@ -326,7 +326,7 @@ export default function UnmatchedPage() {
                             setResolvingId(record.id);
                             setShowResolveModal(true);
                           }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors"
                         >
                           {Icons.link}
                           Resolver
@@ -380,7 +380,7 @@ export default function UnmatchedPage() {
               value={resolvePersonKey}
               onChange={(e) => setResolvePersonKey(e.target.value)}
               placeholder="123e4567-e89b-12d3-a456-426614174000"
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-sm font-mono"
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#ef0000] focus:border-transparent text-sm font-mono"
             />
           </div>
         </div>
@@ -388,7 +388,7 @@ export default function UnmatchedPage() {
           <button
             onClick={handleResolve}
             disabled={!resolvePersonKey || resolving}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {resolving ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

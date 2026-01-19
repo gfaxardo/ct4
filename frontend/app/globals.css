@@ -12,7 +12,7 @@
 /* Variables CSS */
 :root {
   /* Colores primarios */
-  --color-brand-primary: #06b6d4;
+  --color-brand-primary: #ef0000;
   --color-brand-secondary: #0891b2;
   --color-brand-accent: #22d3ee;
   
@@ -289,7 +289,7 @@
   /* Gradientes de texto */
   .text-gradient {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, #06b6d4 0%, #34d399 100%);
+    background-image: linear-gradient(135deg, #ef0000 0%, #34d399 100%);
   }
   
   /* Glass effect */
@@ -378,7 +378,7 @@
 
 /* Focus visible para accesibilidad */
 :focus-visible {
-  outline: 2px solid #06b6d4;
+  outline: 2px solid #ef0000;
   outline-offset: 2px;
 }
 

@@ -194,7 +194,7 @@ function ResumenConductorPageContent() {
           <PaymentsLegend />
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium"
           >
             {Icons.download}
             Exportar CSV
@@ -330,7 +330,7 @@ function ResumenConductorPageContent() {
               type="date"
               value={filters.week_from}
               onChange={(e) => handleFilterChange('week_from', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             />
           </div>
           <div>
@@ -339,7 +339,7 @@ function ResumenConductorPageContent() {
               type="date"
               value={filters.week_to}
               onChange={(e) => handleFilterChange('week_to', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             />
           </div>
           <div>
@@ -349,7 +349,7 @@ function ResumenConductorPageContent() {
               value={filters.search}
               onChange={(e) => handleFilterChange('search', e.target.value)}
               placeholder="driver_id, person_key, nombre"
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#ef0000] focus:border-transparent"
             />
           </div>
           <div>
@@ -360,7 +360,7 @@ function ResumenConductorPageContent() {
                   type="checkbox"
                   checked={filters.only_pending}
                   onChange={(e) => handleFilterChange('only_pending', e.target.checked)}
-                  className="h-4 w-4 text-cyan-600 focus:ring-cyan-500 border-slate-300 rounded"
+                  className="h-4 w-4 text-[#ef0000] focus:ring-[#ef0000] border-slate-300 rounded"
                 />
                 <span className="text-sm text-slate-600">Mostrar solo pendientes</span>
               </label>
@@ -381,7 +381,7 @@ function ResumenConductorPageContent() {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {loading && data && (
           <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-10">
-            <div className="w-8 h-8 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-3 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
           </div>
         )}
         

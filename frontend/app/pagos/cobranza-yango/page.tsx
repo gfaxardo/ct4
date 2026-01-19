@@ -197,7 +197,7 @@ export default function CobranzaYangoPage() {
               {row.driver_id ? (
                 <button
                   onClick={() => router.push(`/pagos/cobranza-yango/driver/${row.driver_id}`)}
-                  className="text-cyan-600 hover:text-cyan-800 underline"
+                  className="text-[#ef0000] hover:text-red-800 underline"
                 >
                   {row.driver_id.substring(0, 8)}...
                 </button>
@@ -211,7 +211,7 @@ export default function CobranzaYangoPage() {
               {row.driver_id ? (
                 <button
                   onClick={() => router.push(`/pagos/cobranza-yango/driver/${row.driver_id}`)}
-                  className="text-cyan-600 hover:text-cyan-800 underline"
+                  className="text-[#ef0000] hover:text-red-800 underline"
                 >
                   {row.driver_id.substring(0, 8)}...
                 </button>
@@ -504,13 +504,13 @@ export default function CobranzaYangoPage() {
                       </div>
 
                       {data.summary_total && (
-                        <div className="card border-2 border-cyan-200">
-                          <div className="card-header bg-cyan-50">
-                            <h3 className="font-semibold text-cyan-900">Total Sin Filtros</h3>
+                        <div className="card border-2 border-red-200">
+                          <div className="card-header bg-red-50">
+                            <h3 className="font-semibold text-red-900">Total Sin Filtros</h3>
                           </div>
                           <div className="card-body">
                             <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div><span className="text-slate-500">Total Drivers:</span> <span className="font-bold text-cyan-700">{data.summary_total.total_drivers}</span></div>
+                              <div><span className="text-slate-500">Total Drivers:</span> <span className="font-bold text-[#cc0000]">{data.summary_total.total_drivers}</span></div>
                               <div><span className="text-slate-500">Con Deuda:</span> <span className="font-bold text-rose-600">{data.summary_total.drivers_with_debt}</span></div>
                               <div><span className="text-slate-500">M1:</span> <span className="font-bold">{data.summary_total.drivers_m1}</span></div>
                               <div><span className="text-slate-500">M5:</span> <span className="font-bold">{data.summary_total.drivers_m5}</span></div>
@@ -534,7 +534,7 @@ export default function CobranzaYangoPage() {
                   {filters.week_start && (
                     <div className="flex items-center gap-2">
                       <Badge variant="info">Filtro: {new Date(filters.week_start).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })}</Badge>
-                      <button onClick={handleClearWeekFilter} className="text-sm text-cyan-600 hover:text-cyan-800 underline">Limpiar</button>
+                      <button onClick={handleClearWeekFilter} className="text-sm text-[#ef0000] hover:text-red-800 underline">Limpiar</button>
                     </div>
                   )}
                 </div>
@@ -563,7 +563,7 @@ export default function CobranzaYangoPage() {
                         {weeklyKpis.weeks.map((week) => (
                           <tr
                             key={week.week_start}
-                            className={`cursor-pointer ${filters.week_start === week.week_start ? 'bg-cyan-50 !border-l-4 !border-l-cyan-500' : ''}`}
+                            className={`cursor-pointer ${filters.week_start === week.week_start ? 'bg-red-50 !border-l-4 !border-l-[#ef0000]' : ''}`}
                             onClick={() => handleWeekClick(week.week_start)}
                           >
                             <td className="font-medium">{new Date(week.week_start).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
@@ -576,7 +576,7 @@ export default function CobranzaYangoPage() {
                             <td>{week.reached_m25}</td>
                             <td className="text-right font-semibold text-emerald-600">S/ {Number(week.paid_sum).toFixed(2)}</td>
                             <td>
-                              <button className="text-cyan-600 hover:text-cyan-800 text-sm underline" onClick={(e) => { e.stopPropagation(); handleWeekClick(week.week_start); }}>
+                              <button className="text-[#ef0000] hover:text-red-800 text-sm underline" onClick={(e) => { e.stopPropagation(); handleWeekClick(week.week_start); }}>
                                 Filtrar
                               </button>
                             </td>
@@ -658,7 +658,7 @@ export default function CobranzaYangoPage() {
                   <div className="card-header flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                        <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5 text-[#ef0000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                         Brechas de Identidad (Recovery)
@@ -697,9 +697,9 @@ export default function CobranzaYangoPage() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                          <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-200/50">
-                            <div className="text-sm text-cyan-600 mb-1">Matched Last 24h</div>
-                            <div className="text-2xl font-bold text-cyan-700">{(identityGaps.totals.matched_last_24h ?? 0).toLocaleString()}</div>
+                          <div className="bg-red-50 rounded-xl p-4 border border-red-200/50">
+                            <div className="text-sm text-[#ef0000] mb-1">Matched Last 24h</div>
+                            <div className="text-2xl font-bold text-[#cc0000]">{(identityGaps.totals.matched_last_24h ?? 0).toLocaleString()}</div>
                           </div>
                           <div className={`rounded-xl p-4 border ${
                             identityGaps.totals.job_freshness_hours == null ? 'bg-rose-50 border-rose-200' :

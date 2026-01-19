@@ -174,7 +174,7 @@ export default function ScoutAttributionHealthPage() {
           <button
             onClick={loadData}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium disabled:opacity-50"
           >
             {loading ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -265,7 +265,7 @@ export default function ScoutAttributionHealthPage() {
             <button
               onClick={handleRunNow}
               disabled={isRunning || jobStatus.last_run?.status === 'RUNNING'}
-              className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isRunning ? 'Ejecutando...' : 'Ejecutar Ahora'}
             </button>
@@ -322,7 +322,7 @@ export default function ScoutAttributionHealthPage() {
                 {metrics.backlog.a_events_without_scout.toLocaleString()}
               </p>
               <p className="text-sm text-slate-500 mb-3">Lead events sin scout_id</p>
-              <Link href="/scouts/backlog?category=A" className="text-sm text-cyan-600 hover:underline font-medium">
+              <Link href="/scouts/backlog?category=A" className="text-sm text-[#ef0000] hover:underline font-medium">
                 Ver registros →
               </Link>
             </div>
@@ -333,7 +333,7 @@ export default function ScoutAttributionHealthPage() {
                 {metrics.backlog.c_legacy.toLocaleString()}
               </p>
               <p className="text-sm text-slate-500 mb-3">Sin eventos ni scout</p>
-              <Link href="/scouts/backlog?category=C" className="text-sm text-cyan-600 hover:underline font-medium">
+              <Link href="/scouts/backlog?category=C" className="text-sm text-[#ef0000] hover:underline font-medium">
                 Ver registros →
               </Link>
             </div>
@@ -344,7 +344,7 @@ export default function ScoutAttributionHealthPage() {
                 {metrics.backlog.d_scout_in_events_not_in_ledger.toLocaleString()}
               </p>
               <p className="text-sm text-slate-500 mb-3">Scout en eventos no en ledger</p>
-              <Link href="/scouts/backlog?category=D" className="text-sm text-cyan-600 hover:underline font-medium">
+              <Link href="/scouts/backlog?category=D" className="text-sm text-[#ef0000] hover:underline font-medium">
                 Ver registros →
               </Link>
             </div>
@@ -360,7 +360,7 @@ export default function ScoutAttributionHealthPage() {
             {dailyMetrics.daily_metrics.slice(0, 30).reverse().map((metric, idx) => (
               <div
                 key={metric.date}
-                className="flex-1 bg-cyan-500 hover:bg-cyan-600 rounded-t transition-colors relative group cursor-pointer"
+                className="flex-1 bg-[#ef0000] hover:bg-[#ef0000] rounded-t transition-colors relative group cursor-pointer"
                 style={{ height: `${Math.max(5, (metric.pct_satisfactory / 100) * 100)}%` }}
               >
                 <div className="hidden group-hover:block absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
@@ -381,7 +381,7 @@ export default function ScoutAttributionHealthPage() {
           href="/scouts/conflicts"
           className="bg-white rounded-xl border border-slate-200 p-5 hover:border-cyan-300 hover:shadow-sm transition-all group"
         >
-          <h3 className="font-semibold text-slate-900 mb-1 group-hover:text-cyan-600">Ver Conflictos</h3>
+          <h3 className="font-semibold text-slate-900 mb-1 group-hover:text-[#ef0000]">Ver Conflictos</h3>
           <p className="text-sm text-slate-500">Personas con múltiples scouts asignados</p>
         </Link>
         
@@ -389,7 +389,7 @@ export default function ScoutAttributionHealthPage() {
           href="/pagos/cobranza-yango"
           className="bg-white rounded-xl border border-slate-200 p-5 hover:border-cyan-300 hover:shadow-sm transition-all group"
         >
-          <h3 className="font-semibold text-slate-900 mb-1 group-hover:text-cyan-600">Cobranza Yango</h3>
+          <h3 className="font-semibold text-slate-900 mb-1 group-hover:text-[#ef0000]">Cobranza Yango</h3>
           <p className="text-sm text-slate-500">Claims con información de scout</p>
         </Link>
         
@@ -397,7 +397,7 @@ export default function ScoutAttributionHealthPage() {
           href="/scouts/liquidation"
           className="bg-white rounded-xl border border-slate-200 p-5 hover:border-cyan-300 hover:shadow-sm transition-all group"
         >
-          <h3 className="font-semibold text-slate-900 mb-1 group-hover:text-cyan-600">Liquidación Scouts</h3>
+          <h3 className="font-semibold text-slate-900 mb-1 group-hover:text-[#ef0000]">Liquidación Scouts</h3>
           <p className="text-sm text-slate-500">Vista base para liquidación diaria</p>
         </Link>
       </div>

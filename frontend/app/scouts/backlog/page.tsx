@@ -125,7 +125,7 @@ function ScoutBacklogContent() {
         <button
           onClick={loadBacklog}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium disabled:opacity-50"
         >
           {loading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -192,7 +192,7 @@ function ScoutBacklogContent() {
             onClick={() => handleCategoryChange(tab.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               category === tab.key
-                ? 'bg-cyan-600 text-white'
+                ? 'bg-[#ef0000] text-white'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
@@ -254,7 +254,7 @@ function ScoutBacklogContent() {
                         {item.first_event_date ? new Date(item.first_event_date).toLocaleDateString('es-ES') : '—'}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <Link href={`/persons/${item.person_key}`} className="text-cyan-600 hover:underline text-sm font-medium">
+                        <Link href={`/persons/${item.person_key}`} className="text-[#ef0000] hover:underline text-sm font-medium">
                           Ver →
                         </Link>
                       </td>

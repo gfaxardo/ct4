@@ -82,7 +82,7 @@ export default function ScoutConflictsPage() {
         <button
           onClick={loadConflicts}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors text-sm font-medium disabled:opacity-50"
         >
           {loading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -178,7 +178,7 @@ export default function ScoutConflictsPage() {
                         {conflict.last_event_date ? new Date(conflict.last_event_date).toLocaleDateString('es-ES') : '—'}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <Link href={`/persons/${conflict.person_key}`} className="text-cyan-600 hover:underline text-sm font-medium">
+                        <Link href={`/persons/${conflict.person_key}`} className="text-[#ef0000] hover:underline text-sm font-medium">
                           Resolver →
                         </Link>
                       </td>

@@ -49,7 +49,7 @@ function TabLoadingSpinner({ text }: { text: string }) {
     <div className="bg-white rounded-xl border border-slate-200/60 p-12 flex flex-col items-center justify-center min-h-[300px]">
       <div className="relative w-12 h-12 mb-4">
         <div className="absolute inset-0 border-4 border-slate-200 rounded-full" />
-        <div className="absolute inset-0 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+        <div className="absolute inset-0 border-4 border-[#ef0000] border-t-transparent rounded-full animate-spin" />
       </div>
       <p className="text-slate-600 font-medium">{text}</p>
     </div>
@@ -201,7 +201,7 @@ export default function DashboardPage() {
         </div>
         {isRefetching && (
           <div className="flex items-center gap-2 text-sm text-slate-500">
-            <svg className="animate-spin h-4 w-4 text-cyan-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg className="animate-spin h-4 w-4 text-[#ef0000]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
@@ -221,7 +221,7 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
                 <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-cyan-500" />
+                  <div className="w-2 h-2 rounded-full bg-[#ef0000]" />
                   Links por Fuente
                 </h3>
                 <div className="space-y-3">
@@ -255,8 +255,8 @@ export default function DashboardPage() {
                     <span className="text-sm text-slate-600">Con Drivers</span>
                     <span className="font-semibold text-slate-900">{(personsBySource.persons_with_drivers ?? 0).toLocaleString()}</span>
                   </div>
-                  <div className="flex justify-between items-center p-3 bg-cyan-50 rounded-lg border border-cyan-200">
-                    <span className="text-sm font-medium text-cyan-800">Solo Drivers (sin leads)</span>
+                  <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg border border-red-200">
+                    <span className="text-sm font-medium text-red-800">Solo Drivers (sin leads)</span>
                     <Badge variant="info">{(personsBySource.persons_only_drivers ?? 0).toLocaleString()}</Badge>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-emerald-50 rounded-lg border border-emerald-200">
@@ -280,25 +280,25 @@ export default function DashboardPage() {
 
       {/* Drivers Sin Leads - Análisis Detallado */}
       {driversWithoutLeads && driversWithoutLeads.total_drivers_without_leads > 0 && (
-        <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border border-cyan-200 rounded-xl p-6">
+        <div className="bg-gradient-to-r from-red-50 to-blue-50 border border-red-200 rounded-xl p-6">
           <div className="flex items-start gap-4 mb-6">
-            <div className="p-3 rounded-xl bg-cyan-100">
-              <svg className="w-6 h-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="p-3 rounded-xl bg-red-100">
+              <svg className="w-6 h-6 text-[#ef0000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-cyan-900">Drivers Sin Leads - Análisis</h2>
-              <p className="text-sm text-cyan-700 mt-1">
+              <h2 className="text-lg font-semibold text-red-900">Drivers Sin Leads - Análisis</h2>
+              <p className="text-sm text-[#cc0000] mt-1">
                 Drivers en el sistema sin leads asociados. Los en cuarentena están excluidos del funnel operativo.
               </p>
             </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white/80 rounded-xl p-4 border border-cyan-200/50">
-              <div className="text-sm text-cyan-600 mb-1">Total (incl. quarantined)</div>
-              <div className="text-2xl font-bold text-cyan-900">{driversWithoutLeads.total_drivers_without_leads.toLocaleString()}</div>
+            <div className="bg-white/80 rounded-xl p-4 border border-red-200/50">
+              <div className="text-sm text-[#ef0000] mb-1">Total (incl. quarantined)</div>
+              <div className="text-2xl font-bold text-red-900">{driversWithoutLeads.total_drivers_without_leads.toLocaleString()}</div>
             </div>
             <div className="bg-white/80 rounded-xl p-4 border border-rose-200/50">
               <div className="text-sm text-rose-600 mb-1">En Cuarentena</div>
@@ -324,12 +324,12 @@ export default function DashboardPage() {
 
           {driversWithoutLeads.quarantine_breakdown && Object.keys(driversWithoutLeads.quarantine_breakdown).length > 0 && (
             <div className="bg-white/60 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-cyan-800 mb-3">Breakdown de Cuarentena por Razón</h3>
+              <h3 className="text-sm font-semibold text-red-800 mb-3">Breakdown de Cuarentena por Razón</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {Object.entries(driversWithoutLeads.quarantine_breakdown).map(([reason, count]) => (
-                  <div key={reason} className="bg-white rounded-lg p-3 border border-cyan-200/50">
-                    <div className="text-xs text-cyan-600 mb-1 capitalize">{reason.replace(/_/g, ' ')}</div>
-                    <div className="text-lg font-bold text-cyan-800">{count.toLocaleString()}</div>
+                  <div key={reason} className="bg-white rounded-lg p-3 border border-red-200/50">
+                    <div className="text-xs text-[#ef0000] mb-1 capitalize">{reason.replace(/_/g, ' ')}</div>
+                    <div className="text-lg font-bold text-red-800">{count.toLocaleString()}</div>
                   </div>
                 ))}
               </div>
@@ -337,8 +337,8 @@ export default function DashboardPage() {
           )}
 
           <div className="mt-6 p-4 bg-white/60 rounded-lg">
-            <p className="text-sm text-cyan-700">
-              <strong className="text-cyan-800">Interpretación:</strong>{' '}
+            <p className="text-sm text-[#cc0000]">
+              <strong className="text-red-800">Interpretación:</strong>{' '}
               {driversWithoutLeads.drivers_without_leads_operativos === 0 ? (
                 <>✅ Todos los drivers sin leads están en cuarentena. El sistema funciona correctamente.</>
               ) : (
@@ -445,12 +445,12 @@ export default function DashboardPage() {
 
       {/* Alerts Section - PENDING */}
       <div className="alert alert-info">
-        <svg className="w-5 h-5 text-cyan-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-[#ef0000] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div>
-          <p className="font-medium text-cyan-800">Próximamente</p>
-          <p className="text-sm text-cyan-700">Sección de Alertas requiere endpoint GET /api/v1/ops/alerts</p>
+          <p className="font-medium text-red-800">Próximamente</p>
+          <p className="text-sm text-[#cc0000]">Sección de Alertas requiere endpoint GET /api/v1/ops/alerts</p>
         </div>
       </div>
     </div>

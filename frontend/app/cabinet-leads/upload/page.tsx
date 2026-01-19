@@ -221,7 +221,7 @@ export default function ProcessLeadsPage() {
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="w-4 h-4 text-cyan-600 rounded"
+              className="w-4 h-4 text-[#ef0000] rounded"
             />
             Auto-refresh
           </label>
@@ -279,12 +279,12 @@ export default function ProcessLeadsPage() {
 
       {/* Processing Progress */}
       {processing && (
-        <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-6">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6">
           <div className="flex items-center gap-3 mb-4">
             {Icons.spinner}
             <div>
-              <p className="font-semibold text-cyan-900">Procesando leads...</p>
-              <p className="text-sm text-cyan-700">
+              <p className="font-semibold text-red-900">Procesando leads...</p>
+              <p className="text-sm text-[#cc0000]">
                 Tiempo transcurrido: {Math.floor(elapsedTime / 60)}:{(elapsedTime % 60).toString().padStart(2, '0')}
               </p>
             </div>
@@ -298,14 +298,14 @@ export default function ProcessLeadsPage() {
                   currentStep > step.id 
                     ? 'bg-emerald-500 text-white' 
                     : currentStep === step.id 
-                    ? 'bg-cyan-500 text-white animate-pulse' 
+                    ? 'bg-[#ef0000] text-white animate-pulse' 
                     : 'bg-slate-200 text-slate-500'
                 }`}>
                   {currentStep > step.id ? '✓' : step.id}
                 </div>
                 <div className="flex-1">
                   <p className={`text-sm font-medium ${
-                    currentStep >= step.id ? 'text-cyan-900' : 'text-slate-400'
+                    currentStep >= step.id ? 'text-red-900' : 'text-slate-400'
                   }`}>
                     {step.name}
                   </p>
@@ -315,8 +315,8 @@ export default function ProcessLeadsPage() {
             ))}
           </div>
           
-          <div className="mt-4 pt-4 border-t border-cyan-200">
-            <p className="text-xs text-cyan-700">
+          <div className="mt-4 pt-4 border-t border-red-200">
+            <p className="text-xs text-[#cc0000]">
               💡 Puedes ir a <button onClick={() => router.push('/runs')} className="underline font-medium">Corridas</button> para ver el detalle del procesamiento
             </p>
           </div>
@@ -353,7 +353,7 @@ export default function ProcessLeadsPage() {
                     type="checkbox"
                     checked={refreshIndex}
                     onChange={(e) => setRefreshIndex(e.target.checked)}
-                    className="w-4 h-4 text-cyan-600 rounded focus:ring-cyan-500"
+                    className="w-4 h-4 text-[#ef0000] rounded focus:ring-[#ef0000]"
                     disabled={processing}
                   />
                   <div>
@@ -367,7 +367,7 @@ export default function ProcessLeadsPage() {
               <button
                 onClick={handleProcess}
                 disabled={processing}
-                className="w-full flex items-center justify-center gap-2 px-4 py-4 bg-cyan-600 text-white rounded-xl hover:bg-cyan-700 transition-colors font-semibold text-lg disabled:bg-slate-300 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 px-4 py-4 bg-[#ef0000] text-white rounded-xl hover:bg-[#cc0000] transition-colors font-semibold text-lg disabled:bg-slate-300 disabled:cursor-not-allowed"
               >
                 {Icons.play}
                 Procesar {pendingCount.toLocaleString()} Leads Nuevos
@@ -428,7 +428,7 @@ export default function ProcessLeadsPage() {
         }`}>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-slate-900 flex items-center gap-2">
-              <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-[#ef0000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               Auto-Procesamiento
@@ -516,7 +516,7 @@ export default function ProcessLeadsPage() {
           </div>
           <div className="flex items-start gap-2">
             <span className="flex-shrink-0 w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-xs font-medium">4</span>
-            <p>El progreso se puede monitorear en <button onClick={() => router.push('/runs')} className="text-cyan-600 hover:text-cyan-700 font-medium underline">Identidad → Auditoría / Runs</button></p>
+            <p>El progreso se puede monitorear en <button onClick={() => router.push('/runs')} className="text-[#ef0000] hover:text-[#cc0000] font-medium underline">Identidad → Auditoría / Runs</button></p>
           </div>
           <div className="flex items-start gap-2 mt-4 pt-4 border-t border-slate-200">
             <span className="flex-shrink-0 w-5 h-5 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-xs">⚡</span>

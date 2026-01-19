@@ -90,7 +90,7 @@ export default function Filters({
                   type="checkbox"
                   checked={values[field.name] === true}
                   onChange={(e) => handleChange(field.name, e.target.checked ? true : undefined)}
-                  className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                  className="h-4 w-4 rounded border-slate-300 text-[#ef0000] focus:ring-[#ef0000]"
                 />
                 <label className="text-sm text-slate-700">{field.label}</label>
               </div>

@@ -131,10 +131,10 @@ function NavLink({ item, pathname, isChild = false }: { item: NavItem; pathname:
     return (
       <div className={`
         flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-        ${hasActiveChild ? 'text-cyan-400' : 'text-slate-300'}
+        ${hasActiveChild ? 'text-[#ef0000]' : 'text-slate-300'}
         transition-colors duration-200
       `}>
-        <span className={hasActiveChild ? 'text-cyan-400' : 'text-slate-400'}>
+        <span className={hasActiveChild ? 'text-[#ef0000]' : 'text-slate-400'}>
           {item.icon}
         </span>
         <span>{item.label}</span>
@@ -150,20 +150,20 @@ function NavLink({ item, pathname, isChild = false }: { item: NavItem; pathname:
         transition-all duration-200 group
         ${isChild ? 'ml-6' : ''}
         ${isActive
-          ? 'bg-gradient-to-r from-cyan-500/20 to-transparent text-cyan-400 font-medium'
+          ? 'bg-gradient-to-r from-[#ef0000]/20 to-transparent text-[#ef0000] font-medium'
           : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
         }
       `}
     >
       <span className={`
         transition-colors duration-200
-        ${isActive ? 'text-cyan-400' : 'text-slate-500 group-hover:text-slate-400'}
+        ${isActive ? 'text-[#ef0000]' : 'text-slate-500 group-hover:text-slate-400'}
       `}>
         {item.icon}
       </span>
       <span>{item.label}</span>
       {isActive && (
-        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#ef0000] animate-pulse" />
       )}
     </Link>
   );
@@ -185,11 +185,11 @@ export default function Sidebar() {
         <div className="flex items-center gap-3">
           <div className="
             w-10 h-10 rounded-xl
-            bg-gradient-to-br from-cyan-400 to-emerald-400
+            bg-[#ef0000]
             flex items-center justify-center
-            shadow-lg shadow-cyan-500/20
+            shadow-lg shadow-[#ef0000]/30
           ">
-            <span className="text-lg font-bold text-slate-900">CT</span>
+            <span className="text-lg font-bold text-white">CT</span>
           </div>
           <div>
             <h1 className="text-base font-bold text-white tracking-tight">CT4 Identity</h1>
