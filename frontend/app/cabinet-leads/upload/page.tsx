@@ -12,15 +12,19 @@ import type { PendingLeadsCount, ProcessNewLeadsResponse } from '@/lib/api';
 import StatCard from '@/components/StatCard';
 import { PageLoadingOverlay } from '@/components/Skeleton';
 
-// Formatear fecha de manera legible
+// Formatear fecha de manera legible (sin conversión de timezone)
 const formatDate = (dateStr: string | null | undefined): string => {
   if (!dateStr) return '—';
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('es-EC', { 
-    day: '2-digit', 
-    month: 'short',
-    year: 'numeric'
-  }).replace('.', '');
+  // Parsear la fecha directamente sin timezone para evitar conversión
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length !== 3) return dateStr;
+  
+  const year = parseInt(parts[0]);
+  const month = parseInt(parts[1]) - 1; // JavaScript months are 0-indexed
+  const day = parseInt(parts[2]);
+  
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${day} ${months[month]} ${year}`;
 };
 
 // Icons
