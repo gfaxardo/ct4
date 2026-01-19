@@ -741,6 +741,12 @@ class IngestionService:
             )
             self.db.add(link)
 
+        # Limpiar de identity_unmatched si existía previamente
+        self.db.query(IdentityUnmatched).filter(
+            IdentityUnmatched.source_table == candidate.source_table,
+            IdentityUnmatched.source_pk == candidate.source_pk
+        ).delete(synchronize_session=False)
+
         self.db.flush()
 
     def _link_driver(self, person_key: UUID, driver_id: str, snapshot_date: datetime, run_id: int):

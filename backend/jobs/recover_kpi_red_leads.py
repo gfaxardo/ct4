@@ -16,7 +16,7 @@ from uuid import UUID
 
 from app.db import SessionLocal
 from app.models.ops import CabinetKpiRedRecoveryQueue
-from app.models.canon import IdentityLink, IdentityOrigin, OriginTag, DecidedBy, OriginResolutionStatus
+from app.models.canon import IdentityLink, IdentityOrigin, OriginTag, DecidedBy, OriginResolutionStatus, IdentityUnmatched
 from app.services.matching import MatchingEngine, IdentityCandidateInput
 from app.services.data_contract import DataContract
 from app.services.normalization import normalize_phone, normalize_name, normalize_plate
@@ -318,7 +318,6 @@ class RecoverKpiRedLeadsJob:
                 evidence=match_result.evidence or {}
             )
             self.db.add(link)
-            self.db.flush()
             logger.info(f"Creado IdentityLink para lead {lead_source_pk} a person_key {person_key}")
         else:
             # Si ya existe, actualizar si es necesario
@@ -330,8 +329,15 @@ class RecoverKpiRedLeadsJob:
                 existing_link.confidence_level = match_result.confidence or "HIGH"
                 existing_link.evidence = match_result.evidence or {}
                 existing_link.linked_at = datetime.utcnow()
-                self.db.flush()
                 logger.info(f"Actualizado IdentityLink para lead {lead_source_pk} a person_key {person_key}")
+        
+        # Limpiar de identity_unmatched si existía previamente
+        self.db.query(IdentityUnmatched).filter(
+            IdentityUnmatched.source_table == "module_ct_cabinet_leads",
+            IdentityUnmatched.source_pk == lead_source_pk
+        ).delete(synchronize_session=False)
+        
+        self.db.flush()
     
     def _ensure_identity_origin(
         self,

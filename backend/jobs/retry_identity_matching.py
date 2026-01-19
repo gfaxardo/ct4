@@ -11,7 +11,7 @@ from uuid import UUID
 
 from app.db import SessionLocal
 from app.models.ops import IdentityMatchingJob
-from app.models.canon import IdentityLink, IdentityOrigin, OriginTag, DecidedBy, OriginResolutionStatus
+from app.models.canon import IdentityLink, IdentityOrigin, OriginTag, DecidedBy, OriginResolutionStatus, IdentityUnmatched
 from app.services.matching import MatchingEngine, IdentityCandidateInput
 from app.services.data_contract import DataContract
 from app.services.normalization import normalize_phone, normalize_name
@@ -428,7 +428,14 @@ class IdentityMatchingRetryJob:
                 evidence=match_result.evidence or {}
             )
             self.db.add(link)
-            self.db.flush()
+        
+        # Limpiar de identity_unmatched si existía previamente
+        self.db.query(IdentityUnmatched).filter(
+            IdentityUnmatched.source_table == "module_ct_cabinet_leads",
+            IdentityUnmatched.source_pk == source_pk
+        ).delete(synchronize_session=False)
+        
+        self.db.flush()
     
     def _ensure_identity_origin(
         self,
