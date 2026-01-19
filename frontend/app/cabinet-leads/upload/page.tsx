@@ -163,27 +163,34 @@ export default function ProcessLeadsPage() {
 
       {/* Status KPIs */}
       {pendingInfo && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <StatCard
             title="En Tabla"
             value={pendingInfo.total_in_table.toLocaleString()}
-            subtitle="module_ct_cabinet_leads"
+            subtitle="con external_id"
             icon={Icons.database}
             variant="default"
           />
           <StatCard
-            title="Procesados"
-            value={pendingInfo.total_processed.toLocaleString()}
-            subtitle="en identity_links"
+            title="Vinculados"
+            value={(pendingInfo.total_in_links || 0).toLocaleString()}
+            subtitle="identity_links"
             icon={Icons.check}
             variant="success"
           />
           <StatCard
+            title="Sin Match"
+            value={(pendingInfo.total_in_unmatched || 0).toLocaleString()}
+            subtitle="identity_unmatched"
+            icon={Icons.alert}
+            variant="warning"
+          />
+          <StatCard
             title="Pendientes"
             value={pendingCount.toLocaleString()}
-            subtitle={hasPending ? "nuevos por procesar" : "todo al día"}
+            subtitle={hasPending ? "por procesar" : "todo al día"}
             icon={hasPending ? Icons.clock : Icons.check}
-            variant={hasPending ? "warning" : "success"}
+            variant={hasPending ? "error" : "success"}
           />
           <StatCard
             title="Último Lead"

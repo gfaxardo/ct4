@@ -27,24 +27,47 @@ router = APIRouter()
 def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """
     Retorna el conteo de leads pendientes de procesar.
-    Compara registros en module_ct_cabinet_leads vs identity_links.
+    Compara registros en module_ct_cabinet_leads vs identity_links + identity_unmatched.
+    Un registro está "procesado" si está en identity_links O en identity_unmatched.
     """
     try:
-        # Total en tabla
+        # Total en tabla (solo con external_id válido)
         total_query = db.execute(text("""
             SELECT COUNT(*) FROM public.module_ct_cabinet_leads
+            WHERE external_id IS NOT NULL AND external_id != ''
         """))
         total_in_table = total_query.scalar() or 0
         
-        # Procesados (en identity_links)
-        processed_query = db.execute(text("""
+        # Procesados en identity_links
+        links_query = db.execute(text("""
             SELECT COUNT(DISTINCT source_pk) 
             FROM canon.identity_links 
             WHERE source_table = 'module_ct_cabinet_leads'
         """))
-        total_processed = processed_query.scalar() or 0
+        total_in_links = links_query.scalar() or 0
         
-        # Pendientes
+        # Procesados en identity_unmatched
+        unmatched_query = db.execute(text("""
+            SELECT COUNT(DISTINCT source_pk) 
+            FROM canon.identity_unmatched 
+            WHERE source_table = 'module_ct_cabinet_leads'
+        """))
+        total_in_unmatched = unmatched_query.scalar() or 0
+        
+        # Total procesados = links + unmatched (sin duplicados entre tablas)
+        # Usamos UNION para evitar contar duplicados
+        total_processed_query = db.execute(text("""
+            SELECT COUNT(*) FROM (
+                SELECT DISTINCT source_pk FROM canon.identity_links 
+                WHERE source_table = 'module_ct_cabinet_leads'
+                UNION
+                SELECT DISTINCT source_pk FROM canon.identity_unmatched 
+                WHERE source_table = 'module_ct_cabinet_leads'
+            ) AS processed
+        """))
+        total_processed = total_processed_query.scalar() or 0
+        
+        # Pendientes reales
         pending = total_in_table - total_processed
         
         # Fecha del último registro en la tabla
@@ -64,6 +87,8 @@ def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
         
         return {
             "total_in_table": total_in_table,
+            "total_in_links": total_in_links,
+            "total_in_unmatched": total_in_unmatched,
             "total_processed": total_processed,
             "pending_count": max(0, pending),
             "max_lead_date": str(max_lead_date) if max_lead_date else None,
@@ -79,11 +104,15 @@ def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
 def process_new_leads(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    refresh_index: bool = Query(True, description="Refrescar drivers_index antes de procesar")
+    refresh_index: bool = Query(True, description="Refrescar drivers_index antes de procesar"),
+    process_all: bool = Query(True, description="Procesar todos los registros sin filtro de fecha")
 ) -> Dict[str, Any]:
     """
     Detecta y procesa automáticamente los nuevos leads en module_ct_cabinet_leads
     que aún no han sido procesados.
+    
+    - process_all=True: Procesa TODOS los registros (recomendado para detectar pendientes antiguos)
+    - process_all=False: Solo procesa desde la última fecha procesada
     """
     try:
         # Obtener conteo de pendientes
@@ -97,14 +126,19 @@ def process_new_leads(
             }
         
         # Determinar rango de fechas a procesar
-        # Desde el último procesado (o inicio si no hay) hasta el máximo en tabla
         date_from = None
-        if pending_info["last_processed_date"]:
-            date_from = datetime.strptime(pending_info["last_processed_date"], "%Y-%m-%d").date()
-        
         date_to = None
-        if pending_info["max_lead_date"]:
-            date_to = datetime.strptime(pending_info["max_lead_date"], "%Y-%m-%d").date()
+        
+        if not process_all:
+            # Solo procesar desde la última fecha procesada
+            if pending_info["last_processed_date"]:
+                date_from = datetime.strptime(pending_info["last_processed_date"], "%Y-%m-%d").date()
+            if pending_info["max_lead_date"]:
+                date_to = datetime.strptime(pending_info["max_lead_date"], "%Y-%m-%d").date()
+        
+        # Si process_all=True, date_from y date_to quedan None
+        # Esto hará que el sistema procese TODOS los registros
+        # El motor de identidad detectará automáticamente cuáles ya están procesados
         
         # Ejecutar procesamiento en background
         background_tasks.add_task(
@@ -116,10 +150,11 @@ def process_new_leads(
         
         return {
             "status": "processing",
-            "message": f"Procesando {pending_info['pending_count']} leads nuevos",
+            "message": f"Procesando {pending_info['pending_count']} leads pendientes (modo: {'completo' if process_all else 'incremental'})",
             "pending_count": pending_info["pending_count"],
-            "date_from": str(date_from) if date_from else None,
-            "date_to": str(date_to) if date_to else None
+            "mode": "full" if process_all else "incremental",
+            "date_from": str(date_from) if date_from else "sin límite",
+            "date_to": str(date_to) if date_to else "sin límite"
         }
         
     except Exception as e:

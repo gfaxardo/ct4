@@ -1026,6 +1026,8 @@ export type { CabinetLeadsDiagnostics };
 // Nuevo: Obtener conteo de leads pendientes
 export interface PendingLeadsCount {
   total_in_table: number;
+  total_in_links: number;
+  total_in_unmatched: number;
   total_processed: number;
   pending_count: number;
   max_lead_date: string | null;
@@ -1042,13 +1044,17 @@ export interface ProcessNewLeadsResponse {
   status: 'processing' | 'no_pending';
   message: string;
   pending_count: number;
+  mode?: 'full' | 'incremental';
   date_from?: string | null;
   date_to?: string | null;
 }
 
-export async function processNewLeads(refreshIndex: boolean = true): Promise<ProcessNewLeadsResponse> {
+export async function processNewLeads(
+  refreshIndex: boolean = true,
+  processAll: boolean = true
+): Promise<ProcessNewLeadsResponse> {
   return fetchApi<ProcessNewLeadsResponse>(
-    `/api/v1/cabinet-leads/process-new?refresh_index=${refreshIndex}`,
+    `/api/v1/cabinet-leads/process-new?refresh_index=${refreshIndex}&process_all=${processAll}`,
     { method: 'POST' }
   );
 }
