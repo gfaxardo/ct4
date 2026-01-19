@@ -131,7 +131,7 @@ function NavLink({ item, pathname, isChild = false }: { item: NavItem; pathname:
     return (
       <div className={`
         flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-        ${hasActiveChild ? 'text-[#ef0000]' : 'text-slate-300'}
+        ${hasActiveChild ? 'text-white' : 'text-slate-300'}
         transition-colors duration-200
       `}>
         <span className={hasActiveChild ? 'text-[#ef0000]' : 'text-slate-400'}>
@@ -150,21 +150,18 @@ function NavLink({ item, pathname, isChild = false }: { item: NavItem; pathname:
         transition-all duration-200 group
         ${isChild ? 'ml-6' : ''}
         ${isActive
-          ? 'bg-gradient-to-r from-[#ef0000]/20 to-transparent text-[#ef0000] font-medium'
+          ? 'bg-[#ef0000] text-white font-medium shadow-lg shadow-[#ef0000]/20'
           : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
         }
       `}
     >
       <span className={`
         transition-colors duration-200
-        ${isActive ? 'text-[#ef0000]' : 'text-slate-500 group-hover:text-slate-400'}
+        ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-400'}
       `}>
         {item.icon}
       </span>
       <span>{item.label}</span>
-      {isActive && (
-        <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#ef0000] animate-pulse" />
-      )}
     </Link>
   );
 }
