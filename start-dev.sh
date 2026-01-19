@@ -17,9 +17,10 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Puertos (cambiar si es necesario)
+# Configuración (cambiar si es necesario)
 BACKEND_PORT=8001
 FRONTEND_PORT=3001
+PUBLIC_IP="5.161.229.77"  # IP pública del VPS
 
 # Directorio base
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -108,10 +109,13 @@ if [ package.json -nt node_modules/.installed ] 2>/dev/null || [ ! -f node_modul
     touch node_modules/.installed
 fi
 
+# URL del backend para el frontend
+BACKEND_URL="http://${PUBLIC_IP}:${BACKEND_PORT}"
+
 # Build del frontend (producción)
 if [ ! -d ".next" ] || [ "$1" == "--build" ]; then
     echo -e "${YELLOW}Construyendo frontend...${NC}"
-    NEXT_PUBLIC_API_BASE_URL="http://localhost:$BACKEND_PORT" npm run build
+    NEXT_PUBLIC_API_BASE_URL="$BACKEND_URL" npm run build
 fi
 
 # Detener frontend anterior si existe
@@ -119,7 +123,7 @@ pm2 delete $PM2_FRONTEND_NAME 2>/dev/null || true
 
 # Iniciar frontend con pm2
 echo -e "${GREEN}Iniciando Frontend en puerto $FRONTEND_PORT...${NC}"
-NEXT_PUBLIC_API_BASE_URL="http://localhost:$BACKEND_PORT" pm2 start npm --name $PM2_FRONTEND_NAME --cwd "$BASE_DIR/frontend" -- start -- -p $FRONTEND_PORT
+NEXT_PUBLIC_API_BASE_URL="$BACKEND_URL" pm2 start npm --name $PM2_FRONTEND_NAME --cwd "$BASE_DIR/frontend" -- start -- -p $FRONTEND_PORT
 
 # Guardar configuración de pm2
 pm2 save
@@ -132,9 +136,9 @@ echo -e "${GREEN}=============================================="
 echo "   ✓ CT4 Identity System Iniciado"
 echo "=============================================="
 echo -e "${NC}"
-echo -e "  ${CYAN}Backend:${NC}  http://localhost:$BACKEND_PORT"
-echo -e "  ${CYAN}Frontend:${NC} http://localhost:$FRONTEND_PORT"
-echo -e "  ${CYAN}API Docs:${NC} http://localhost:$BACKEND_PORT/docs"
+echo -e "  ${CYAN}Frontend:${NC} http://${PUBLIC_IP}:$FRONTEND_PORT"
+echo -e "  ${CYAN}Backend:${NC}  http://${PUBLIC_IP}:$BACKEND_PORT"
+echo -e "  ${CYAN}API Docs:${NC} http://${PUBLIC_IP}:$BACKEND_PORT/docs"
 echo ""
 echo -e "${YELLOW}Comandos útiles:${NC}"
 echo "  pm2 status          - Ver estado de los procesos"
