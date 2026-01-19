@@ -215,19 +215,6 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-slate-800">
-        <div className="flex items-center gap-3 px-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center">
-            <span className="text-xs font-bold text-white">OP</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-slate-300 truncate">Operador</p>
-            <p className="text-xs text-slate-500">Admin</p>
-          </div>
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Conectado" />
-        </div>
-      </div>
     </aside>
   );
 }
