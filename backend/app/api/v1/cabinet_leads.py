@@ -102,6 +102,25 @@ def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/auto-processor/status")
+def get_auto_processor_status() -> Dict[str, Any]:
+    """
+    Retorna el estado del procesador automático de leads.
+    Incluye: si está habilitado, intervalo, próxima ejecución, última ejecución.
+    """
+    from app.services.auto_processor import get_scheduler_status
+    return get_scheduler_status()
+
+
+@router.post("/auto-processor/trigger")
+def trigger_auto_processor() -> Dict[str, Any]:
+    """
+    Dispara manualmente una ejecución del procesador automático.
+    """
+    from app.services.auto_processor import trigger_manual_run
+    return trigger_manual_run()
+
+
 @router.post("/process-new")
 def process_new_leads(
     background_tasks: BackgroundTasks,

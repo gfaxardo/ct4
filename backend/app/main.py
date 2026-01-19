@@ -1,8 +1,10 @@
 import logging
 import json
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import health, v1
+from app.services.auto_processor import start_scheduler, stop_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,10 +32,24 @@ logger = logging.getLogger()
 logger.handlers = [handler]
 logger.setLevel(logging.INFO)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle manager para iniciar/detener servicios."""
+    # Startup
+    logger.info("Iniciando servicios de background...")
+    start_scheduler()
+    yield
+    # Shutdown
+    logger.info("Deteniendo servicios de background...")
+    stop_scheduler()
+
+
 app = FastAPI(
     title="CT4 Identity Canonical System",
     description="Sistema de Identidad Canónica - Fase 1",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(

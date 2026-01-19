@@ -7,8 +7,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getPendingLeadsCount, processNewLeads, getIdentityRuns, ApiError } from '@/lib/api';
-import type { PendingLeadsCount, ProcessNewLeadsResponse } from '@/lib/api';
+import { getPendingLeadsCount, processNewLeads, getIdentityRuns, getAutoProcessorStatus, ApiError } from '@/lib/api';
+import type { PendingLeadsCount, ProcessNewLeadsResponse, AutoProcessorStatus } from '@/lib/api';
 import StatCard from '@/components/StatCard';
 import { PageLoadingOverlay } from '@/components/Skeleton';
 
@@ -91,13 +91,18 @@ export default function ProcessLeadsPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshIndex, setRefreshIndex] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [autoProcessorStatus, setAutoProcessorStatus] = useState<AutoProcessorStatus | null>(null);
   const router = useRouter();
 
   const loadPendingCount = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getPendingLeadsCount();
+      const [data, status] = await Promise.all([
+        getPendingLeadsCount(),
+        getAutoProcessorStatus().catch(() => null)
+      ]);
       setPendingInfo(data);
+      setAutoProcessorStatus(status);
       setError(null);
     } catch (err: unknown) {
       console.error('Error cargando pendientes:', err);
@@ -414,6 +419,85 @@ export default function ProcessLeadsPage() {
         </div>
       )}
 
+      {/* Auto-Processor Status */}
+      {autoProcessorStatus && (
+        <div className={`rounded-xl border p-6 ${
+          autoProcessorStatus.enabled && autoProcessorStatus.running 
+            ? 'bg-emerald-50 border-emerald-200' 
+            : 'bg-slate-50 border-slate-200'
+        }`}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-slate-900 flex items-center gap-2">
+              <svg className="w-5 h-5 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Auto-Procesamiento
+            </h2>
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+              autoProcessorStatus.enabled && autoProcessorStatus.running
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-slate-200 text-slate-600'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${
+                autoProcessorStatus.enabled && autoProcessorStatus.running ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+              }`}></span>
+              {autoProcessorStatus.enabled && autoProcessorStatus.running ? 'Activo' : 'Inactivo'}
+            </span>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="text-slate-500">Intervalo</span>
+              <p className="font-medium text-slate-900">{autoProcessorStatus.interval_minutes} minutos</p>
+            </div>
+            <div>
+              <span className="text-slate-500">Próxima ejecución</span>
+              <p className="font-medium text-slate-900">
+                {autoProcessorStatus.next_run 
+                  ? new Date(autoProcessorStatus.next_run).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+                  : '—'}
+              </p>
+            </div>
+            <div>
+              <span className="text-slate-500">Estado actual</span>
+              <p className="font-medium text-slate-900">
+                {autoProcessorStatus.is_processing ? 'Procesando...' : 'En espera'}
+              </p>
+            </div>
+            <div>
+              <span className="text-slate-500">Última ejecución</span>
+              <p className="font-medium text-slate-900">
+                {autoProcessorStatus.last_run 
+                  ? formatDate(autoProcessorStatus.last_run.timestamp)
+                  : 'Nunca'}
+              </p>
+            </div>
+          </div>
+          
+          {autoProcessorStatus.last_run && (
+            <div className={`mt-4 pt-4 border-t ${
+              autoProcessorStatus.enabled ? 'border-emerald-200' : 'border-slate-200'
+            }`}>
+              <p className="text-xs text-slate-600">
+                <span className="font-medium">Última corrida:</span>{' '}
+                {autoProcessorStatus.last_run.status === 'completed' && '✅ Completada'}
+                {autoProcessorStatus.last_run.status === 'no_pending' && '✓ Sin pendientes'}
+                {autoProcessorStatus.last_run.status === 'error' && `❌ Error: ${autoProcessorStatus.last_run.error}`}
+                {autoProcessorStatus.last_run.duration_seconds && 
+                  ` (${Math.round(autoProcessorStatus.last_run.duration_seconds)}s)`
+                }
+              </p>
+            </div>
+          )}
+          
+          <div className="mt-4 pt-4 border-t border-slate-200/50">
+            <p className="text-xs text-slate-500">
+              💡 El sistema revisa automáticamente cada {autoProcessorStatus.interval_minutes} minutos si hay leads nuevos y los procesa sin intervención manual.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Info Panel */}
       <div className="bg-slate-50 rounded-xl border border-slate-200 p-6">
         <h2 className="font-semibold text-slate-900 mb-4">¿Cómo funciona?</h2>
@@ -433,6 +517,10 @@ export default function ProcessLeadsPage() {
           <div className="flex items-start gap-2">
             <span className="flex-shrink-0 w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-xs font-medium">4</span>
             <p>El progreso se puede monitorear en <button onClick={() => router.push('/runs')} className="text-cyan-600 hover:text-cyan-700 font-medium underline">Identidad → Auditoría / Runs</button></p>
+          </div>
+          <div className="flex items-start gap-2 mt-4 pt-4 border-t border-slate-200">
+            <span className="flex-shrink-0 w-5 h-5 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center text-xs">⚡</span>
+            <p><strong>Automático:</strong> El backend revisa cada 5 minutos si hay leads nuevos y los procesa automáticamente. Solo usa el botón manual si necesitas procesar inmediatamente.</p>
           </div>
         </div>
       </div>

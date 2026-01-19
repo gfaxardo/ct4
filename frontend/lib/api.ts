@@ -1059,6 +1059,32 @@ export async function processNewLeads(
   );
 }
 
+// Auto-Procesador: Estado y control
+export interface AutoProcessorStatus {
+  enabled: boolean;
+  running: boolean;
+  interval_minutes: number;
+  next_run: string | null;
+  is_processing: boolean;
+  last_run: {
+    status: string;
+    pending_before?: number;
+    pending_count?: number;
+    result?: any;
+    duration_seconds?: number;
+    timestamp: string;
+    error?: string;
+  } | null;
+}
+
+export async function getAutoProcessorStatus(): Promise<AutoProcessorStatus> {
+  return fetchApi<AutoProcessorStatus>('/api/v1/cabinet-leads/auto-processor/status');
+}
+
+export async function triggerAutoProcessor(): Promise<any> {
+  return fetchApi<any>('/api/v1/cabinet-leads/auto-processor/trigger', { method: 'POST' });
+}
+
 // ============================================================================
 // Identity Origin Audit API
 // ============================================================================
