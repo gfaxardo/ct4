@@ -5,12 +5,23 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { getPendingLeadsCount, processNewLeads, ApiError } from '@/lib/api';
+import { getPendingLeadsCount, processNewLeads, getIdentityRuns, ApiError } from '@/lib/api';
 import type { PendingLeadsCount, ProcessNewLeadsResponse } from '@/lib/api';
 import StatCard from '@/components/StatCard';
 import { PageLoadingOverlay } from '@/components/Skeleton';
+
+// Formatear fecha de manera legible
+const formatDate = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return '—';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('es-EC', { 
+    day: '2-digit', 
+    month: 'short',
+    year: 'numeric'
+  }).replace('.', '');
+};
 
 // Icons
 const Icons = {
@@ -58,17 +69,27 @@ const Icons = {
   ),
 };
 
+// Pasos del procesamiento
+const PROCESS_STEPS = [
+  { id: 1, name: 'Refrescando índice de drivers', duration: '~10s' },
+  { id: 2, name: 'Procesando leads (matching)', duration: '~2-3min' },
+  { id: 3, name: 'Poblando eventos', duration: '~1-2min' },
+  { id: 4, name: 'Actualizando vistas materializadas', duration: '~30s' },
+];
+
 export default function ProcessLeadsPage() {
   const [pendingInfo, setPendingInfo] = useState<PendingLeadsCount | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [result, setResult] = useState<ProcessNewLeadsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshIndex, setRefreshIndex] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const router = useRouter();
 
-  const loadPendingCount = async () => {
+  const loadPendingCount = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getPendingLeadsCount();
@@ -82,46 +103,91 @@ export default function ProcessLeadsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Verificar estado de la última corrida
+  const checkRunStatus = useCallback(async () => {
+    try {
+      const runs = await getIdentityRuns({ limit: 1, job_type: 'identity_run' });
+      if (runs.items && runs.items.length > 0) {
+        const lastRun = runs.items[0];
+        if (lastRun.status === 'running') {
+          setProcessing(true);
+          // Estimar el paso basado en el tiempo transcurrido
+          const startTime = new Date(lastRun.started_at).getTime();
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          setElapsedTime(elapsed);
+          
+          // Estimar paso basado en tiempo
+          if (elapsed < 15) setCurrentStep(1);
+          else if (elapsed < 180) setCurrentStep(2);
+          else if (elapsed < 300) setCurrentStep(3);
+          else setCurrentStep(4);
+        } else if (lastRun.status === 'completed' && processing) {
+          // Procesamiento terminó
+          setProcessing(false);
+          setCurrentStep(0);
+          loadPendingCount();
+        }
+      }
+    } catch (err) {
+      console.error('Error verificando estado:', err);
+    }
+  }, [processing, loadPendingCount]);
 
   useEffect(() => {
     loadPendingCount();
-  }, []);
+    checkRunStatus();
+  }, [loadPendingCount, checkRunStatus]);
 
-  // Auto-refresh cada 30 segundos si está habilitado
+  // Auto-refresh cada 30 segundos si no está procesando
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || processing) return;
     
     const interval = setInterval(() => {
       loadPendingCount();
     }, 30000);
     
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, processing, loadPendingCount]);
+
+  // Durante procesamiento, actualizar cada 5 segundos
+  useEffect(() => {
+    if (!processing) return;
+    
+    const interval = setInterval(() => {
+      setElapsedTime(prev => prev + 5);
+      checkRunStatus();
+      loadPendingCount();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [processing, checkRunStatus, loadPendingCount]);
 
   const handleProcess = async () => {
     try {
       setProcessing(true);
+      setCurrentStep(1);
+      setElapsedTime(0);
       setError(null);
       setResult(null);
       
       const response = await processNewLeads(refreshIndex);
       setResult(response);
       
-      if (response.status === 'processing') {
-        // Redirigir a corridas después de 2 segundos
-        setTimeout(() => {
-          router.push('/runs');
-        }, 2000);
+      if (response.status === 'no_pending') {
+        setProcessing(false);
+        setCurrentStep(0);
       }
+      // Si está procesando, el polling se encargará de actualizar
     } catch (err: unknown) {
+      setProcessing(false);
+      setCurrentStep(0);
       if (err instanceof ApiError) {
         setError(err.detail || err.message);
       } else if (err instanceof Error) {
         setError(err.message);
       }
-    } finally {
-      setProcessing(false);
     }
   };
 
@@ -194,7 +260,7 @@ export default function ProcessLeadsPage() {
           />
           <StatCard
             title="Último Lead"
-            value={pendingInfo.max_lead_date?.split('T')[0] || '—'}
+            value={formatDate(pendingInfo.max_lead_date)}
             subtitle="fecha más reciente"
             icon={Icons.calendar}
             variant="default"
@@ -202,123 +268,147 @@ export default function ProcessLeadsPage() {
         </div>
       )}
 
-      {/* Main Action Card */}
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
-        {hasPending ? (
-          <>
-            {/* Pending Alert */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <div className="flex items-start gap-3">
-                <div className="text-amber-500">{Icons.alert}</div>
-                <div>
-                  <p className="font-semibold text-amber-800">
-                    {pendingCount.toLocaleString()} registros nuevos detectados
-                  </p>
-                  <p className="text-sm text-amber-700 mt-1">
-                    Hay leads en la tabla que aún no han sido procesados por el sistema de identidad.
-                    {pendingInfo?.last_processed_date && (
-                      <> Último procesamiento: <strong>{pendingInfo.last_processed_date}</strong></>
-                    )}
+      {/* Processing Progress */}
+      {processing && (
+        <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            {Icons.spinner}
+            <div>
+              <p className="font-semibold text-cyan-900">Procesando leads...</p>
+              <p className="text-sm text-cyan-700">
+                Tiempo transcurrido: {Math.floor(elapsedTime / 60)}:{(elapsedTime % 60).toString().padStart(2, '0')}
+              </p>
+            </div>
+          </div>
+          
+          {/* Steps Progress */}
+          <div className="space-y-3">
+            {PROCESS_STEPS.map((step) => (
+              <div key={step.id} className="flex items-center gap-3">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  currentStep > step.id 
+                    ? 'bg-emerald-500 text-white' 
+                    : currentStep === step.id 
+                    ? 'bg-cyan-500 text-white animate-pulse' 
+                    : 'bg-slate-200 text-slate-500'
+                }`}>
+                  {currentStep > step.id ? '✓' : step.id}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${
+                    currentStep >= step.id ? 'text-cyan-900' : 'text-slate-400'
+                  }`}>
+                    {step.name}
                   </p>
                 </div>
+                <span className="text-xs text-slate-500">{step.duration}</span>
               </div>
-            </div>
-
-            {/* Options */}
-            <div className="space-y-3">
-              <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={refreshIndex}
-                  onChange={(e) => setRefreshIndex(e.target.checked)}
-                  className="w-4 h-4 text-cyan-600 rounded focus:ring-cyan-500"
-                  disabled={processing}
-                />
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Actualizar índice de drivers</p>
-                  <p className="text-xs text-slate-500">Refrescar drivers_index antes de procesar (recomendado)</p>
-                </div>
-              </label>
-            </div>
-
-            {/* Process Button */}
-            <button
-              onClick={handleProcess}
-              disabled={processing}
-              className="w-full flex items-center justify-center gap-2 px-4 py-4 bg-cyan-600 text-white rounded-xl hover:bg-cyan-700 transition-colors font-semibold text-lg disabled:bg-slate-300 disabled:cursor-not-allowed"
-            >
-              {processing ? (
-                <>
-                  {Icons.spinner}
-                  Procesando...
-                </>
-              ) : (
-                <>
-                  {Icons.play}
-                  Procesar {pendingCount.toLocaleString()} Leads Nuevos
-                </>
-              )}
-            </button>
-          </>
-        ) : (
-          /* All caught up */
-          <div className="text-center py-8">
-            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-semibold text-slate-900 mb-2">Todo está al día</h2>
-            <p className="text-slate-600">
-              No hay leads nuevos pendientes de procesar.
-              {pendingInfo?.last_processed_date && (
-                <> Último procesamiento: <strong>{pendingInfo.last_processed_date}</strong></>
-              )}
+            ))}
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-cyan-200">
+            <p className="text-xs text-cyan-700">
+              💡 Puedes ir a <button onClick={() => router.push('/runs')} className="underline font-medium">Corridas</button> para ver el detalle del procesamiento
             </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Result */}
-        {result && result.status === 'processing' && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <div className="text-emerald-500">{Icons.check}</div>
-              <div className="flex-1">
-                <p className="font-medium text-emerald-800">Procesamiento iniciado</p>
-                <p className="text-sm text-emerald-700 mt-1">{result.message}</p>
-                <p className="text-sm text-emerald-600 mt-2 font-medium">
-                  ⏳ Redirigiendo a corridas...
-                </p>
+      {/* Main Action Card */}
+      {!processing && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
+          {hasPending ? (
+            <>
+              {/* Pending Alert */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <div className="text-amber-500">{Icons.alert}</div>
+                  <div>
+                    <p className="font-semibold text-amber-800">
+                      {pendingCount.toLocaleString()} registros nuevos detectados
+                    </p>
+                    <p className="text-sm text-amber-700 mt-1">
+                      Hay leads en la tabla que aún no han sido procesados por el sistema de identidad.
+                      {pendingInfo?.last_processed_date && (
+                        <> Último procesamiento: <strong>{formatDate(pendingInfo.last_processed_date)}</strong></>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Options */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={refreshIndex}
+                    onChange={(e) => setRefreshIndex(e.target.checked)}
+                    className="w-4 h-4 text-cyan-600 rounded focus:ring-cyan-500"
+                    disabled={processing}
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Actualizar índice de drivers</p>
+                    <p className="text-xs text-slate-500">Refrescar drivers_index antes de procesar (recomendado)</p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Process Button */}
+              <button
+                onClick={handleProcess}
+                disabled={processing}
+                className="w-full flex items-center justify-center gap-2 px-4 py-4 bg-cyan-600 text-white rounded-xl hover:bg-cyan-700 transition-colors font-semibold text-lg disabled:bg-slate-300 disabled:cursor-not-allowed"
+              >
+                {Icons.play}
+                Procesar {pendingCount.toLocaleString()} Leads Nuevos
+              </button>
+            </>
+          ) : (
+            /* All caught up */
+            <div className="text-center py-8">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-semibold text-slate-900 mb-2">Todo está al día</h2>
+              <p className="text-slate-600">
+                No hay leads nuevos pendientes de procesar.
+                {pendingInfo?.last_processed_date && (
+                  <> Último procesamiento: <strong>{formatDate(pendingInfo.last_processed_date)}</strong></>
+                )}
+              </p>
+            </div>
+          )}
+
+          {/* Result */}
+          {result && result.status === 'no_pending' && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-blue-500">{Icons.check}</div>
+                <div>
+                  <p className="font-medium text-blue-800">Sin pendientes</p>
+                  <p className="text-sm text-blue-600 mt-1">{result.message}</p>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {result && result.status === 'no_pending' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <div className="text-blue-500">{Icons.check}</div>
-              <div>
-                <p className="font-medium text-blue-800">Sin pendientes</p>
-                <p className="text-sm text-blue-600 mt-1">{result.message}</p>
+          {/* Error */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-red-500">{Icons.alert}</div>
+                <div>
+                  <p className="font-medium text-red-800">Error</p>
+                  <p className="text-sm text-red-600 mt-1">{error}</p>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <div className="text-red-500">{Icons.alert}</div>
-              <div>
-                <p className="font-medium text-red-800">Error</p>
-                <p className="text-sm text-red-600 mt-1">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Info Panel */}
       <div className="bg-slate-50 rounded-xl border border-slate-200 p-6">
@@ -326,15 +416,15 @@ export default function ProcessLeadsPage() {
         <div className="space-y-3 text-sm text-slate-600">
           <div className="flex items-start gap-2">
             <span className="flex-shrink-0 w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-xs font-medium">1</span>
-            <p>El sistema compara los registros en <code className="bg-white px-1.5 py-0.5 rounded border text-xs">module_ct_cabinet_leads</code> con los ya procesados en <code className="bg-white px-1.5 py-0.5 rounded border text-xs">identity_links</code></p>
+            <p>El sistema compara los registros en <code className="bg-white px-1.5 py-0.5 rounded border text-xs">module_ct_cabinet_leads</code> con los ya procesados</p>
           </div>
           <div className="flex items-start gap-2">
             <span className="flex-shrink-0 w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-xs font-medium">2</span>
-            <p>Los leads nuevos se procesan automáticamente a través del motor de identidad</p>
+            <p>Los leads nuevos se procesan a través del motor de identidad (~2-3 min para 800+ registros)</p>
           </div>
           <div className="flex items-start gap-2">
             <span className="flex-shrink-0 w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-xs font-medium">3</span>
-            <p>Se actualizan las vistas materializadas y se refrescan los índices</p>
+            <p>Se actualizan las vistas materializadas automáticamente</p>
           </div>
           <div className="flex items-start gap-2">
             <span className="flex-shrink-0 w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-xs font-medium">4</span>
