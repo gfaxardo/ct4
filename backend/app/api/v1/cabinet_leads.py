@@ -78,11 +78,12 @@ def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
         max_lead_date = max_date_query.scalar()
         
         # Fecha del último procesamiento real (última corrida completada)
+        # status usa MAYÚSCULAS (COMPLETED), job_type usa minúsculas (identity_run)
         last_processed_query = db.execute(text("""
             SELECT MAX(completed_at)::date 
             FROM ops.ingestion_runs 
             WHERE status = 'COMPLETED' 
-            AND job_type = 'IDENTITY_RUN'
+            AND job_type = 'identity_run'
         """))
         last_processed_date = last_processed_query.scalar()
         
