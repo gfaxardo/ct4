@@ -6,6 +6,7 @@ Combines all v1 endpoint routers into a single router for the main application.
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    auth,
     attribution,
     cabinet_leads,
     dashboard,
@@ -21,6 +22,7 @@ from app.api.v1.payments import router as payments_router
 
 router = APIRouter()
 
+router.include_router(auth.router, prefix="/auth", tags=["auth"])
 router.include_router(identity.router, prefix="/identity", tags=["identity"])
 router.include_router(identity_audit.router, prefix="/identity", tags=["identity-audit"])
 router.include_router(ops.router, prefix="/ops", tags=["ops"])

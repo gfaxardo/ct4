@@ -10,3 +10,4 @@ python-multipart>=0.0.12
 
 
 apscheduler>=3.10.0
+httpx>=0.25.0
