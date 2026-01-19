@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import Sidebar from '@/components/Sidebar'
-import Topbar from '@/components/Topbar'
 import { Providers } from './providers'
 
 export const metadata: Metadata = {
@@ -22,13 +20,7 @@ export default function RootLayout({
       </head>
       <body className="font-sans" suppressHydrationWarning>
         <Providers>
-          <Sidebar />
-          <Topbar />
-          <main className="ml-64 mt-16 min-h-[calc(100vh-4rem)]">
-            <div className="p-6 animate-fade-in">
-              {children}
-            </div>
-          </main>
+          {children}
         </Providers>
       </body>
     </html>
