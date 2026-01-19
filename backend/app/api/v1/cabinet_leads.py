@@ -1,11 +1,11 @@
 """
-Endpoint para upload y procesamiento de CSV de cabinet leads
+Endpoint para procesamiento automático de cabinet leads
 """
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime, date, timedelta
 import csv
 import io
@@ -17,6 +17,142 @@ from app.services.cabinet_leads_processor import CabinetLeadsProcessor
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ============================================================================
+# NUEVO: Endpoint para procesar automáticamente nuevos leads
+# ============================================================================
+
+@router.get("/pending-count")
+def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Retorna el conteo de leads pendientes de procesar.
+    Compara registros en module_ct_cabinet_leads vs identity_links.
+    """
+    try:
+        # Total en tabla
+        total_query = db.execute(text("""
+            SELECT COUNT(*) FROM public.module_ct_cabinet_leads
+        """))
+        total_in_table = total_query.scalar() or 0
+        
+        # Procesados (en identity_links)
+        processed_query = db.execute(text("""
+            SELECT COUNT(DISTINCT source_pk) 
+            FROM canon.identity_links 
+            WHERE source_table = 'module_ct_cabinet_leads'
+        """))
+        total_processed = processed_query.scalar() or 0
+        
+        # Pendientes
+        pending = total_in_table - total_processed
+        
+        # Fecha del último registro en la tabla
+        max_date_query = db.execute(text("""
+            SELECT MAX(lead_created_at)::date 
+            FROM public.module_ct_cabinet_leads
+        """))
+        max_lead_date = max_date_query.scalar()
+        
+        # Fecha del último procesado
+        last_processed_query = db.execute(text("""
+            SELECT MAX(snapshot_date)::date 
+            FROM canon.identity_links 
+            WHERE source_table = 'module_ct_cabinet_leads'
+        """))
+        last_processed_date = last_processed_query.scalar()
+        
+        return {
+            "total_in_table": total_in_table,
+            "total_processed": total_processed,
+            "pending_count": max(0, pending),
+            "max_lead_date": str(max_lead_date) if max_lead_date else None,
+            "last_processed_date": str(last_processed_date) if last_processed_date else None,
+            "has_pending": pending > 0
+        }
+    except Exception as e:
+        logger.error(f"Error obteniendo conteo de pendientes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/process-new")
+def process_new_leads(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    refresh_index: bool = Query(True, description="Refrescar drivers_index antes de procesar")
+) -> Dict[str, Any]:
+    """
+    Detecta y procesa automáticamente los nuevos leads en module_ct_cabinet_leads
+    que aún no han sido procesados.
+    """
+    try:
+        # Obtener conteo de pendientes
+        pending_info = get_pending_leads_count(db)
+        
+        if not pending_info["has_pending"]:
+            return {
+                "status": "no_pending",
+                "message": "No hay leads nuevos para procesar",
+                "pending_count": 0
+            }
+        
+        # Determinar rango de fechas a procesar
+        # Desde el último procesado (o inicio si no hay) hasta el máximo en tabla
+        date_from = None
+        if pending_info["last_processed_date"]:
+            date_from = datetime.strptime(pending_info["last_processed_date"], "%Y-%m-%d").date()
+        
+        date_to = None
+        if pending_info["max_lead_date"]:
+            date_to = datetime.strptime(pending_info["max_lead_date"], "%Y-%m-%d").date()
+        
+        # Ejecutar procesamiento en background
+        background_tasks.add_task(
+            _process_new_leads_background,
+            date_from=date_from,
+            date_to=date_to,
+            refresh_index=refresh_index
+        )
+        
+        return {
+            "status": "processing",
+            "message": f"Procesando {pending_info['pending_count']} leads nuevos",
+            "pending_count": pending_info["pending_count"],
+            "date_from": str(date_from) if date_from else None,
+            "date_to": str(date_to) if date_to else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Error iniciando procesamiento: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _process_new_leads_background(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    refresh_index: bool = True
+):
+    """Ejecuta el procesamiento de nuevos leads en background"""
+    db = SessionLocal()
+    try:
+        logger.info(f"Iniciando procesamiento automático de nuevos leads (date_from={date_from}, date_to={date_to})")
+        
+        processor = CabinetLeadsProcessor(db)
+        results = processor.process_all(
+            date_from=date_from,
+            date_to=date_to,
+            refresh_index=refresh_index
+        )
+        
+        logger.info(f"Procesamiento automático completado: {results}")
+        
+        if results.get("errors"):
+            logger.warning(f"Errores durante procesamiento: {results['errors']}")
+    
+    except Exception as e:
+        logger.error(f"Error en procesamiento automático: {e}", exc_info=True)
+    finally:
+        db.close()
 
 
 def parse_boolean(value: str) -> Optional[bool]:

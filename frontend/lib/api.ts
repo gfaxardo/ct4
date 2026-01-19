@@ -1023,6 +1023,36 @@ export async function getCabinetLeadsDiagnostics(): Promise<CabinetLeadsDiagnost
 
 export type { CabinetLeadsDiagnostics };
 
+// Nuevo: Obtener conteo de leads pendientes
+export interface PendingLeadsCount {
+  total_in_table: number;
+  total_processed: number;
+  pending_count: number;
+  max_lead_date: string | null;
+  last_processed_date: string | null;
+  has_pending: boolean;
+}
+
+export async function getPendingLeadsCount(): Promise<PendingLeadsCount> {
+  return fetchApi<PendingLeadsCount>('/api/v1/cabinet-leads/pending-count');
+}
+
+// Nuevo: Procesar nuevos leads automáticamente
+export interface ProcessNewLeadsResponse {
+  status: 'processing' | 'no_pending';
+  message: string;
+  pending_count: number;
+  date_from?: string | null;
+  date_to?: string | null;
+}
+
+export async function processNewLeads(refreshIndex: boolean = true): Promise<ProcessNewLeadsResponse> {
+  return fetchApi<ProcessNewLeadsResponse>(
+    `/api/v1/cabinet-leads/process-new?refresh_index=${refreshIndex}`,
+    { method: 'POST' }
+  );
+}
+
 // ============================================================================
 // Identity Origin Audit API
 // ============================================================================

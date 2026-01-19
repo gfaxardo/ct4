@@ -101,7 +101,7 @@ const navItems: NavItem[] = [
     children: [
       { label: 'Alerts', href: '/ops/alerts', icon: Icons.dot },
       { label: 'Health', href: '/ops/health', icon: Icons.dot },
-      { label: 'Cargar Leads', href: '/cabinet-leads/upload', icon: Icons.dot },
+      { label: 'Procesar Leads', href: '/cabinet-leads/upload', icon: Icons.dot },
     ],
   },
 ];
