@@ -87,6 +87,16 @@ def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
         """))
         last_processed_date = last_processed_query.scalar()
         
+        # Info de pagos (module_ct_cabinet_payments → ops.yango_payment_ledger)
+        payments_query = db.execute(text("""
+            SELECT 
+                (SELECT MAX(created_at)::date FROM public.module_ct_cabinet_payments) as payments_max_date,
+                (SELECT COUNT(*) FROM public.module_ct_cabinet_payments) as payments_count,
+                (SELECT MAX(created_at)::date FROM ops.yango_payment_ledger) as ledger_max_date,
+                (SELECT COUNT(*) FROM ops.yango_payment_ledger) as ledger_count
+        """))
+        payments_row = payments_query.fetchone()
+        
         return {
             "total_in_table": total_in_table,
             "total_in_links": total_in_links,
@@ -95,7 +105,14 @@ def get_pending_leads_count(db: Session = Depends(get_db)) -> Dict[str, Any]:
             "pending_count": max(0, pending),
             "max_lead_date": str(max_lead_date) if max_lead_date else None,
             "last_processed_date": str(last_processed_date) if last_processed_date else None,
-            "has_pending": pending > 0
+            "has_pending": pending > 0,
+            # Info de pagos
+            "payments": {
+                "source_max_date": str(payments_row[0]) if payments_row[0] else None,
+                "source_count": payments_row[1] or 0,
+                "ledger_max_date": str(payments_row[2]) if payments_row[2] else None,
+                "ledger_count": payments_row[3] or 0
+            }
         }
     except Exception as e:
         logger.error(f"Error obteniendo conteo de pendientes: {e}")

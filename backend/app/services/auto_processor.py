@@ -136,13 +136,38 @@ def process_pending_leads() -> dict:
         _is_processing = False
 
 
+def ingest_yango_payments() -> dict:
+    """Ejecuta la ingesta de pagos desde module_ct_cabinet_payments al ledger."""
+    db = SessionLocal()
+    try:
+        logger.info("[AUTO-PROCESSOR] Ejecutando ingesta de pagos Yango...")
+        result = db.execute(text("SELECT ops.ingest_yango_payments_snapshot()"))
+        rows = result.scalar() or 0
+        db.commit()
+        logger.info(f"[AUTO-PROCESSOR] Ingesta de pagos completada: {rows} filas")
+        return {"status": "success", "rows_ingested": rows}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[AUTO-PROCESSOR] Error en ingesta de pagos: {e}")
+        return {"status": "error", "error": str(e)}
+    finally:
+        db.close()
+
+
 def auto_process_job():
-    """Job que se ejecuta periódicamente para procesar leads."""
+    """Job que se ejecuta periódicamente para procesar leads y pagos."""
     logger.debug("[AUTO-PROCESSOR] Ejecutando job de auto-procesamiento...")
     try:
+        # 1. Procesar leads pendientes
         result = process_pending_leads()
         if result.get("status") == "completed":
-            logger.info(f"[AUTO-PROCESSOR] Job completado: {result.get('result', {}).get('ingestion', {}).get('stats', {})}")
+            logger.info(f"[AUTO-PROCESSOR] Leads completado: {result.get('result', {}).get('ingestion', {}).get('stats', {})}")
+        
+        # 2. Ingestar pagos Yango
+        payments_result = ingest_yango_payments()
+        if payments_result.get("rows_ingested", 0) > 0:
+            logger.info(f"[AUTO-PROCESSOR] Pagos ingestados: {payments_result.get('rows_ingested')}")
+            
     except Exception as e:
         logger.error(f"[AUTO-PROCESSOR] Error en job: {e}", exc_info=True)
 

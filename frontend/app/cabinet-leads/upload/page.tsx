@@ -277,6 +277,43 @@ export default function ProcessLeadsPage() {
         </div>
       )}
 
+      {/* Payments Status */}
+      {pendingInfo?.payments && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <h2 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Pagos Cabinet (module_ct_cabinet_payments)
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-slate-50 rounded-lg p-3">
+              <p className="text-xs text-slate-500">Registros en tabla</p>
+              <p className="text-xl font-bold text-slate-900">{pendingInfo.payments.source_count.toLocaleString()}</p>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-3">
+              <p className="text-xs text-slate-500">Último registro</p>
+              <p className="text-xl font-bold text-slate-900">{formatDate(pendingInfo.payments.source_max_date)}</p>
+            </div>
+            <div className="bg-emerald-50 rounded-lg p-3">
+              <p className="text-xs text-emerald-600">En Ledger</p>
+              <p className="text-xl font-bold text-emerald-700">{pendingInfo.payments.ledger_count.toLocaleString()}</p>
+            </div>
+            <div className="bg-emerald-50 rounded-lg p-3">
+              <p className="text-xs text-emerald-600">Ledger actualizado</p>
+              <p className="text-xl font-bold text-emerald-700">{formatDate(pendingInfo.payments.ledger_max_date)}</p>
+            </div>
+          </div>
+          {pendingInfo.payments.source_max_date !== pendingInfo.payments.ledger_max_date && (
+            <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-sm text-amber-700">
+                ⚠️ El ledger de pagos está desactualizado. Se sincroniza automáticamente cada 5 minutos.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Processing Progress */}
       {processing && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-6">

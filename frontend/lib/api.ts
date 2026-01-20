@@ -1033,6 +1033,12 @@ export interface PendingLeadsCount {
   max_lead_date: string | null;
   last_processed_date: string | null;
   has_pending: boolean;
+  payments?: {
+    source_max_date: string | null;
+    source_count: number;
+    ledger_max_date: string | null;
+    ledger_count: number;
+  };
 }
 
 export async function getPendingLeadsCount(): Promise<PendingLeadsCount> {
