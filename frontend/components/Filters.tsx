@@ -76,7 +76,10 @@ export default function Filters({
                 onChange={(e) => handleChange(field.name, e.target.value || undefined)}
                 className="select"
               >
-                <option value="">Todos</option>
+                {/* Solo agregar opción default si las opciones no incluyen una con value="" */}
+                {!field.options?.some(opt => opt.value === '') && (
+                  <option value="">Todos</option>
+                )}
                 {field.options?.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}

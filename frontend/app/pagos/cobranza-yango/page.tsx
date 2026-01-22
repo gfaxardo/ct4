@@ -162,7 +162,7 @@ export default function CobranzaYangoPage() {
       label: 'Milestone alcanzado',
       type: 'select' as const,
       options: [
-        { value: '', label: 'Todos' },
+        { value: '', label: 'Todos los milestones' },
         { value: 'm1', label: 'Solo M1 (1-4 viajes)' },
         { value: 'm5', label: 'M5 pero no M25 (5-24 viajes)' },
         { value: 'm25', label: 'M25 alcanzado (25+ viajes)' },
@@ -175,13 +175,37 @@ export default function CobranzaYangoPage() {
       type: 'select' as const,
       options: weeklyKpis?.weeks 
         ? [
-            { value: '', label: 'Todas' },
-            ...weeklyKpis.weeks.map(w => ({
-              value: w.week_start,
-              label: `${new Date(w.week_start).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })} (${w.total_rows} drivers)`
-            }))
+            { value: '', label: 'Todas las semanas' },
+            ...weeklyKpis.weeks.map(w => {
+              // Usar iso_week del backend directamente si está disponible
+              // o calcular con fecha UTC para evitar problemas de timezone
+              const dateParts = w.week_start.split('-');
+              const year = parseInt(dateParts[0]);
+              const month = parseInt(dateParts[1]) - 1;
+              const day = parseInt(dateParts[2]);
+              const date = new Date(Date.UTC(year, month, day));
+              
+              const formattedDate = date.toLocaleDateString('es-ES', { 
+                day: 'numeric', 
+                month: 'short',
+                timeZone: 'UTC'
+              });
+              
+              // Calcular ISO week correctamente (ISO 8601)
+              const tempDate = new Date(Date.UTC(year, month, day));
+              tempDate.setUTCDate(tempDate.getUTCDate() + 4 - (tempDate.getUTCDay() || 7));
+              const yearStart = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 1));
+              const weekNum = Math.ceil((((tempDate.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+              const isoYear = tempDate.getUTCFullYear();
+              const isoWeek = `${isoYear}-${String(weekNum).padStart(2, '0')}`;
+              
+              return {
+                value: w.week_start,
+                label: `Sem ${isoWeek} · ${formattedDate} (${w.total_rows})`
+              };
+            })
           ]
-        : [{ value: '', label: 'Todas' }],
+        : [{ value: '', label: 'Todas las semanas' }],
     },
   ];
 

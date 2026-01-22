@@ -111,64 +111,70 @@ class CabinetLeadsProcessor:
             return results
     
     def _refresh_materialized_views(self) -> Dict[str, Any]:
-        """Refresca las materialized views relacionadas con cabinet leads"""
+        """Refresca TODAS las materialized views relacionadas con cabinet leads"""
         mv_results = {}
         
-        # MV 1: mv_yango_cabinet_claims_for_collection
-        mv_name_1 = "ops.mv_yango_cabinet_claims_for_collection"
-        logger.info(f"Refrescando {mv_name_1}...")
-        try:
-            # Verificar si existe índice único para usar CONCURRENTLY
-            has_unique = self._check_unique_index(mv_name_1)
-            
-            if has_unique:
-                try:
-                    self.db.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv_name_1}"))
-                    self.db.commit()
-                    mv_results[mv_name_1] = {"status": "ok", "method": "concurrent"}
-                    logger.info(f"{mv_name_1} refrescado con CONCURRENTLY")
-                except Exception as e:
-                    logger.warning(f"CONCURRENTLY falló para {mv_name_1}, usando refresh normal: {e}")
-                    self.db.rollback()
-                    self.db.execute(text(f"REFRESH MATERIALIZED VIEW {mv_name_1}"))
-                    self.db.commit()
-                    mv_results[mv_name_1] = {"status": "ok", "method": "normal"}
-            else:
-                self.db.execute(text(f"REFRESH MATERIALIZED VIEW {mv_name_1}"))
-                self.db.commit()
-                mv_results[mv_name_1] = {"status": "ok", "method": "normal"}
-                logger.info(f"{mv_name_1} refrescado (sin índice único)")
-        except Exception as e:
-            error_msg = f"Error refrescando {mv_name_1}: {str(e)}"
-            logger.error(error_msg)
-            mv_results[mv_name_1] = {"status": "error", "error": error_msg}
+        # Lista completa de MVs a refrescar (en orden de dependencia)
+        mvs_to_refresh = [
+            "ops.mv_yango_payments_ledger_latest",
+            "ops.mv_yango_payments_ledger_latest_enriched",
+            "ops.mv_cabinet_financial_14d",
+            "ops.mv_yango_cabinet_claims_for_collection",
+            "ops.mv_claims_payment_status_cabinet",
+            "ops.mv_payments_driver_matrix_cabinet",
+            "ops.mv_yango_cabinet_cobranza_enriched_14d",
+        ]
         
-        # MV 2: mv_cabinet_financial_14d (si existe)
-        mv_name_2 = "ops.mv_cabinet_financial_14d"
-        logger.info(f"Verificando si existe {mv_name_2}...")
-        try:
-            check_query = text("""
-                SELECT EXISTS (
-                    SELECT 1 FROM pg_matviews 
-                    WHERE schemaname = 'ops' 
-                    AND matviewname = 'mv_cabinet_financial_14d'
-                )
-            """)
-            exists = self.db.execute(check_query).scalar()
-            
-            if exists:
-                logger.info(f"Refrescando {mv_name_2}...")
-                self.db.execute(text(f"REFRESH MATERIALIZED VIEW {mv_name_2}"))
-                self.db.commit()
-                mv_results[mv_name_2] = {"status": "ok", "method": "normal"}
-                logger.info(f"{mv_name_2} refrescado")
-            else:
-                logger.info(f"{mv_name_2} no existe, omitiendo")
-                mv_results[mv_name_2] = {"status": "skipped", "reason": "does_not_exist"}
-        except Exception as e:
-            error_msg = f"Error verificando/refrescando {mv_name_2}: {str(e)}"
-            logger.error(error_msg)
-            mv_results[mv_name_2] = {"status": "error", "error": error_msg}
+        for mv_name in mvs_to_refresh:
+            logger.info(f"Refrescando {mv_name}...")
+            try:
+                # Verificar si existe
+                parts = mv_name.split('.')
+                if len(parts) == 2:
+                    schema_name, mv_name_only = parts
+                    check_query = text("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM pg_matviews 
+                            WHERE schemaname = :schema_name 
+                            AND matviewname = :mv_name
+                        )
+                    """)
+                    exists = self.db.execute(check_query, {
+                        "schema_name": schema_name,
+                        "mv_name": mv_name_only
+                    }).scalar()
+                    
+                    if not exists:
+                        logger.info(f"{mv_name} no existe, omitiendo")
+                        mv_results[mv_name] = {"status": "skipped", "reason": "does_not_exist"}
+                        continue
+                
+                # Intentar con CONCURRENTLY primero
+                has_unique = self._check_unique_index(mv_name)
+                
+                if has_unique:
+                    try:
+                        self.db.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {mv_name}"))
+                        self.db.commit()
+                        mv_results[mv_name] = {"status": "ok", "method": "concurrent"}
+                        logger.info(f"{mv_name} refrescado con CONCURRENTLY")
+                    except Exception as e:
+                        logger.warning(f"CONCURRENTLY falló para {mv_name}, usando refresh normal: {e}")
+                        self.db.rollback()
+                        self.db.execute(text(f"REFRESH MATERIALIZED VIEW {mv_name}"))
+                        self.db.commit()
+                        mv_results[mv_name] = {"status": "ok", "method": "normal"}
+                else:
+                    self.db.execute(text(f"REFRESH MATERIALIZED VIEW {mv_name}"))
+                    self.db.commit()
+                    mv_results[mv_name] = {"status": "ok", "method": "normal"}
+                    logger.info(f"{mv_name} refrescado")
+                    
+            except Exception as e:
+                error_msg = f"Error refrescando {mv_name}: {str(e)}"
+                logger.error(error_msg)
+                self.db.rollback()
+                mv_results[mv_name] = {"status": "error", "error": str(e)[:100]}
         
         return mv_results
     

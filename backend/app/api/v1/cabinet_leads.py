@@ -514,8 +514,9 @@ async def upload_cabinet_leads_csv(
             total_ignored += ignored
         
         # Ejecutar procesamiento automático si está habilitado
+        # SIEMPRE ejecutar si auto_process=True (puede haber leads pendientes de uploads anteriores)
         run_id = None
-        if auto_process and total_inserted > 0:
+        if auto_process:
             # Obtener rango de fechas del CSV para procesar solo lo nuevo
             date_from, date_to = get_date_range_from_csv(text_content)
             
@@ -525,6 +526,12 @@ async def upload_cabinet_leads_csv(
                     date_from = date_cutoff
                 elif not date_from:
                     date_from = date_cutoff
+            
+            # Si no hay nuevos registros, procesar todos los pendientes sin límite de fecha
+            if total_inserted == 0:
+                date_from = None
+                date_to = None
+                logger.info("No hay nuevos registros, procesando TODOS los leads pendientes")
             
             background_tasks.add_task(
                 _process_ingestion_after_upload,
