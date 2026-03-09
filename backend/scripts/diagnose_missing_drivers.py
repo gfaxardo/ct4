@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db import get_db
+from app.core.db import get_db
 from sqlalchemy import text
 
 def main():

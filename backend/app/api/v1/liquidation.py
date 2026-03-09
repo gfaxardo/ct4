@@ -11,8 +11,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import settings
-from app.db import get_db
+from app.core.config import settings
+from app.core.db import get_db
 from app.schemas.liquidation import (
     ScoutMarkPaidRequest,
     ScoutMarkPaidResponse,

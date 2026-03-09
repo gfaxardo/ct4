@@ -11,7 +11,7 @@ import csv
 import io
 import logging
 
-from app.db import get_db, SessionLocal
+from app.core.db import get_db, SessionLocal
 from app.schemas.cabinet_leads import CabinetLeadsUploadResponse
 from app.services.cabinet_leads_processor import CabinetLeadsProcessor
 

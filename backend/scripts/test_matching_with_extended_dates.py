@@ -4,7 +4,7 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from sqlalchemy import text
 from app.services.matching import MatchingEngine, IdentityCandidateInput
 from datetime import datetime, timedelta

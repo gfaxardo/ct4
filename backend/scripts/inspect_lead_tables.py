@@ -4,10 +4,9 @@ import sys
 from pathlib import Path
 backend_root = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_root))
-from app.config import settings
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import inspect
+from app.core.db import engine
 
-engine = create_engine(settings.database_url)
 inspector = inspect(engine)
 
 print('=== lead_ledger columns ===')

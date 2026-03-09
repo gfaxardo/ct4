@@ -50,6 +50,9 @@ Sistema end-to-end que:
 
 ## 📁 Estructura del Proyecto
 
+**Guía de arquitectura (organización y escalabilidad):** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)  
+**Mapa de rutas API backend:** [backend/docs/API_ORGANIZATION.md](backend/docs/API_ORGANIZATION.md)
+
 ```
 ct4/
 ├── backend/

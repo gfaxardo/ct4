@@ -13,6 +13,7 @@ import Badge from '@/components/Badge';
 import StatCard from '@/components/StatCard';
 import Pagination from '@/components/Pagination';
 import { PageLoadingOverlay } from '@/components/Skeleton';
+import { formatDateTime } from '@/lib/format';
 
 // Icons
 const Icons = {
@@ -117,16 +118,6 @@ export default function RunsPage() {
     setOffset(0);
   };
 
-  const formatDate = (dateStr: string | null): string => {
-    if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleString('es-PE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   const getStatusBadgeVariant = (status: IngestionRunStatus): 'success' | 'warning' | 'error' | 'info' => {
     switch (status) {
@@ -221,7 +212,7 @@ export default function RunsPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-sm text-slate-300">Última Corrida (#{lastRun.id})</p>
-              <p className="text-lg font-semibold">{formatDate(lastRun.started_at)}</p>
+              <p className="text-lg font-semibold">{formatDateTime(lastRun.started_at)}</p>
             </div>
             <Badge variant={getStatusBadgeVariant(lastRun.status)}>
               {lastRun.status}
@@ -337,10 +328,10 @@ export default function RunsPage() {
                       #{run.id}
                     </td>
                     <td className="py-3 px-4 text-sm text-slate-600">
-                      {formatDate(run.started_at)}
+                      {formatDateTime(run.started_at)}
                     </td>
                     <td className="py-3 px-4 text-sm text-slate-600">
-                      {formatDate(run.completed_at)}
+                      {formatDateTime(run.completed_at)}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <Badge variant={getStatusBadgeVariant(run.status)}>

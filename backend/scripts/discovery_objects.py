@@ -15,7 +15,7 @@ if sys.platform == 'win32':
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import settings
+from app.core.config import settings
 
 # Leer el script SQL
 sql_file = Path(__file__).parent.parent / "sql" / "ops" / "discovery_objects.sql"

@@ -8,11 +8,10 @@ import pandas as pd
 backend_root = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_root))
 
-from app.config import settings
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 def main():
-    engine = create_engine(settings.database_url)
+    from app.core.db import engine
     
     sql_file = Path(__file__).parent / "sql" / "analyze_missing_scout_attribution.sql"
     

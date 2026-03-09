@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from sqlalchemy import text
 
 def check_origin_missing():

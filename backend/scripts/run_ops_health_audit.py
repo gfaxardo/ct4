@@ -39,7 +39,7 @@ except ImportError:
 
 # Intentar importar settings, con fallback a variable de entorno
 try:
-    from app.config import settings
+    from app.core.config import settings
     DATABASE_URL = settings.database_url
 except ImportError as e:
     # Si no se puede importar (dependencias faltantes), usar variable de entorno

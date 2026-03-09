@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, text
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import settings
+from app.core.config import settings
 
 engine = create_engine(settings.database_url)
 conn = engine.connect()

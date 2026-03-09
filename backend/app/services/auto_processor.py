@@ -13,7 +13,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import text
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 
 logger = logging.getLogger(__name__)
 

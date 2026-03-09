@@ -8,7 +8,8 @@ from typing import Optional
 from datetime import datetime, date, timezone
 import logging
 
-from app.db import get_db
+from app.core.db import get_db
+from app.core.db_utils import row_to_dict
 from app.models.ops import Alert, AlertSeverity
 from app.schemas.ops_alerts import OpsAlertsResponse, OpsAlertRow, AlertSeverity as AlertSeveritySchema
 from app.schemas.ops_data_health import IdentitySystemHealthRow
@@ -247,7 +248,7 @@ def get_data_health(db: Session = Depends(get_db)):
             )
         
         # Convertir Row a dict para el schema
-        row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
+        row_dict = row_to_dict(row)
         
         # Convertir a schema
         return IdentitySystemHealthRow.model_validate(row_dict)
@@ -343,7 +344,7 @@ def get_raw_health_status(
         # Convertir a schemas
         items = []
         for row in rows:
-            row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
+            row_dict = row_to_dict(row)
             items.append(RawDataHealthStatusRow.model_validate(row_dict))
         
         return RawDataHealthStatusResponse(
@@ -438,7 +439,7 @@ def get_raw_freshness_status(
         # Convertir a schemas
         items = []
         for row in rows:
-            row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
+            row_dict = row_to_dict(row)
             items.append(RawDataFreshnessStatusRow.model_validate(row_dict))
         
         return RawDataFreshnessStatusResponse(
@@ -539,7 +540,7 @@ def get_raw_ingestion_daily(
         # Convertir a schemas
         items = []
         for row in rows:
-            row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
+            row_dict = row_to_dict(row)
             items.append(RawDataIngestionDailyRow.model_validate(row_dict))
         
         return RawDataIngestionDailyResponse(
@@ -678,7 +679,7 @@ def get_mv_health(
         calculated_at = datetime.now(timezone.utc)
         items = []
         for row in rows:
-            row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
+            row_dict = row_to_dict(row)
             # Agregar calculated_at
             row_dict['calculated_at'] = calculated_at
             items.append(MvHealthRow.model_validate(row_dict))
@@ -756,7 +757,7 @@ def get_health_checks(
         # Convertir a schemas
         items = []
         for row in rows:
-            row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
+            row_dict = row_to_dict(row)
             items.append(HealthCheckRow.model_validate(row_dict))
         
         return HealthChecksResponse(items=items)
@@ -812,32 +813,33 @@ def get_health_global(
                 calculated_at
             FROM ops.v_health_global
         """
-        
-        # Ejecutar query
         result = db.execute(text(query_str))
         row = result.fetchone()
-        
+
         if not row:
-            # Si no hay datos, retornar estado OK por defecto
             return HealthGlobalResponse(
                 global_status='OK',
                 error_count=0,
                 warn_count=0,
                 ok_count=0,
-                calculated_at=datetime.now(timezone.utc)
+                calculated_at=datetime.now(timezone.utc),
             )
-        
-        # Convertir a schema
-        row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
+
+        row_dict = row_to_dict(row)
         return HealthGlobalResponse.model_validate(row_dict)
-    
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("health_global failed")
-        raise HTTPException(
-            status_code=500,
-            detail="database_error"
+        logger.warning("health_global: vista no disponible o error de BD → respuesta degradada: %s", e)
+        # Respuesta degradada para que el frontend no reciba 500
+        return HealthGlobalResponse(
+            global_status='WARN',
+            error_count=0,
+            warn_count=0,
+            ok_count=0,
+            calculated_at=datetime.now(timezone.utc),
+            message='Estado global no disponible. Crea la vista ops.v_health_global si quieres ver el resumen.',
         )
 
 
@@ -945,7 +947,7 @@ def get_source_registry(
         # Convertir a schemas
         items = []
         for row in rows:
-            row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
+            row_dict = row_to_dict(row)
             # Convertir depends_on JSONB a lista de dicts
             if row_dict.get('depends_on'):
                 if isinstance(row_dict['depends_on'], str):
@@ -1138,7 +1140,7 @@ def get_identity_gaps(
         rows = result.fetchall()
         
         items = [
-            IdentityGapRow.model_validate(dict(row._mapping) if hasattr(row, '_mapping') else dict(row))
+            IdentityGapRow.model_validate(row_to_dict(row))
             for row in rows
         ]
         
@@ -1185,7 +1187,7 @@ def get_identity_gap_alerts(
         rows = result.fetchall()
         
         items = [
-            IdentityGapAlertRow.model_validate(dict(row._mapping) if hasattr(row, '_mapping') else dict(row))
+            IdentityGapAlertRow.model_validate(row_to_dict(row))
             for row in rows
         ]
         

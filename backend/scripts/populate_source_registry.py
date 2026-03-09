@@ -9,7 +9,7 @@ import io
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 # Forzar UTF-8 en Windows
 if sys.platform == 'win32':
@@ -18,7 +18,7 @@ if sys.platform == 'win32':
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import settings
+from app.core.db import engine
 
 # MVs críticas desde refresh_ops_mvs.py
 CRITICAL_MVS = [
@@ -345,8 +345,6 @@ def main():
     print("POBLAR SOURCE REGISTRY")
     print("=" * 70)
     print(f"Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-    
-    engine = create_engine(settings.database_url)
     
     try:
         populate_registry(engine)

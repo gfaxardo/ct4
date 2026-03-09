@@ -15,7 +15,7 @@ sys.path.insert(0, str(project_root / "backend"))
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.services.ingestion import IngestionService
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 
 # Configuración de base de datos
 DATABASE_URL = os.getenv(

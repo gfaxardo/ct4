@@ -17,7 +17,7 @@ import logging
 import csv
 import io
 
-from app.db import get_db
+from app.core.db import get_db
 from app.schemas.payments import (
     PaymentEligibilityRow,
     PaymentEligibilityResponse,

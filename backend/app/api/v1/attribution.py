@@ -11,7 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.core.db import get_db
 from app.models.observational import LeadEvent as LeadEventModel
 from app.models.observational import LeadLedger as LeadLedgerModel
 from app.schemas.attribution import (

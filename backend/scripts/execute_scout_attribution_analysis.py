@@ -14,13 +14,8 @@ from sqlalchemy.exc import SQLAlchemyError
 backend_root = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_root))
 
-from app.config import settings
-try:
-    from app.db import get_db_url
-except ImportError:
-    # Fallback si get_db_url no existe
-    def get_db_url():
-        return settings.database_url
+from app.core.config import settings
+from app.core.db import get_db_url
 
 def execute_sql_file(engine, sql_file_path: Path, description: str, database_url: str) -> bool:
     """Ejecuta un archivo SQL y muestra el progreso"""

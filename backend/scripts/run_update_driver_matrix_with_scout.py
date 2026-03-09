@@ -5,11 +5,10 @@ Script para actualizar v_payments_driver_matrix_cabinet con scout attribution.
 
 import sys
 from pathlib import Path
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from app.config import settings
+from app.core.db import SessionLocal
 
 def main():
     scripts_dir = Path(__file__).parent.parent / "sql" / "ops"
@@ -23,10 +22,7 @@ def main():
     print(f"Ejecutando: {script_file.name}")
     print(f"{'='*80}\n")
     
-    engine = create_engine(settings.database_url)
-    SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
-    
     try:
         with open(script_file, 'r', encoding='utf-8') as f:
             sql_content = f.read()

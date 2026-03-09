@@ -5,12 +5,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from app.config import settings
-
-engine = create_engine(settings.database_url)
-SessionLocal = sessionmaker(bind=engine)
+from sqlalchemy import text
+from app.core.db import SessionLocal
 
 db = SessionLocal()
 

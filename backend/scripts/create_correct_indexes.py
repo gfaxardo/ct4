@@ -10,7 +10,7 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 try:
-    from app.db import engine
+    from app.core.db import engine
     from sqlalchemy import text
 except ImportError as e:
     print(f"ERROR: {e}")

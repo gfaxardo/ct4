@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from sqlalchemy import text, create_engine
-from app.config import settings
+from app.core.config import settings
 
 def main():
     # Leer el archivo SQL

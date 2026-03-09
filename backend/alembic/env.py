@@ -7,10 +7,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app.db import Base
+from app.core.db import Base
 from app.models.canon import IdentityRegistry, IdentityLink, IdentityUnmatched
 from app.models.ops import IngestionRun
-from app.config import settings
+from app.core.config import settings
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

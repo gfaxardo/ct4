@@ -13,8 +13,8 @@ import { getDriverMatrix, exportDriverMatrix, ApiError } from '@/lib/api';
 import type { DriverMatrixResponse, DriverMatrixRow } from '@/lib/types';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
-import PaymentsLegend from '@/components/payments/PaymentsLegend';
-import MilestoneCell from '@/components/payments/MilestoneCell';
+import PaymentsLegend from '@/components/pagos/PaymentsLegend';
+import MilestoneCell from '@/components/pagos/MilestoneCell';
 import { PageLoadingOverlay } from '@/components/Skeleton';
 
 // ============================================================================

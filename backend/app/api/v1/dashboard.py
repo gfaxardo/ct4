@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import ProgrammingError
 
-from app.db import get_db
+from app.core.db import get_db
 from app.schemas.dashboard import (
     ScoutByWeek,
     ScoutOpenItem,

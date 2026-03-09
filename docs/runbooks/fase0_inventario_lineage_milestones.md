@@ -88,7 +88,7 @@
 
 **Archivos:**
 - `backend/sql/ops/v_payments_reports_ui.sql` (contiene `v_partner_payments_report_ui`)
-- `backend/sql/ops/_analysis_v_receivable_payable_detail_def.sql` (definición de `v_yango_receivable_payable_detail`)
+- La vista `v_yango_receivable_payable_detail` se define en el flujo de conciliación Yango (ver `v_yango_reconciliation_detail.sql`, `yango_reconciliation_fixes_v4.sql`).
 
 **Filtros críticos:**
 - `ops.v_yango_receivable_payable_detail`: `WHERE is_payable = true AND amount > 0` ⚠️ **Este filtro puede ocultar M1**
@@ -352,7 +352,7 @@ LEFT JOIN public.drivers d ON d.driver_id = c.driver_id
 - `backend/sql/ops/v_yango_cabinet_claims_for_collection.sql` - Vista final cobranza
 - `backend/sql/ops/v_payments_driver_matrix_cabinet.sql` - Vista presentación
 - `backend/sql/ops/v_payments_reports_ui.sql` - Vistas UI-friendly
-- `backend/sql/ops/_analysis_v_receivable_payable_detail_def.sql` - Definición receivable_payable_detail
+- Definición de receivable_payable_detail: ver flujo de conciliación Yango (`yango_reconciliation_fixes_v4.sql`).
 
 ### 9.2 Backend Files
 

@@ -1,17 +1,13 @@
 import sys
 from pathlib import Path
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import settings
+from app.core.db import SessionLocal
 
 def main():
-    engine = create_engine(settings.database_url)
-    SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
-    
     try:
         print("=" * 80)
         print("VERIFICACIÓN 1: Conteo por attribution_confidence")

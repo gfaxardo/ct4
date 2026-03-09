@@ -8,6 +8,7 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 env/
 ENV/
 
@@ -34,6 +35,10 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Generated docs (run backend/scripts/run_ops_health_audit.py to regenerate)
+docs/backend/OPS_HEALTH_AUDIT_REPORT.md
+docs/backend/OPS_HEALTH_AUDIT_REPORT.json
 
 
 

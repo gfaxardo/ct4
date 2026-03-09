@@ -1,23 +1,11 @@
 import pytest
 from datetime import date, datetime, timedelta
-from sqlalchemy.orm import Session
 from uuid import uuid4
-from app.models.canon import IdentityLink, IdentityUnmatched, ConfidenceLevel, IdentityRegistry
+from app.models.canon import IdentityLink, ConfidenceLevel, IdentityRegistry
 from app.models.ops import IngestionRun, RunStatus, JobType
 from app.models.observational import ScoutingMatchCandidate, MatchedSource, ConfidenceLevelObs
 from app.services.scouting_observation import ScoutingObservationService
 from app.services.alerts import AlertService
-from app.db import SessionLocal, Base, engine
-
-
-@pytest.fixture
-def db_session():
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def test_rule_s1_license_exact_match(db_session):

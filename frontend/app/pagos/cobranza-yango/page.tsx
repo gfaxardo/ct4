@@ -17,8 +17,8 @@ import Filters from '@/components/Filters';
 import Pagination from '@/components/Pagination';
 import Badge from '@/components/Badge';
 import Tabs, { TabPanel } from '@/components/Tabs';
-import CabinetLimboSection from '@/components/CabinetLimboSection';
-import CabinetClaimsGapSection from '@/components/CabinetClaimsGapSection';
+import CabinetLimboSection from '@/components/pagos/CabinetLimboSection';
+import CabinetClaimsGapSection from '@/components/pagos/CabinetClaimsGapSection';
 import { StatCardSkeleton, LoadingSpinner, PageLoadingOverlay } from '@/components/Skeleton';
 import {
   useCabinetFinancial,

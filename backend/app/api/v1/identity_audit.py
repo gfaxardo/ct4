@@ -12,7 +12,7 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime
 
-from app.db import get_db
+from app.core.db import get_db
 from app.models.canon import (
     IdentityOrigin, IdentityOriginHistory, IdentityOriginAlertState,
     OriginTag, OriginResolutionStatus, AlertType

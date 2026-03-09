@@ -18,7 +18,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from sqlalchemy import text
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from app.models.canon import IdentityLink, IdentityRegistry
 from app.models.canon import ConfidenceLevel
 from app.services.normalization import normalize_phone, normalize_license

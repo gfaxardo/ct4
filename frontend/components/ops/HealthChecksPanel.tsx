@@ -12,6 +12,7 @@ import { getOpsHealthChecks, ApiError } from '@/lib/api';
 import type { HealthCheckRow, HealthChecksResponse } from '@/lib/types';
 import DataTable from '@/components/DataTable';
 import Badge from '@/components/Badge';
+import { formatDateTime } from '@/lib/format';
 
 function getSeverityBadge(severity: string) {
   switch (severity) {
@@ -36,14 +37,6 @@ function getStatusBadge(status: string) {
       return <Badge variant="error">{status}</Badge>;
     default:
       return <Badge>{status}</Badge>;
-  }
-}
-
-function formatDateTime(dateStr: string): string {
-  try {
-    return new Date(dateStr).toLocaleString('es-ES');
-  } catch {
-    return dateStr;
   }
 }
 

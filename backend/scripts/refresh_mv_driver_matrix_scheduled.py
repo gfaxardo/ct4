@@ -22,23 +22,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-def get_database_url():
-    """Obtener DATABASE_URL desde variable de entorno o config"""
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        # Intentar leer desde config
-        try:
-            sys.path.insert(0, str(Path(__file__).parent.parent))
-            from app.config import DATABASE_URL
-            database_url = DATABASE_URL
-        except ImportError:
-            logger.error("DATABASE_URL no encontrada. Configurar variable de entorno o en app.config")
-            sys.exit(1)
-    return database_url
-
 def refresh_materialized_view():
     """Refrescar la vista materializada"""
-    database_url = get_database_url()
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from app.core.db import get_db_url
+    database_url = get_db_url()
     script_path = Path(__file__).parent.parent / "scripts" / "sql" / "refresh_mv_driver_matrix.sql"
     
     if not script_path.exists():

@@ -5,7 +5,7 @@ from datetime import datetime
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from sqlalchemy import text
 
 DEFAULT_CONFIDENCE = 95.0

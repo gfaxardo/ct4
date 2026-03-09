@@ -13,9 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import create_engine, func
-from sqlalchemy.orm import sessionmaker
-from app.db import get_db_url
+from app.core.db import SessionLocal
 from app.models.canon import IdentityLink, IdentityUnmatched
 from app.models.ops import IngestionRun, RunStatus, JobType
 
@@ -98,8 +96,6 @@ def validate_report_coherence(db, run_id: int):
 
 
 def main():
-    engine = create_engine(get_db_url())
-    SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
     
     try:

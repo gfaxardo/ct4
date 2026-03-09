@@ -2,11 +2,30 @@
 
 Este directorio contiene scripts SQL para operaciones del sistema CT4.
 
+## Estructura del directorio
+
+| Prefijo / tipo | Uso | Ejemplos |
+|----------------|-----|----------|
+| **`v_*.sql`** | Vistas (VIEW) usadas por la API o por otras vistas | `v_cabinet_financial_14d.sql`, `v_payments_driver_matrix_cabinet.sql`, `v_data_health.sql` |
+| **`mv_*.sql`** | Vistas materializadas (refrescar periódicamente) | `mv_cabinet_financial_14d.sql`, `mv_yango_cabinet_cobranza_enriched_14d.sql` |
+| **`verify_*.sql`** | Queries de verificación (no crean objetos; ejecutar a mano) | `verify_ingest_identity_gap.sql`, `verify_fix_applied.sql` |
+| **`validation_*.sql`** | Validaciones de datos / integridad | `validation_paid_status.sql`, `validation_ledger_identity.sql` |
+| **`create_*.sql`** | Creación de tablas, índices o MVs | `create_materialized_views.sql`, `create_indexes_cabinet_financial_14d.sql` |
+| **`seed_*.sql`** | Datos iniciales o reglas (seeds) | `seed_payment_rules_baseline.sql`, `seed_scout_rules_real.sql` |
+| **`yango_reconciliation_fixes_v4.sql`** | Fix canónico de conciliación Yango (ejecutar una vez) | Solo v4; versiones antiguas eliminadas |
+| **`fase1_*.sql` / `fase2_*.sql`** | Scripts de fases (diagnóstico, clasificación) | Ver runbooks de paid_without_achievement |
+| **`_debug_*.sql` / `_diagnostic_*.sql`** | Solo diagnóstico (guión bajo = no desplegar) | `_debug_driver_matrix_m5_without_m1.sql` |
+| **`discovery_*.sql`** | Queries para discovery de fuentes (source registry) | `discovery_objects.sql`, `discovery_dependencies.sql` |
+| **`*.csv`** | Salida generada por scripts (discovery); se puede regenerar | `discovery_usage_backend.csv`, `discovery_objects.csv` |
+| **`_archive/`** | Scripts archivados (histórico) | No usar en despliegue |
+
+**Convención:** Solo hay que desplegar/ejecutar lo referenciado en runbooks o en la API. Los que empiezan por `_` son de diagnóstico. Las versiones antiguas de un mismo script (p. ej. fixes v1/v2/v3) se eliminan y se deja una sola canónica.
+
 ## Pagos Yango - Conciliación
 
 ### Setup Inicial
 
-**IMPORTANTE**: Ejecutar `yango_reconciliation_fixes_v4.sql` una vez en la base de datos antes de usar el sistema de conciliación.
+**IMPORTANTE**: Ejecutar **solo** `yango_reconciliation_fixes_v4.sql` una vez en la base de datos antes de usar el sistema de conciliación. (Las versiones antiguas `yango_reconciliation_fixes.sql` y `yango_reconciliation_fixes_v3.sql` se eliminaron; v4 es la canónica.)
 
 ```sql
 -- Ejecutar en PostgreSQL:

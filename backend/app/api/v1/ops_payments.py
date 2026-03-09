@@ -1,19 +1,32 @@
 """
-Endpoints para operaciones de payments dentro del módulo ops
+Endpoints para operaciones de payments dentro del módulo ops.
+
+El controller solo registra rutas y delega en app.services.ops_payments.
+Toda la lógica de negocio está en los servicios.
 """
+import io
+import csv
 import logging
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.core.db import get_db
+from app.core.db_utils import row_to_dict
 from app.services.mv_cache import get_best_view, mv_exists
+from app.services.ops_payments import (
+    get_driver_matrix as service_get_driver_matrix,
+    OrderByOption as ServiceOrderByOption,
+    get_funnel_gap_metrics as service_get_funnel_gap_metrics,
+    get_kpi_red_recovery_metrics as service_get_kpi_red_recovery_metrics,
+    get_claims_audit_summary as service_get_claims_audit_summary,
+)
 from app.schemas.payments import (
     DriverMatrixRow,
     OpsDriverMatrixResponse,
@@ -43,26 +56,18 @@ from app.schemas.kpi_red_recovery import (
     KpiRedRecoveryMetricsDaily,
 )
 from time import time
-from typing import Dict, Tuple
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Cache simple para métricas (TTL en segundos)
-CACHE_TTL = 60  # segundos
-CACHE_TTL_FUNNEL = 120  # 2 minutos para funnel gap (datos cambian poco)
-CACHE_TTL_WEEKLY = 180  # 3 minutos para weekly kpis
-
+# Cache para cobranza_yango y weekly_kpis (solo en controller mientras no se migren a servicio)
+CACHE_TTL = 60
+CACHE_TTL_WEEKLY = 180
 _scout_metrics_cache: Dict[Tuple, Tuple[float, ScoutAttributionMetrics]] = {}
-_funnel_gap_cache: Dict[str, Tuple[float, dict]] = {}
 _weekly_kpis_cache: Dict[Tuple, Tuple[float, dict]] = {}
 
-
-class OrderByOption(str, Enum):
-    week_start_desc = "week_start_desc"
-    week_start_asc = "week_start_asc"
-    lead_date_desc = "lead_date_desc"
-    lead_date_asc = "lead_date_asc"
+# Re-exportar para Query()
+OrderByOption = ServiceOrderByOption
 
 
 @router.get("/driver-matrix", response_model=OpsDriverMatrixResponse)
@@ -71,263 +76,24 @@ def get_driver_matrix(
     week_start_from: Optional[date] = Query(None, description="Filtra por week_start >= week_start_from (inclusive)"),
     week_start_to: Optional[date] = Query(None, description="Filtra por week_start <= week_start_to (inclusive)"),
     origin_tag: Optional[str] = Query(None, description="Filtra por origin_tag: 'cabinet', 'fleet_migration', 'unknown' o 'All'"),
-    funnel_status: Optional[str] = Query(None, description="Filtra por funnel_status: 'registered_incomplete', 'registered_complete', 'connected_no_trips', 'reached_m1', 'reached_m5', 'reached_m25'"),
+    funnel_status: Optional[str] = Query(None, description="Filtra por funnel_status"),
     only_pending: bool = Query(False, description="Si true, solo drivers con al menos 1 milestone pendiente"),
     limit: int = Query(200, ge=1, le=1000, description="Límite de resultados (máx 1000). Default: 200."),
     offset: int = Query(0, ge=0, description="Offset para paginación"),
-    order: OrderByOption = Query(OrderByOption.week_start_desc, description="Ordenamiento")
+    order: ServiceOrderByOption = Query(ServiceOrderByOption.week_start_desc, description="Ordenamiento"),
 ):
-    """
-    Obtiene la matriz de drivers con milestones M1/M5/M25 y estados Yango/window.
-    
-    Endpoint de presentación: usa vista materializada (ops.mv_payments_driver_matrix_cabinet) 
-    si está disponible para mejor rendimiento, fallback a vista normal 
-    (ops.v_payments_driver_matrix_cabinet) si no existe. No recalcula reglas de negocio.
-    
-    Filtros:
-    - week_start_from/week_start_to: Filtrar por semana (week_start) inclusive
-    - origin_tag: Filtrar por origen ('cabinet' o 'fleet_migration')
-    - only_pending: Si true, solo drivers con al menos 1 milestone achieved cuyo yango_payment_status != 'PAID'
-    - limit/offset: Paginación
-    - order: Ordenamiento (week_start_desc, week_start_asc, lead_date_desc, lead_date_asc)
-    
-    Respuesta incluye:
-    - meta: Metadatos de paginación (limit, offset, returned, total)
-    - data: Lista de drivers con sus milestones
-    
-    Ejemplo curl (sin filtros):
-    ```bash
-    curl -X GET "http://localhost:8000/api/v1/ops/payments/driver-matrix?limit=200&offset=0"
-    ```
-    
-    Ejemplo curl (con filtros):
-    ```bash
-    curl -X GET "http://localhost:8000/api/v1/ops/payments/driver-matrix?week_start_from=2025-01-01&week_start_to=2025-12-31&origin_tag=cabinet&only_pending=true&limit=100&offset=0&order=week_start_desc"
-    ```
-    """
-    try:
-        # Construir WHERE dinámico (columnas compatibles con v_payment_calculation)
-        where_conditions = []
-        params = {}
-        
-        if week_start_from:
-            # week_start puede no existir, usar lead_date como alternativa
-            where_conditions.append("lead_date >= :week_start_from")
-            params["week_start_from"] = week_start_from
-        
-        if week_start_to:
-            where_conditions.append("lead_date <= :week_start_to")
-            params["week_start_to"] = week_start_to
-        
-        if origin_tag:
-            # Validar que sea uno de los valores permitidos
-            # 'All' o vacío => no filtra
-            if origin_tag.lower() == 'all' or origin_tag == '':
-                # No agregar filtro
-                pass
-            elif origin_tag in ('cabinet', 'fleet_migration', 'unknown'):
-                where_conditions.append("origin_tag = :origin_tag")
-                params["origin_tag"] = origin_tag
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"origin_tag debe ser 'cabinet', 'fleet_migration', 'unknown' o 'All', recibido: {origin_tag}"
-                )
-        
-        # funnel_status no es compatible con v_payment_calculation, ignorar
-        if funnel_status:
-            logger.info(f"Filtro funnel_status={funnel_status} ignorado (no disponible en vista actual)")
-        
-        if only_pending:
-            # Usar is_payable en lugar de flags de milestone
-            where_conditions.append("is_payable = true")
-        
-        where_clause = ""
-        if where_conditions:
-            where_clause = "WHERE " + " AND ".join(where_conditions)
-        
-        # Determinar qué vista usar: materializada si existe, sino normal (con caché)
-        # Prioridad: 1) MV driver_matrix, 2) MV payment_calculation, 3) v_payment_calculation
-        view_name = get_best_view(
-            db, 
-            "ops", 
-            ["mv_payments_driver_matrix_cabinet", "mv_payment_calculation"], 
-            "ops.v_payment_calculation"
-        )
-        
-        # Verificar si la vista tiene columnas válidas (no es un placeholder)
-        try:
-            check_result = db.execute(text(f"SELECT * FROM {view_name} LIMIT 0"))
-            columns = list(check_result.keys())
-            if len(columns) <= 1 and columns[0] == "dummy":
-                # Vista es un placeholder, usar v_payment_calculation
-                logger.warning(f"{view_name} es un placeholder, usando v_payment_calculation")
-                view_name = "ops.v_payment_calculation"
-        except Exception as e:
-            logger.warning(f"Error verificando vista {view_name}: {e}")
-        
-        # Construir ORDER BY según el parámetro order, adaptado a las columnas disponibles
-        order_by_clause = ""
-        # week_start puede no existir, usar lead_date como fallback
-        if order == OrderByOption.week_start_desc:
-            order_by_clause = "ORDER BY lead_date DESC NULLS LAST, driver_id ASC NULLS LAST"
-        elif order == OrderByOption.week_start_asc:
-            order_by_clause = "ORDER BY lead_date ASC NULLS LAST, driver_id ASC NULLS LAST"
-        elif order == OrderByOption.lead_date_desc:
-            order_by_clause = "ORDER BY lead_date DESC NULLS LAST, driver_id ASC NULLS LAST"
-        elif order == OrderByOption.lead_date_asc:
-            order_by_clause = "ORDER BY lead_date ASC NULLS LAST, driver_id ASC NULLS LAST"
-        else:
-            # Default fallback
-            order_by_clause = "ORDER BY lead_date DESC NULLS LAST, driver_id ASC NULLS LAST"
-        
-        # Query para contar total (sin limit/offset)
-        count_sql = f"""
-            SELECT COUNT(*) AS total
-            FROM {view_name}
-            {where_clause}
-        """
-        
-        # Query para obtener datos con ORDER BY y paginación
-        sql = f"""
-            SELECT *
-            FROM {view_name}
-            {where_clause}
-            {order_by_clause}
-            LIMIT :limit OFFSET :offset
-        """
-        
-        params["limit"] = limit
-        params["offset"] = offset
-        
-        # Log SQL para debugging (solo en desarrollo)
-        if logger.level <= logging.DEBUG:
-            logger.debug(f"SQL ejecutado: {sql[:500]}...")
-            logger.debug(f"Params: {params}")
-        
-        # Ejecutar query principal con manejo de timeout
-        # Si falla, retornar error pero con mensaje claro
-        rows = []
-        try:
-            result = db.execute(text(sql), params)
-            rows = result.fetchall()
-        except (ProgrammingError, OperationalError) as e:
-            error_msg = str(e)
-            if "timeout" in error_msg.lower() or "QueryCanceled" in error_msg or "canceling statement" in error_msg.lower():
-                logger.error(f"Query principal timeout en driver-matrix. WHERE: {where_clause[:300]}, Params keys: {list(params.keys())}, Limit: {limit}, Error: {error_msg[:200]}")
-                # Construir mensaje de error más útil con información de filtros aplicados
-                applied_filters = []
-                if "origin_tag" in str(where_clause):
-                    applied_filters.append("origin_tag")
-                if "week_start" in str(where_clause):
-                    applied_filters.append("week_start")
-                if "funnel_status" in str(where_clause):
-                    applied_filters.append("funnel_status")
-                if "only_pending" in str(where_clause) or only_pending:
-                    applied_filters.append("only_pending")
-                
-                detail_msg = f"La vista es demasiado lenta incluso con filtros ({', '.join(applied_filters) if applied_filters else 'ninguno'}). "
-                detail_msg += "La vista requiere optimización. Por ahora, usa filtros muy restrictivos: week_start_from reciente (última semana), funnel_status específico, only_pending=true, y límite máximo de 25."
-                raise HTTPException(
-                    status_code=503,
-                    detail=detail_msg
-                )
-            else:
-                # Otro error de SQL, re-raise
-                raise
-        
-        # Ejecutar COUNT con manejo de timeout
-        # Si el COUNT falla por timeout, usar aproximación basada en resultados
-        total = None
-        try:
-            # Intentar COUNT (puede ser lento en vistas complejas)
-            count_result = db.execute(text(count_sql), params)
-            total = count_result.scalar() or 0
-        except (ProgrammingError, OperationalError) as e:
-            # Si falla el COUNT (timeout u otro error), usar aproximación
-            error_msg = str(e)
-            if "timeout" in error_msg.lower() or "QueryCanceled" in error_msg or "canceling statement" in error_msg.lower():
-                logger.warning(f"COUNT timeout en driver-matrix, usando aproximación: {error_msg[:200]}")
-                # Aproximación inteligente:
-                # - Si hay exactamente 'limit' resultados, probablemente hay más
-                # - Si hay menos que 'limit', ese es el total real
-                if len(rows) >= limit:
-                    # Probablemente hay más resultados (mínimo estimado)
-                    total = offset + len(rows) + 1
-                else:
-                    # Probablemente es el total real
-                    total = offset + len(rows)
-            else:
-                # Otro error de SQL, loguear pero no fallar
-                logger.warning(f"Error en COUNT (no timeout), usando aproximación: {error_msg[:200]}")
-                # Usar misma aproximación
-                if len(rows) >= limit:
-                    total = offset + len(rows) + 1
-                else:
-                    total = offset + len(rows)
-        
-        # Convertir a schemas - mapear columnas de diferentes vistas
-        data = []
-        for row in rows:
-            row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
-            
-            # Mapeo de v_payment_calculation a DriverMatrixRow
-            if "milestone_trips" in row_dict:
-                # Estamos usando v_payment_calculation
-                milestone = row_dict.get("milestone_trips")
-                mapped = {
-                    "driver_id": row_dict.get("driver_id"),
-                    "person_key": row_dict.get("person_key"),
-                    "lead_date": row_dict.get("lead_date"),
-                    "origin_tag": row_dict.get("origin_tag"),
-                    "highest_milestone": milestone,
-                    # Mapear según milestone
-                    "m1_achieved_flag": milestone == 1 and row_dict.get("milestone_achieved"),
-                    "m1_achieved_date": row_dict.get("achieved_date") if milestone == 1 else None,
-                    "m1_expected_amount_yango": row_dict.get("amount") if milestone == 1 else None,
-                    "m5_achieved_flag": milestone == 5 and row_dict.get("milestone_achieved"),
-                    "m5_achieved_date": row_dict.get("achieved_date") if milestone == 5 else None,
-                    "m5_expected_amount_yango": row_dict.get("amount") if milestone == 5 else None,
-                    "m25_achieved_flag": milestone == 25 and row_dict.get("milestone_achieved"),
-                    "m25_achieved_date": row_dict.get("achieved_date") if milestone == 25 else None,
-                    "m25_expected_amount_yango": row_dict.get("amount") if milestone == 25 else None,
-                }
-                data.append(DriverMatrixRow.model_validate(mapped))
-            else:
-                # Vista original con todas las columnas
-                data.append(DriverMatrixRow.model_validate(row_dict))
-        
-        # Construir respuesta
-        returned = len(data)
-        meta = OpsDriverMatrixMeta(
-            limit=limit,
-            offset=offset,
-            returned=returned,
-            total=total
-        )
-        
-        return OpsDriverMatrixResponse(
-            meta=meta,
-            data=data
-        )
-    
-    except HTTPException:
-        # Re-raise HTTP exceptions (400, etc.)
-        raise
-    except (ProgrammingError, OperationalError) as e:
-        # Errores de SQL (vista no existe, etc.)
-        logger.error(f"Error de base de datos en get_driver_matrix: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="database_error"
-        )
-    except Exception as e:
-        # Otros errores inesperados
-        logger.error(f"Error inesperado en get_driver_matrix: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="internal_server_error"
-        )
+    """Obtiene la matriz de drivers con milestones M1/M5/M25 y estados Yango/window."""
+    return service_get_driver_matrix(
+        db,
+        week_start_from=week_start_from,
+        week_start_to=week_start_to,
+        origin_tag=origin_tag,
+        funnel_status=funnel_status,
+        only_pending=only_pending,
+        limit=limit,
+        offset=offset,
+        order=order,
+    )
 
 
 @router.get("/cabinet-financial-14d", response_model=CabinetFinancialResponse)
@@ -518,75 +284,9 @@ def get_cabinet_financial_14d(
         params["limit"] = limit
         params["offset"] = offset
         
-        # #region agent log
-        import json
-        from datetime import datetime
-        try:
-            # Verificar max lead_date en la vista
-            max_date_query = f"SELECT MAX(lead_date) AS max_date FROM {view_name}"
-            max_date_result = db.execute(text(max_date_query))
-            max_date = max_date_result.scalar()
-            
-            log_entry = {
-                "id": f"log_{int(datetime.now().timestamp() * 1000)}",
-                "timestamp": int(datetime.now().timestamp() * 1000),
-                "location": "ops_payments.py:get_cabinet_financial_14d",
-                "message": "BEFORE_QUERY",
-                "data": {"view_name": view_name, "max_lead_date": str(max_date) if max_date else None},
-                "sessionId": "debug-session",
-                "runId": "api-request",
-                "hypothesisId": "H4"
-            }
-            with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
-                f.write(json.dumps(log_entry) + "\n")
-        except Exception as e:
-            # Si falla la consulta de logging, hacer rollback y continuar
-            try:
-                db.rollback()
-            except Exception:
-                pass
-            # No fallar por errores de logging
-            pass
-        # #endregion
-        
         # Ejecutar query
         result = db.execute(text(query_sql), params)
         rows = result.fetchall()
-        
-        # #region agent log
-        try:
-            from datetime import datetime
-            import json
-            
-            # Contar drivers con scout vs sin scout
-            rows_with_scout = sum(1 for row in rows if getattr(row, 'scout_id', None) is not None)
-            rows_without_scout = len(rows) - rows_with_scout
-            rows_with_milestones = sum(1 for row in rows if getattr(row, 'reached_m1_14d', False) or getattr(row, 'reached_m5_14d', False) or getattr(row, 'reached_m25_14d', False))
-            rows_with_milestones_no_scout = sum(1 for row in rows if (getattr(row, 'reached_m1_14d', False) or getattr(row, 'reached_m5_14d', False) or getattr(row, 'reached_m25_14d', False)) and getattr(row, 'scout_id', None) is None)
-            
-            log_entry = {
-                "id": f"log_{int(datetime.now().timestamp() * 1000)}",
-                "timestamp": int(datetime.now().timestamp() * 1000),
-                "location": "ops_payments.py:get_cabinet_financial_14d",
-                "message": "AFTER_QUERY_SCOUT_ATTRIBUTION",
-                "data": {
-                    "rows_returned": len(rows),
-                    "view_name": view_name,
-                    "rows_with_scout": rows_with_scout,
-                    "rows_without_scout": rows_without_scout,
-                    "rows_with_milestones": rows_with_milestones,
-                    "rows_with_milestones_no_scout": rows_with_milestones_no_scout,
-                    "pct_with_scout": round((rows_with_scout / len(rows) * 100) if len(rows) > 0 else 0, 2)
-                },
-                "sessionId": "debug-session",
-                "runId": "api-request",
-                "hypothesisId": "H1,H2,H3"
-            }
-            with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
-                f.write(json.dumps(log_entry) + "\n")
-        except Exception as e:
-            pass
-        # #endregion
         
         # Convertir a schemas (incluyendo campos de scout)
         data = [CabinetFinancialRow(
@@ -690,58 +390,8 @@ def get_cabinet_financial_14d(
                     WHERE {where_clause}
                 """
             
-            # #region agent log
-            try:
-                import json
-                from datetime import datetime
-                log_entry = {
-                    "id": f"log_{int(datetime.now().timestamp() * 1000)}",
-                    "timestamp": int(datetime.now().timestamp() * 1000),
-                    "location": "ops_payments.py:get_cabinet_financial_14d",
-                    "message": "BEFORE_SUMMARY_QUERY",
-                    "data": {
-                        "where_clause": where_clause,
-                        "only_with_debt": only_with_debt,
-                        "summary_params_keys": list(summary_params.keys())
-                    },
-                    "sessionId": "debug-session",
-                    "runId": "api-request",
-                    "hypothesisId": "H9"
-                }
-                with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except Exception:
-                pass
-            # #endregion
-            
             summary_result = db.execute(text(summary_sql), summary_params)
             summary_row = summary_result.fetchone()
-            
-            # #region agent log
-            try:
-                import json
-                from datetime import datetime
-                log_entry = {
-                    "id": f"log_{int(datetime.now().timestamp() * 1000)}",
-                    "timestamp": int(datetime.now().timestamp() * 1000),
-                    "location": "ops_payments.py:get_cabinet_financial_14d",
-                    "message": "AFTER_SUMMARY_QUERY",
-                    "data": {
-                        "total_drivers": summary_row.total_drivers if summary_row else 0,
-                        "drivers_with_scout": summary_row.drivers_with_scout if summary_row else 0,
-                        "drivers_without_scout": summary_row.drivers_without_scout if summary_row else 0,
-                        "pct_with_scout": float(summary_row.pct_with_scout) if summary_row and summary_row.pct_with_scout else 0,
-                        "only_with_debt": only_with_debt
-                    },
-                    "sessionId": "debug-session",
-                    "runId": "api-request",
-                    "hypothesisId": "H9"
-                }
-                with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry) + "\n")
-            except Exception:
-                pass
-            # #endregion
             
             if summary_row:
                 summary = CabinetFinancialSummary(
@@ -1637,357 +1287,48 @@ def get_weekly_kpis(
 
 
 @router.get("/cabinet-financial-14d/funnel-gap")
-def get_funnel_gap_metrics(
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene métricas del primer gap del embudo: leads sin identidad ni pago.
-    
-    BASE DEL EMBUDO: module_ct_cabinet_leads (todos los leads registrados)
-    
-    Retorna:
-    - total_leads: Total de leads en module_ct_cabinet_leads (BASE)
-    - leads_with_identity: Leads que tienen identity_links (pasaron ingesta)
-    - leads_with_claims: Leads que tienen claims generados (pasaron todo el embudo)
-    - leads_without_identity: Leads sin identity_links (GAP 1 - crítico)
-    - leads_without_claims: Leads sin claims (puede incluir GAP 1, 2, 3)
-    - leads_without_both: Leads sin identidad ni claims (GAP 1 - primer gap crítico)
-    - percentages: Porcentajes de cada métrica
-    
-    IMPORTANTE: Un lead sin identity_links NO aparecerá en:
-    - lead_events (con person_key válido)
-    - v_conversion_metrics
-    - v_cabinet_financial_14d
-    - claims generados
-    """
+def get_funnel_gap_metrics(db: Session = Depends(get_db)):
+    """Métricas del primer gap del embudo: leads sin identidad ni pago."""
     try:
-        # Verificar cache primero
-        cache_key = "funnel_gap_metrics"
-        current_time = time()
-        if cache_key in _funnel_gap_cache:
-            cached_time, cached_data = _funnel_gap_cache[cache_key]
-            if current_time - cached_time < CACHE_TTL_FUNNEL:
-                logger.debug("Returning cached funnel gap metrics")
-                return cached_data
-        
-        # Query OPTIMIZADA: Consultas separadas más simples
-        # Esto permite que PostgreSQL use índices mejor
-        
-        # Primero verificar si existe MV para claims (mucho más rápido)
-        mv_claims_exists = db.execute(text("""
-            SELECT EXISTS (
-                SELECT 1 FROM pg_matviews 
-                WHERE schemaname = 'ops' AND matviewname = 'mv_claims_payment_status_cabinet'
-            )
-        """)).scalar()
-        
-        claims_view = "ops.mv_claims_payment_status_cabinet" if mv_claims_exists else "ops.v_claims_payment_status_cabinet"
-        
-        total_sql = text("SELECT COUNT(*) FROM public.module_ct_cabinet_leads")
-        identity_sql = text("""
-            SELECT COUNT(*) FROM canon.identity_links 
-            WHERE source_table = 'module_ct_cabinet_leads'
-        """)
-        claims_sql = text(f"""
-            SELECT COUNT(DISTINCT il.source_pk) 
-            FROM canon.identity_links il
-            INNER JOIN {claims_view} c ON c.person_key = il.person_key
-            WHERE il.source_table = 'module_ct_cabinet_leads'
-        """)
-        
-        total_leads = db.execute(total_sql).scalar() or 0
-        leads_with_identity = db.execute(identity_sql).scalar() or 0
-        leads_with_claims = db.execute(claims_sql).scalar() or 0
-        
-        # Crear pseudo-row para mantener compatibilidad con código existente
-        class ResultRow:
-            def __init__(self):
-                self.total_leads = total_leads
-                self.leads_with_identity = leads_with_identity
-                self.leads_with_claims = leads_with_claims
-                self.leads_without_identity = total_leads - leads_with_identity
-                self.leads_without_claims = total_leads - leads_with_claims
-                self.leads_without_both = total_leads - leads_with_identity
-        
-        row = ResultRow()
-        
-        if total_leads == 0:
-            return {
-                "total_leads": 0,
-                "leads_with_identity": 0,
-                "leads_with_claims": 0,
-                "leads_without_identity": 0,
-                "leads_without_claims": 0,
-                "leads_without_both": 0,
-                "percentages": {
-                    "with_identity": 0.0,
-                    "with_claims": 0.0,
-                    "without_identity": 0.0,
-                    "without_claims": 0.0,
-                    "without_both": 0.0
-                }
-            }
-        
-        total = row.total_leads or 0
-        
-        # Calcular porcentajes
-        percentages = {
-            "with_identity": round((row.leads_with_identity / total * 100) if total > 0 else 0, 2),
-            "with_claims": round((row.leads_with_claims / total * 100) if total > 0 else 0, 2),
-            "without_identity": round((row.leads_without_identity / total * 100) if total > 0 else 0, 2),
-            "without_claims": round((row.leads_without_claims / total * 100) if total > 0 else 0, 2),
-            "without_both": round((row.leads_without_both / total * 100) if total > 0 else 0, 2)
-        }
-        
-        result = {
-            "total_leads": total,
-            "leads_with_identity": row.leads_with_identity or 0,
-            "leads_with_claims": row.leads_with_claims or 0,
-            "leads_without_identity": row.leads_without_identity or 0,
-            "leads_without_claims": row.leads_without_claims or 0,
-            "leads_without_both": row.leads_without_both or 0,
-            "percentages": percentages
-        }
-        
-        # Guardar en cache
-        _funnel_gap_cache[cache_key] = (current_time, result)
-        
-        return result
-        
+        return service_get_funnel_gap_metrics(db)
     except Exception as e:
-        # Hacer rollback si hay una transacción fallida
         try:
             db.rollback()
         except Exception:
             pass
-        logger.error(f"Error calculando métricas del gap del embudo: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error calculando métricas del gap: {str(e)[:200]}"
-        )
+        logger.error("Error calculando métricas del gap del embudo: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error calculando métricas del gap: {str(e)[:200]}") from e
 
 
 @router.get("/cabinet-financial-14d/kpi-red-recovery-metrics", response_model=KpiRedRecoveryMetricsResponse)
-def get_kpi_red_recovery_metrics(
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene métricas de recovery del KPI rojo.
-    
-    Retorna:
-    - today: Métricas de hoy
-    - yesterday: Métricas de ayer
-    - last_7_days: Métricas de los últimos 7 días
-    - current_backlog: Backlog actual del KPI rojo
-    """
+def get_kpi_red_recovery_metrics(db: Session = Depends(get_db)):
+    """Métricas de recovery del KPI rojo."""
     try:
-        # Obtener backlog actual
-        backlog_query = text("""
-            SELECT COUNT(*) AS count
-            FROM ops.v_cabinet_kpi_red_backlog
-        """)
-        backlog_result = db.execute(backlog_query)
-        current_backlog = backlog_result.scalar() or 0
-        
-        # Obtener métricas diarias
-        metrics_query = text("""
-            SELECT 
-                metric_date,
-                backlog_start,
-                new_backlog_in,
-                matched_out,
-                backlog_end,
-                net_change,
-                top_fail_reason
-            FROM ops.v_cabinet_kpi_red_recovery_metrics_daily
-            WHERE metric_date >= CURRENT_DATE - INTERVAL '7 days'
-            ORDER BY metric_date DESC
-        """)
-        metrics_result = db.execute(metrics_query)
-        metrics_rows = metrics_result.fetchall()
-        
-        # Separar métricas por día
-        today_metrics = None
-        yesterday_metrics = None
-        last_7_days = []
-        
-        from datetime import date
-        today = date.today()
-        yesterday = date.fromordinal(today.toordinal() - 1)
-        
-        for row in metrics_rows:
-            metric_date = row.metric_date
-            metric_dict = {
-                "metric_date": metric_date,
-                "backlog_start": row.backlog_start or 0,
-                "new_backlog_in": row.new_backlog_in or 0,
-                "matched_out": row.matched_out or 0,
-                "backlog_end": row.backlog_end or 0,
-                "net_change": row.net_change or 0,
-                "top_fail_reason": row.top_fail_reason
-            }
-            
-            if metric_date == today:
-                today_metrics = KpiRedRecoveryMetricsDaily(**metric_dict)
-            elif metric_date == yesterday:
-                yesterday_metrics = KpiRedRecoveryMetricsDaily(**metric_dict)
-            
-            if metric_date >= date.fromordinal(today.toordinal() - 7):
-                last_7_days.append(KpiRedRecoveryMetricsDaily(**metric_dict))
-        
-        return KpiRedRecoveryMetricsResponse(
-            today=today_metrics,
-            yesterday=yesterday_metrics,
-            last_7_days=last_7_days,
-            current_backlog=current_backlog
-        )
-        
+        return service_get_kpi_red_recovery_metrics(db)
     except Exception as e:
         try:
             db.rollback()
         except Exception:
             pass
-        logger.error(f"Error calculando métricas de recovery del KPI rojo: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error calculando métricas de recovery: {str(e)[:200]}"
-        )
+        logger.error("Error calculando métricas de recovery del KPI rojo: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error calculando métricas de recovery: {str(e)[:200]}") from e
 
 
 @router.get("/cabinet-financial-14d/claims-audit-summary")
 def get_claims_audit_summary(
     db: Session = Depends(get_db),
-    limit: int = Query(10, ge=1, le=100, description="Límite de casos a mostrar")
+    limit: int = Query(10, ge=1, le=100, description="Límite de casos a mostrar"),
 ):
-    """
-    Obtiene resumen de auditoría de claims: compara "debería tener claim" (C2) 
-    vs "tiene claim" (C3) para detectar drivers elegibles sin claims generados.
-    
-    Retorna:
-    - summary: Conteos generales de missing claims
-    - root_causes: Top root causes encontrados
-    - sample_cases: Casos de ejemplo de drivers con claims faltantes
-    """
+    """Resumen de auditoría de claims: drivers elegibles sin claims generados."""
     try:
-        # Resumen general
-        summary_query = text("""
-            SELECT 
-                COUNT(*) AS total_drivers_elegibles,
-                COUNT(*) FILTER (WHERE should_have_claim_m1 = true) AS total_should_have_m1,
-                COUNT(*) FILTER (WHERE has_claim_m1 = true) AS total_has_m1,
-                COUNT(*) FILTER (WHERE should_have_claim_m1 = true AND has_claim_m1 = false) AS missing_m1,
-                COUNT(*) FILTER (WHERE should_have_claim_m5 = true) AS total_should_have_m5,
-                COUNT(*) FILTER (WHERE has_claim_m5 = true) AS total_has_m5,
-                COUNT(*) FILTER (WHERE should_have_claim_m5 = true AND has_claim_m5 = false) AS missing_m5,
-                COUNT(*) FILTER (WHERE should_have_claim_m25 = true) AS total_should_have_m25,
-                COUNT(*) FILTER (WHERE has_claim_m25 = true) AS total_has_m25,
-                COUNT(*) FILTER (WHERE should_have_claim_m25 = true AND has_claim_m25 = false) AS missing_m25
-            FROM ops.v_cabinet_claims_audit_14d
-        """)
-        summary_result = db.execute(summary_query)
-        summary_row = summary_result.fetchone()
-        
-        summary = {
-            "total_drivers_elegibles": summary_row.total_drivers_elegibles or 0,
-            "m1": {
-                "should_have": summary_row.total_should_have_m1 or 0,
-                "has": summary_row.total_has_m1 or 0,
-                "missing": summary_row.missing_m1 or 0
-            },
-            "m5": {
-                "should_have": summary_row.total_should_have_m5 or 0,
-                "has": summary_row.total_has_m5 or 0,
-                "missing": summary_row.missing_m5 or 0
-            },
-            "m25": {
-                "should_have": summary_row.total_should_have_m25 or 0,
-                "has": summary_row.total_has_m25 or 0,
-                "missing": summary_row.missing_m25 or 0
-            }
-        }
-        
-        # Root causes
-        root_causes_query = text("""
-            SELECT 
-                root_cause,
-                COUNT(*) AS count,
-                COUNT(*) FILTER (WHERE missing_claim_bucket = 'M1_MISSING') AS m1_missing,
-                COUNT(*) FILTER (WHERE missing_claim_bucket = 'M5_MISSING') AS m5_missing,
-                COUNT(*) FILTER (WHERE missing_claim_bucket = 'M25_MISSING') AS m25_missing,
-                COUNT(*) FILTER (WHERE missing_claim_bucket = 'MULTIPLE_MISSING') AS multiple_missing
-            FROM ops.v_cabinet_claims_audit_14d
-            WHERE missing_claim_bucket != 'NONE'
-            GROUP BY root_cause
-            ORDER BY count DESC
-        """)
-        root_causes_result = db.execute(root_causes_query)
-        root_causes = []
-        for row in root_causes_result:
-            root_causes.append({
-                "root_cause": row.root_cause,
-                "count": row.count,
-                "m1_missing": row.m1_missing or 0,
-                "m5_missing": row.m5_missing or 0,
-                "m25_missing": row.m25_missing or 0,
-                "multiple_missing": row.multiple_missing or 0
-            })
-        
-        # Casos de ejemplo
-        sample_cases_query = text("""
-            SELECT 
-                driver_id,
-                person_key,
-                lead_date,
-                window_end_14d,
-                trips_in_14d,
-                should_have_claim_m1,
-                has_claim_m1,
-                should_have_claim_m5,
-                has_claim_m5,
-                should_have_claim_m25,
-                has_claim_m25,
-                missing_claim_bucket,
-                root_cause
-            FROM ops.v_cabinet_claims_audit_14d
-            WHERE missing_claim_bucket != 'NONE'
-            ORDER BY lead_date DESC
-            LIMIT :limit
-        """)
-        sample_cases_result = db.execute(sample_cases_query, {"limit": limit})
-        sample_cases = []
-        for row in sample_cases_result:
-            sample_cases.append({
-                "driver_id": row.driver_id,
-                "person_key": str(row.person_key) if row.person_key else None,
-                "lead_date": row.lead_date.isoformat() if row.lead_date else None,
-                "window_end_14d": row.window_end_14d.isoformat() if row.window_end_14d else None,
-                "trips_in_14d": row.trips_in_14d or 0,
-                "should_have_claim_m1": row.should_have_claim_m1,
-                "has_claim_m1": row.has_claim_m1,
-                "should_have_claim_m5": row.should_have_claim_m5,
-                "has_claim_m5": row.has_claim_m5,
-                "should_have_claim_m25": row.should_have_claim_m25,
-                "has_claim_m25": row.has_claim_m25,
-                "missing_claim_bucket": row.missing_claim_bucket,
-                "root_cause": row.root_cause
-            })
-        
-        return {
-            "summary": summary,
-            "root_causes": root_causes,
-            "sample_cases": sample_cases
-        }
-        
+        return service_get_claims_audit_summary(db, limit=limit)
     except Exception as e:
         try:
             db.rollback()
         except Exception:
             pass
-        logger.error(f"Error obteniendo resumen de auditoría de claims: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error obteniendo auditoría de claims: {str(e)[:200]}"
-        )
+        logger.error("Error obteniendo resumen de auditoría de claims: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error obteniendo auditoría de claims: {str(e)[:200]}") from e
 
 
 @router.get("/cabinet-financial-14d/limbo", response_model=CabinetLimboResponse)

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from uuid import UUID
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from app.models.ops import CabinetKpiRedRecoveryQueue
 from app.models.canon import IdentityLink, IdentityOrigin, OriginTag, DecidedBy, OriginResolutionStatus, IdentityUnmatched
 from app.services.matching import MatchingEngine, IdentityCandidateInput

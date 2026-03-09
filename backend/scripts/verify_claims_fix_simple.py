@@ -8,21 +8,21 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from sqlalchemy import create_engine, text
-from app.config import settings
+from sqlalchemy import text
+from app.core.db import engine
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 
-def execute_query(engine, query: str, description: str):
+def execute_query(eng, query: str, description: str):
     """Ejecuta una query y muestra los resultados"""
     logger.info(f"\n{'='*60}")
     logger.info(f"{description}")
     logger.info(f"{'='*60}")
     
     try:
-        with engine.connect() as conn:
+        with eng.connect() as conn:
             result = conn.execute(text(query))
             rows = result.fetchall()
             
@@ -51,12 +51,11 @@ def main():
     logger.info("="*60 + "\n")
     
     try:
-        engine = create_engine(settings.database_url)
         logger.info("OK: Conexión establecida\n")
     except Exception as e:
         logger.error(f"ERROR: {str(e)}")
         return 1
-    
+
     # 1. Total de claims generados
     query1 = """
         SELECT 

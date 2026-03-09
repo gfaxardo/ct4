@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
 from sqlalchemy.sql import func
 from sqlalchemy.types import DateTime
 
-from app.db import Base
+from app.core.db import Base
 
 
 class RunStatus(str, enum.Enum):

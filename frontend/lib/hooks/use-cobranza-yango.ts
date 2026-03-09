@@ -52,6 +52,7 @@ export function useCabinetFinancial(filters: CabinetFinancialFilters) {
       use_materialized: true,
     }),
     staleTime: 2 * 60 * 1000, // 2 minutes for main data
+    refetchOnMount: false, // evita GET duplicado al remontar (ej. React Strict Mode)
   });
 }
 

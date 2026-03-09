@@ -5,15 +5,15 @@
 
 'use client';
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useEffect, useState, useCallback, Suspense, Fragment } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getOpsDriverMatrix, ApiError } from '@/lib/api';
+import { getOpsDriverMatrix, ApiError, API_BASE_URL } from '@/lib/api';
 import type { DriverMatrixRow, OpsDriverMatrixResponse } from '@/lib/types';
 import Badge from '@/components/Badge';
 import StatCard from '@/components/StatCard';
-import CompactMilestoneCell from '@/components/payments/CompactMilestoneCell';
-import MilestoneCell from '@/components/payments/MilestoneCell';
-import PaymentsLegend from '@/components/payments/PaymentsLegend';
+import CompactMilestoneCell from '@/components/pagos/CompactMilestoneCell';
+import MilestoneCell from '@/components/pagos/MilestoneCell';
+import PaymentsLegend from '@/components/pagos/PaymentsLegend';
 import { PageLoadingOverlay } from '@/components/Skeleton';
 
 // Icons
@@ -44,8 +44,6 @@ const Icons = {
     </svg>
   ),
 };
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 function DriverMatrixPageContent() {
   const router = useRouter();
@@ -329,13 +327,13 @@ function DriverMatrixPageContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {data.map((row, idx) => {
+                    {data.map((row) => {
                       const rowKey = getRowKey(row);
                       const isExpanded = expandedRows[rowKey];
                       const hasInconsistency = row.m5_without_m1_flag || row.m25_without_m5_flag;
                       return (
-                        <>
-                          <tr key={idx} className={`hover:bg-slate-50/50 transition-colors ${isExpanded ? 'bg-slate-50' : ''}`}>
+                        <Fragment key={rowKey}>
+                          <tr className={`hover:bg-slate-50/50 transition-colors ${isExpanded ? 'bg-slate-50' : ''}`}>
                             <td className="py-2 px-2">
                               <button onClick={() => toggleRowExpand(row)} className="p-1 hover:bg-slate-200 rounded transition-colors">
                                 <span className={`inline-block text-slate-400 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
@@ -354,7 +352,7 @@ function DriverMatrixPageContent() {
                             <td className="py-2 px-2 text-center">{row.connected_flag ? <span className="text-green-500">✓</span> : <span className="text-slate-400">—</span>}</td>
                           </tr>
                           {isExpanded && (
-                            <tr key={`${idx}-exp`} className="bg-slate-50">
+                            <tr className="bg-slate-50">
                               <td colSpan={8} className="px-4 pb-4 pt-2 border-t border-slate-100">
                                 <div className="grid grid-cols-3 gap-6">
                                   <div><h4 className="text-sm font-semibold text-slate-700 mb-2">M1</h4><MilestoneCell achieved_flag={row.m1_achieved_flag} achieved_date={row.m1_achieved_date} expected_amount_yango={row.m1_expected_amount_yango} yango_payment_status={row.m1_yango_payment_status} window_status={row.m1_window_status} overdue_days={row.m1_overdue_days} /></div>
@@ -370,7 +368,7 @@ function DriverMatrixPageContent() {
                               </td>
                             </tr>
                           )}
-                        </>
+                        </Fragment>
                       );
                     })}
                   </tbody>

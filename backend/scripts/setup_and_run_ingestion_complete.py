@@ -15,7 +15,7 @@ from datetime import date, timedelta
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from app.services.ingestion import IngestionService
 from app.models.ops import IngestionRun, RunStatus, JobType
 from sqlalchemy import text

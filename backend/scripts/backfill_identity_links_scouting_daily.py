@@ -27,7 +27,7 @@ from typing import Optional, Dict, Any
 backend_root = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_root))
 
-from app.config import settings
+from app.core.config import settings
 from app.models.canon import IdentityLink, IdentityRegistry, ConfidenceLevel
 from app.services.normalization import normalize_license, normalize_phone, normalize_phone_pe9
 from sqlalchemy import create_engine, text

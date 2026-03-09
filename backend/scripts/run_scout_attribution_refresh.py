@@ -15,9 +15,8 @@ from typing import Dict, Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from app.config import settings
+from sqlalchemy import text
+from app.core.db import SessionLocal
 from app.models.ops import IngestionRun, RunStatus, JobType
 
 logging.basicConfig(
@@ -25,9 +24,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-engine = create_engine(settings.database_url)
-SessionLocal = sessionmaker(bind=engine)
 
 
 def execute_sql_file(db_session, sql_file: Path) -> tuple[bool, str]:

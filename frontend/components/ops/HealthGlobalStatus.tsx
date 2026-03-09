@@ -143,6 +143,7 @@ export default function HealthGlobalStatus() {
   }
 
   const styles = getStatusStyles(globalStatus.global_status);
+  const message = (globalStatus as { message?: string }).message;
 
   return (
     <div className={`rounded-xl border p-4 mb-6 ${styles.bg}`}>
@@ -159,6 +160,9 @@ export default function HealthGlobalStatus() {
                globalStatus.global_status === 'ERROR' ? 'Errores Críticos' :
                globalStatus.global_status}
             </p>
+            {message && (
+              <p className="text-sm text-slate-600 mt-1">{message}</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-6">

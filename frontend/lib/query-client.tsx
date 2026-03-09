@@ -62,4 +62,8 @@ export const queryKeys = {
   // Payments
   driverMatrix: (filters: Record<string, unknown>) => ['driverMatrix', filters] as const,
   paymentEligibility: (filters: Record<string, unknown>) => ['paymentEligibility', filters] as const,
+
+  // Yango Reconciliation (cabinet)
+  yangoReconciliationSummary: (filters: Record<string, unknown>) => ['yangoReconciliationSummary', filters] as const,
+  yangoReconciliationItems: (filters: Record<string, unknown>) => ['yangoReconciliationItems', filters] as const,
 };

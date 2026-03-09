@@ -4,22 +4,14 @@ Script de validación: confirma que expected/gap no filtra por pagos.
 """
 
 import sys
-import os
 from pathlib import Path
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 
-project_root = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(project_root / "backend"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://yego_user:37>MNA&-35+@168.119.226.236:5432/yego_integral"
-)
+from app.core.db import SessionLocal
 
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
-session = Session()
+session = SessionLocal()
 
 def verify_claims_independent_of_paid():
     """Verifica que hay claims expected sin pagar."""

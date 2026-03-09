@@ -14,7 +14,7 @@ from sqlalchemy import func, text
 from sqlalchemy.exc import DisconnectionError, OperationalError, PendingRollbackError
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from app.models.canon import (
     ConfidenceLevel,
     IdentityLink,

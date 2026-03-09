@@ -21,7 +21,7 @@ from datetime import datetime
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from app.services.ingestion import IngestionService
 from app.services.lead_attribution import LeadAttributionService
 from datetime import date, timedelta
@@ -33,24 +33,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# #region agent log
 def debug_log(location, message, data=None, hypothesis_id=None):
-    try:
-        log_entry = {
-            "id": f"log_{int(datetime.now().timestamp() * 1000)}",
-            "timestamp": int(datetime.now().timestamp() * 1000),
-            "location": location,
-            "message": message,
-            "data": data or {},
-            "sessionId": "debug-session",
-            "runId": "scheduled-ingestion",
-            "hypothesisId": hypothesis_id
-        }
-        with open("c:\\cursor\\CT4\\.cursor\\debug.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(log_entry) + "\n")
-    except Exception:
-        pass
-# #endregion
+    """Log de depuración: siempre logger.debug; opcionalmente archivo si DEBUG_LOGFILE está definido."""
+    log_entry = {"location": location, "message": message, "data": data or {}, "hypothesisId": hypothesis_id}
+    logger.debug("scheduled-ingestion: %s", json.dumps(log_entry))
+    log_path = os.environ.get("DEBUG_LOGFILE")
+    if log_path:
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({**log_entry, "timestamp": datetime.now().isoformat()}) + "\n")
+        except Exception:
+            pass
 
 
 def run_ingestion():

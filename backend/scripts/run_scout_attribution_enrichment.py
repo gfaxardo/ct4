@@ -9,13 +9,11 @@ Ejecuta en orden:
 import sys
 import os
 from pathlib import Path
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
+from app.core.db import SessionLocal
 
 # Agregar el directorio backend al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from app.config import settings
 
 def execute_sql_file(session, sql_file_path: Path):
     """Ejecuta un archivo SQL completo."""
@@ -185,10 +183,7 @@ def main():
     
     # Conectar a la base de datos
     print(f"\nConectando a la base de datos...")
-    engine = create_engine(settings.database_url)
-    SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
-    
     try:
         # Ejecutar scripts en orden
         for script in scripts:

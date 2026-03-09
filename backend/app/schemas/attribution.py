@@ -19,10 +19,6 @@ class LeadEventBase(BaseModel):
     payload_json: Optional[Dict[str, Any]] = None
 
 
-class LeadEventCreate(LeadEventBase):
-    pass
-
-
 class LeadEvent(LeadEventBase):
     id: int
     created_at: datetime

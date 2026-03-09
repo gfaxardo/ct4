@@ -25,7 +25,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from sqlalchemy import text
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from collections import defaultdict
 import json
 from datetime import datetime

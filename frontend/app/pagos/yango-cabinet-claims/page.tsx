@@ -12,6 +12,7 @@ import {
   getYangoCabinetClaimsToCollect,
   getYangoCabinetClaimDrilldown,
   ApiError,
+  API_BASE_URL,
 } from '@/lib/api';
 import type {
   YangoCabinetClaimRow,
@@ -20,8 +21,6 @@ import type {
 import Badge from '@/components/Badge';
 import Modal from '@/components/Modal';
 import { PageLoadingOverlay, StandardPageSkeleton } from '@/components/Skeleton';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 // Icons
 const MoneyIcon = () => (

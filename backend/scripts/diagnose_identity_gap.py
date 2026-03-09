@@ -12,7 +12,7 @@ from sqlalchemy import text
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 
 def print_section(title: str):
     """Imprime un separador de sección"""

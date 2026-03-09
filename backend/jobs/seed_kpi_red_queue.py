@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from app.models.ops import CabinetKpiRedRecoveryQueue
 
 logger = logging.getLogger(__name__)

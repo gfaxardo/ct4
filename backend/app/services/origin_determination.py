@@ -11,7 +11,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.config import LEAD_SYSTEM_START_DATE
+from app.core.config import LEAD_SYSTEM_START_DATE
 from app.models.canon import (
     ConfidenceLevel,
     DecidedBy,

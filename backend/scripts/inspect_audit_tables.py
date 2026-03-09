@@ -7,10 +7,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from sqlalchemy import create_engine, text
-from app.config import settings
-
-engine = create_engine(settings.database_url)
+from sqlalchemy import text
+from app.core.db import engine
 conn = engine.connect()
 
 # Verificar si existe identity_links_backfill_audit

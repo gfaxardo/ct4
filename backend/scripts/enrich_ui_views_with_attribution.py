@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import settings
+from app.core.config import settings
 
 def main():
     engine = create_engine(settings.database_url)

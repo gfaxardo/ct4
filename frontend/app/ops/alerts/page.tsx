@@ -12,6 +12,7 @@ import Badge from '@/components/Badge';
 import StatCard from '@/components/StatCard';
 import Pagination from '@/components/Pagination';
 import { PageLoadingOverlay } from '@/components/Skeleton';
+import { formatDateTime } from '@/lib/format';
 
 // Icons
 const Icons = {
@@ -134,16 +135,6 @@ export default function OpsAlertsPage() {
   const handleClearFilters = () => {
     setFilters({ severity: '', acknowledged: '', week_label: '' });
     setOffset(0);
-  };
-
-  const formatDate = (dateStr: string): string => {
-    return new Date(dateStr).toLocaleString('es-PE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   };
 
   const getSeverityBadgeVariant = (severity: AlertSeverity): 'success' | 'warning' | 'error' | 'info' => {
@@ -350,7 +341,7 @@ export default function OpsAlertsPage() {
                     <p className="text-sm text-slate-900 font-medium mb-1">{alert.message}</p>
                     <div className="flex items-center gap-4 text-xs text-slate-500">
                       <span>ID: {alert.id}</span>
-                      <span>{formatDate(alert.created_at)}</span>
+                      <span>{formatDateTime(alert.created_at)}</span>
                       {alert.acknowledged && (
                         <span className="flex items-center gap-1 text-emerald-600">
                           {Icons.checkSmall} Reconocida

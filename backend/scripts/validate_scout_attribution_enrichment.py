@@ -11,12 +11,11 @@ Valida:
 
 import sys
 from pathlib import Path
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 import json
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from app.config import settings
+from app.core.db import SessionLocal
 
 def validate_coverage(session):
     """Valida la cobertura de scout en la vista."""
@@ -369,10 +368,7 @@ def main():
     print("VALIDACIÓN COMPLETA: Enriquecimiento de Scout Attribution")
     print("="*80)
     
-    engine = create_engine(settings.database_url)
-    SessionLocal = sessionmaker(bind=engine)
     session = SessionLocal()
-    
     try:
         results = {}
         

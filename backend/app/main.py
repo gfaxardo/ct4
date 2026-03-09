@@ -4,7 +4,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import health, v1
+from app.core.config import settings
 from app.services.auto_processor import start_scheduler, stop_scheduler
+
+def _cors_origins_list() -> list[str]:
+    o = (settings.cors_origins or "").strip()
+    if not o or o == "*":
+        return ["*"]
+    return [x.strip() for x in o.split(",") if x.strip()]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,10 +61,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins_list(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=86400,  # Cache preflight 24h
 )
 
 app.include_router(health.router)

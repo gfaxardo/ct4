@@ -26,26 +26,10 @@ import DataTable from '@/components/DataTable';
 import Pagination from '@/components/Pagination';
 import Badge from '@/components/Badge';
 
+import { formatDate, formatDateTime } from '@/lib/format';
+
 const DEFAULT_LIMIT = 50;
 const DEFAULT_OFFSET = 0;
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  try {
-    return new Date(dateStr).toLocaleDateString('es-ES');
-  } catch {
-    return dateStr;
-  }
-}
-
-function formatDateTime(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  try {
-    return new Date(dateStr).toLocaleString('es-ES');
-  } catch {
-    return dateStr;
-  }
-}
 
 function getHealthStatusBadge(status: string | null) {
   if (!status) return <span>—</span>;

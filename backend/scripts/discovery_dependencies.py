@@ -6,7 +6,7 @@ import sys
 import io
 import csv
 from pathlib import Path
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 # Forzar UTF-8 en Windows
 if sys.platform == 'win32':
@@ -15,7 +15,7 @@ if sys.platform == 'win32':
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import settings
+from app.core.db import engine
 
 # Leer el script SQL
 sql_file = Path(__file__).parent.parent / "sql" / "ops" / "discovery_dependencies.sql"
@@ -47,7 +47,6 @@ with open(sql_file, "r", encoding="utf-8") as f:
         raise ValueError("No se pudo extraer una query válida del archivo SQL")
 
 # Conectar a la base de datos
-engine = create_engine(settings.database_url)
 conn = engine.connect()
 
 try:

@@ -11,7 +11,7 @@ from pathlib import Path
 # Agregar el directorio raíz del backend al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import settings
+from app.core.config import settings
 from sqlalchemy import create_engine, text
 import logging
 

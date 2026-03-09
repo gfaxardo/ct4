@@ -1,14 +1,10 @@
 """
-Tests para endpoints de driver-matrix
+Tests para endpoints de driver-matrix (GET /api/v1/payments/driver-matrix).
 """
 import pytest
-from fastapi.testclient import TestClient
-from app.main import app
-
-client = TestClient(app)
 
 
-def test_driver_matrix_endpoint_returns_200():
+def test_driver_matrix_endpoint_returns_200(client):
     """Test que /driver-matrix retorna 200 y JSON válido"""
     response = client.get("/api/v1/payments/driver-matrix?page=1&limit=10")
     
@@ -37,7 +33,7 @@ def test_driver_matrix_endpoint_returns_200():
     assert isinstance(data["rows"], list)
 
 
-def test_driver_matrix_export_returns_200_and_csv():
+def test_driver_matrix_export_returns_200_and_csv(client):
     """Test que /driver-matrix/export retorna 200, text/csv y BOM presente"""
     response = client.get("/api/v1/payments/driver-matrix/export")
     
@@ -62,7 +58,7 @@ def test_driver_matrix_export_returns_200_and_csv():
     assert 'driver_id' in headers or 'driver_id' in content_text, "CSV debe contener columna driver_id"
 
 
-def test_driver_matrix_with_filters():
+def test_driver_matrix_with_filters(client):
     """Test que los filtros funcionan correctamente"""
     # Test con search
     response = client.get("/api/v1/payments/driver-matrix?search=test&page=1&limit=10")
@@ -77,7 +73,7 @@ def test_driver_matrix_with_filters():
     assert response.status_code == 200
 
 
-def test_driver_matrix_export_with_filters():
+def test_driver_matrix_export_with_filters(client):
     """Test que el export funciona con filtros"""
     response = client.get("/api/v1/payments/driver-matrix/export?only_pending=true")
     assert response.status_code == 200
@@ -88,7 +84,7 @@ def test_driver_matrix_export_with_filters():
     assert content_bytes[:3] == b'\xef\xbb\xbf'
 
 
-def test_driver_matrix_pagination():
+def test_driver_matrix_pagination(client):
     """Test que la paginación funciona correctamente"""
     # Primera página
     response1 = client.get("/api/v1/payments/driver-matrix?page=1&limit=10")

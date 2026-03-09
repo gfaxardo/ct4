@@ -5,7 +5,7 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import date, datetime
 import json
-from app.db import get_db, SessionLocal
+from app.core.db import get_db, SessionLocal
 from app.models.canon import (
     IdentityRegistry, 
     IdentityLink, 

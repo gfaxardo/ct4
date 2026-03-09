@@ -1,11 +1,9 @@
 import pytest
 from datetime import date, datetime, timedelta
-from sqlalchemy.orm import Session
 from uuid import uuid4
 from app.models.canon import IdentityLink, IdentityUnmatched, ConfidenceLevel, IdentityRegistry
 from app.models.ops import IngestionRun, RunStatus, JobType
 from app.api.v1.identity import _parse_event_week, _get_available_weeks, _calculate_weekly_trend
-from app.db import SessionLocal, Base, engine
 
 
 def test_week_label_iso():
@@ -33,16 +31,6 @@ def test_parse_event_week_invalid_format():
     
     with pytest.raises(Exception):
         _parse_event_week("2025")
-
-
-@pytest.fixture
-def db_session():
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def test_weekly_counts_structure(db_session):

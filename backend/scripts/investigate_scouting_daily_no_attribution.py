@@ -7,10 +7,8 @@ from pathlib import Path
 backend_root = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_root))
 
-from app.config import settings
-from sqlalchemy import create_engine, text
-
-engine = create_engine(settings.database_url)
+from sqlalchemy import text
+from app.core.db import engine
 
 queries = {
     "1. Verificar si scouting_daily tiene identity_links": """

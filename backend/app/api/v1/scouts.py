@@ -10,9 +10,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.core.db import get_db
 from app.models.ops import IngestionRun, RunStatus
 
 logger = logging.getLogger(__name__)
@@ -388,23 +389,23 @@ def get_liquidation_base(
         result = db.execute(query, {"page_size": page_size, "offset": offset})
         count_result = db.execute(count_query)
         total = count_result.scalar() or 0
-        
+
+        def _row_item(row):
+            return {
+                "person_key": str(row.person_key) if getattr(row, "person_key", None) else None,
+                "driver_id": getattr(row, "driver_id", None),
+                "scout_id": getattr(row, "scout_id", None),
+                "origin_tag": getattr(row, "origin_tag", None),
+                "milestone_reached": getattr(row, "milestone_reached", 0),
+                "milestone_date": str(row.milestone_date) if getattr(row, "milestone_date", None) else None,
+                "eligible_7d": getattr(row, "eligible_7d", False),
+                "amount_payable": float(row.amount_payable) if getattr(row, "amount_payable", None) is not None else 0,
+                "payment_status": getattr(row, "payment_status", None),
+                "block_reason": getattr(row, "block_reason", None),
+            }
+
         return {
-            "items": [
-                {
-                    "person_key": str(row.person_key) if row.person_key else None,
-                    "driver_id": row.driver_id,
-                    "scout_id": row.scout_id,
-                    "origin_tag": row.origin_tag,
-                    "milestone_reached": row.milestone_reached,
-                    "milestone_date": str(row.milestone_date) if row.milestone_date else None,
-                    "eligible_7d": row.eligible_7d,
-                    "amount_payable": float(row.amount_payable) if row.amount_payable else 0,
-                    "payment_status": row.payment_status,
-                    "block_reason": row.block_reason,
-                }
-                for row in result.fetchall()
-            ],
+            "items": [_row_item(row) for row in result.fetchall()],
             "pagination": {
                 "page": page,
                 "page_size": page_size,
@@ -412,6 +413,22 @@ def get_liquidation_base(
                 "total_pages": (total + page_size - 1) // page_size if page_size > 0 else 0
             }
         }
+    except OperationalError as e:
+        logger.exception(f"Error de conexión en liquidation/base: {e}")
+        raise HTTPException(status_code=503, detail="DB no disponible / revisa DATABASE_URL")
+    except ProgrammingError as e:
+        err = getattr(e.orig, "pgcode", None) if hasattr(e, "orig") else None
+        msg = str(e.orig) if hasattr(e, "orig") else str(e)
+        if err == "42P01" or "v_scout_payment_base" in msg or "does not exist" in msg.lower():
+            logger.exception(f"Vista no existe en liquidation/base: {e}")
+            raise HTTPException(
+                status_code=404,
+                detail="Falta la vista ops.v_scout_payment_base. Ejecuta backend/scripts/sql/create_v_scout_payment_base.sql (o el flujo de scout attribution que crea esta vista)."
+            )
+        logger.exception(f"Error SQL en liquidation/base: {e}")
+        raise HTTPException(status_code=500, detail=f"Error SQL: {msg}")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error obteniendo liquidación base: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error obteniendo liquidación base: {str(e)}")

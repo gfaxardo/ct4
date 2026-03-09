@@ -7,6 +7,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { API_BASE_URL } from '@/lib/api';
 
 // Types
 export interface User {
@@ -42,8 +43,6 @@ export interface AuthContextType extends AuthState {
   logout: () => void;
 }
 
-// Auth API URL - usa el backend como proxy
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 const AUTH_API_URL = `${API_BASE_URL}/api/v1/auth/login`;
 
 // Storage keys

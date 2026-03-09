@@ -23,7 +23,7 @@ import io
 from time import time
 from typing import Dict, Tuple, Any
 
-from app.db import get_db
+from app.core.db import get_db
 
 # Cache para claims-to-collect (TTL en segundos)
 CACHE_TTL_CLAIMS = 120  # 2 minutos

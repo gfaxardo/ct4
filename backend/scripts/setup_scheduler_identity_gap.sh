@@ -1,10 +1,15 @@
 #!/bin/bash
-# Script para configurar scheduler del Identity Gap Recovery Job
+# NOTA: El job jobs/retry_identity_matching.py fue eliminado.
+# Este script se mantiene solo como referencia histórica para cron/Task Scheduler.
 # Ejecutar como: bash setup_scheduler_identity_gap.sh
 
 echo "=========================================="
 echo "Configuración de Scheduler: Identity Gap Recovery"
 echo "=========================================="
+echo ""
+echo "AVISO: El job retry_identity_matching ya no existe en este repo."
+echo "Las instrucciones siguientes son solo referencia."
+echo ""
 
 # Detectar sistema operativo
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then

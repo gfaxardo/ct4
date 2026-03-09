@@ -9,12 +9,8 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  getYangoReconciliationSummary,
-  getYangoReconciliationItems,
-  getCabinetReconciliation,
-  ApiError,
-} from '@/lib/api';
+import { getCabinetReconciliation, ApiError } from '@/lib/api';
+import { useYangoReconciliationSummary, useYangoReconciliationItems } from '@/lib/hooks/use-yango-reconciliation';
 import type {
   YangoReconciliationSummaryResponse,
   YangoReconciliationItemsResponse,
@@ -249,66 +245,47 @@ function Tab({ label, active, onClick, badge }: TabProps) {
 export default function YangoCabinetPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'summary' | 'reconciliation'>('summary');
-  const [summary, setSummary] = useState<YangoReconciliationSummaryResponse | null>(null);
-  const [items, setItems] = useState<YangoReconciliationItemsResponse | null>(null);
   const [cabinetReconciliation, setCabinetReconciliation] = useState<CabinetReconciliationResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [reconciliationLoading, setReconciliationLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [reconciliationError, setReconciliationError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     week_start: '',
     milestone_value: '',
     mode: 'real',
   });
-  const [offset, setOffset] = useState(0);
   const [limit] = useState(100);
-  
-  // Paginación para Items Detallados
+
+  // React Query: mismo patrón que cobranza — evita GET duplicados (refetchOnMount: false)
+  const summaryFilters = {
+    week_start: filters.week_start || undefined,
+    milestone_value: filters.milestone_value ? parseInt(filters.milestone_value) : undefined,
+    mode: filters.mode as 'real' | 'assumed',
+    limit: 100,
+  };
+  const itemsFilters = {
+    week_start: filters.week_start || undefined,
+    milestone_value: filters.milestone_value ? parseInt(filters.milestone_value) : undefined,
+    limit,
+    offset: 0,
+  };
+  const { data: summary, isLoading: summaryLoading, error: summaryError } = useYangoReconciliationSummary(summaryFilters);
+  const { data: items, isLoading: itemsLoading, error: itemsError } = useYangoReconciliationItems(itemsFilters);
+
+  const loading = summaryLoading || itemsLoading;
+  const error: string | null =
+    summaryError
+      ? (summaryError instanceof ApiError ? `Error ${summaryError.status}: ${summaryError.detail || summaryError.message}` : String(summaryError))
+      : itemsError
+        ? (itemsError instanceof ApiError ? `Error ${itemsError.status}: ${itemsError.detail || itemsError.message}` : String(itemsError))
+        : null;
+
+  // Paginación para Items Detallados (client-side)
   const [itemsPage, setItemsPage] = useState(0);
   const itemsPerPage = 20;
-  
+
   // Paginación para Reconciliación Detallada
   const [reconPage, setReconPage] = useState(0);
   const reconPerPage = 30;
-
-  // Load summary data
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const [summaryData, itemsData] = await Promise.all([
-          getYangoReconciliationSummary({
-            week_start: filters.week_start || undefined,
-            milestone_value: filters.milestone_value ? parseInt(filters.milestone_value) : undefined,
-            mode: filters.mode as 'real' | 'assumed',
-            limit: 100,
-          }),
-          getYangoReconciliationItems({
-            week_start: filters.week_start || undefined,
-            milestone_value: filters.milestone_value ? parseInt(filters.milestone_value) : undefined,
-            limit,
-            offset,
-          }),
-        ]);
-
-        setSummary(summaryData);
-        setItems(itemsData);
-      } catch (err) {
-        if (err instanceof ApiError) {
-          setError(`Error ${err.status}: ${err.detail || err.message}`);
-        } else {
-          setError('Error al cargar datos');
-        }
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadData();
-  }, [filters, offset, limit]);
 
   // Load reconciliation data when tab is active
   useEffect(() => {
@@ -453,7 +430,6 @@ export default function YangoCabinetPage() {
                     <button
                       onClick={() => {
                         setFilters({ week_start: '', milestone_value: '', mode: 'real' });
-                        setOffset(0);
                       }}
                       className="w-full px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
                     >

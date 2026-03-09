@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from sqlalchemy import text
 from jobs.seed_kpi_red_queue import run_job as run_seed_job
 from jobs.recover_kpi_red_leads import run_job as run_recover_job

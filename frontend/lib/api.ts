@@ -1,82 +1,21 @@
 /**
- * API Client basado en FRONTEND_BACKEND_CONTRACT_v1.md
- * 
- * REGLA: Todos los fetch pasan por este módulo.
- * baseURL desde NEXT_PUBLIC_API_BASE_URL
+ * API Client — punto de entrada único para todas las llamadas al backend.
+ * Contrato: docs/contracts/FRONTEND_BACKEND_CONTRACT_v1.md
+ *
+ * Índice por dominio (buscar por "// ---"):
+ *   Identity / Orphans / Persons / Unmatched / Runs / Metrics
+ *   Dashboard (scout, yango)
+ *   Payments (eligibility, driver-matrix)
+ *   Yango (reconciliation, cabinet claims, reconciliation)
+ *   Ops Payments (cabinet-financial-14d, cobranza-yango, limbo, claims-gap)
+ *   Ops (alerts, health, raw-health, mv-health)
+ *   Cabinet leads (upload, diagnostics, auto-processor)
+ *   Identity gaps
+ *   Scouts (attribution, liquidation, collection-with-scout)
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
-
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public statusText: string,
-    public detail?: string
-  ) {
-    super(detail || statusText);
-    this.name = 'ApiError';
-  }
-}
-
-async function fetchApi<T>(
-  path: string,
-  options?: RequestInit
-): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
-  
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    let detail: string | undefined;
-    try {
-      const errorData = await response.json();
-      detail = errorData.detail || errorData.message;
-    } catch {
-      detail = response.statusText;
-    }
-    throw new ApiError(response.status, response.statusText, detail);
-  }
-
-  // Handle empty responses
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    return {} as T;
-  }
-
-  return response.json();
-}
-
-async function fetchApiFormData<T>(
-  path: string,
-  formData: FormData
-): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
-  
-  const response = await fetch(url, {
-    method: 'POST',
-    body: formData,
-    // No incluir Content-Type header, el browser lo setea automáticamente con boundary
-  });
-
-  if (!response.ok) {
-    let detail: string | undefined;
-    try {
-      const errorData = await response.json();
-      detail = errorData.detail || errorData.message;
-    } catch {
-      detail = response.statusText;
-    }
-    throw new ApiError(response.status, response.statusText, detail);
-  }
-
-  return response.json();
-}
+import { fetchApi, fetchApiFormData, ApiError, API_BASE_URL } from './api/client';
+export { ApiError, API_BASE_URL };
 
 // ============================================================================
 // Identity API
@@ -1089,126 +1028,6 @@ export async function getAutoProcessorStatus(): Promise<AutoProcessorStatus> {
 
 export async function triggerAutoProcessor(): Promise<any> {
   return fetchApi<any>('/api/v1/cabinet-leads/auto-processor/trigger', { method: 'POST' });
-}
-
-// ============================================================================
-// Identity Origin Audit API
-// ============================================================================
-
-import type {
-  OriginAuditRow,
-  OriginAlertRow,
-  OriginAuditListResponse,
-  OriginAlertListResponse,
-  OriginAuditStats,
-} from './types';
-
-export async function getOriginAudit(params?: {
-  violation_flag?: boolean;
-  violation_reason?: string;
-  resolution_status?: string;
-  origin_tag?: string;
-  skip?: number;
-  limit?: number;
-}): Promise<OriginAuditListResponse> {
-  const searchParams = new URLSearchParams();
-  if (params?.violation_flag !== undefined) searchParams.set('violation_flag', params.violation_flag.toString());
-  if (params?.violation_reason) searchParams.set('violation_reason', params.violation_reason);
-  if (params?.resolution_status) searchParams.set('resolution_status', params.resolution_status);
-  if (params?.origin_tag) searchParams.set('origin_tag', params.origin_tag);
-  if (params?.skip !== undefined) searchParams.set('skip', params.skip.toString());
-  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
-  
-  const query = searchParams.toString();
-  return fetchApi<OriginAuditListResponse>(`/api/v1/identity/audit/origin${query ? `?${query}` : ''}`);
-}
-
-export async function getOriginAuditDetail(personKey: string): Promise<OriginAuditRow> {
-  return fetchApi<OriginAuditRow>(`/api/v1/identity/audit/origin/${personKey}`);
-}
-
-export async function resolveOriginViolation(
-  personKey: string,
-  request: {
-    resolution_status: string;
-    origin_tag?: string;
-    origin_source_id?: string;
-    origin_confidence?: number;
-    notes?: string;
-  }
-): Promise<{ message: string; person_key: string }> {
-  return fetchApi<{ message: string; person_key: string }>(
-    `/api/v1/identity/audit/origin/${personKey}/resolve`,
-    {
-      method: 'POST',
-      body: JSON.stringify(request),
-    }
-  );
-}
-
-export async function markAsLegacy(
-  personKey: string,
-  request: { notes?: string }
-): Promise<{ message: string; person_key: string }> {
-  return fetchApi<{ message: string; person_key: string }>(
-    `/api/v1/identity/audit/origin/${personKey}/mark-legacy`,
-    {
-      method: 'POST',
-      body: JSON.stringify(request),
-    }
-  );
-}
-
-export async function getOriginAlerts(params?: {
-  alert_type?: string;
-  severity?: string;
-  impact?: string;
-  resolved_only?: boolean;
-  skip?: number;
-  limit?: number;
-}): Promise<OriginAlertListResponse> {
-  const searchParams = new URLSearchParams();
-  if (params?.alert_type) searchParams.set('alert_type', params.alert_type);
-  if (params?.severity) searchParams.set('severity', params.severity);
-  if (params?.impact) searchParams.set('impact', params.impact);
-  if (params?.resolved_only !== undefined) searchParams.set('resolved_only', params.resolved_only.toString());
-  if (params?.skip !== undefined) searchParams.set('skip', params.skip.toString());
-  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
-  
-  const query = searchParams.toString();
-  return fetchApi<OriginAlertListResponse>(`/api/v1/identity/audit/alerts${query ? `?${query}` : ''}`);
-}
-
-export async function resolveAlert(
-  personKey: string,
-  alertType: string,
-  request: { resolved_by: string; notes?: string }
-): Promise<{ message: string; person_key: string; alert_type: string }> {
-  return fetchApi<{ message: string; person_key: string; alert_type: string }>(
-    `/api/v1/identity/audit/alerts/${personKey}/${alertType}/resolve`,
-    {
-      method: 'POST',
-      body: JSON.stringify(request),
-    }
-  );
-}
-
-export async function muteAlert(
-  personKey: string,
-  alertType: string,
-  request: { muted_until: string; notes?: string }
-): Promise<{ message: string; person_key: string; alert_type: string }> {
-  return fetchApi<{ message: string; person_key: string; alert_type: string }>(
-    `/api/v1/identity/audit/alerts/${personKey}/${alertType}/mute`,
-    {
-      method: 'POST',
-      body: JSON.stringify(request),
-    }
-  );
-}
-
-export async function getOriginAuditStats(): Promise<OriginAuditStats> {
-  return fetchApi<OriginAuditStats>('/api/v1/identity/audit/stats');
 }
 
 // ============================================================================

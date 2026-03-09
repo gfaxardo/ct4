@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import settings
+from app.core.config import settings
 
 def introspect_table(session, schema: str, table_name: str):
     query = text("""

@@ -22,7 +22,7 @@ sys.path.insert(0, str(project_root / "backend"))
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 
 # Configuración
 DATABASE_URL = os.getenv(

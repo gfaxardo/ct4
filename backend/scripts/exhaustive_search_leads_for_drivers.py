@@ -21,7 +21,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from sqlalchemy import text
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from app.services.normalization import normalize_phone, normalize_license, normalize_name, normalize_phone_pe9
 from difflib import SequenceMatcher
 

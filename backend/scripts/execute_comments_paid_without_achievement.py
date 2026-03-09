@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from sqlalchemy import text
-from app.db import SessionLocal, engine
+from app.core.db import SessionLocal, engine
 
 
 def verify_view_type(session):

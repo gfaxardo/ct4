@@ -1,12 +1,16 @@
 """
-Script simple para crear el constraint único en external_id
-Usa psycopg2 directamente sin depender de módulos de la app
+Script simple para crear el constraint único en external_id.
+Usa psycopg2 directamente. Requiere DATABASE_URL en el entorno.
 """
+import os
 import psycopg2
 import sys
 
-# Configuración de base de datos
-DATABASE_URL = "postgresql://yego_user:37>MNA&-35+@168.119.226.236:5432/yego_integral"
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    print("ERROR: Definir DATABASE_URL (ej. en .env o export)")
+    sys.exit(1)
+
 
 def main():
     print("Creando constraint unico en external_id para module_ct_cabinet_leads...")

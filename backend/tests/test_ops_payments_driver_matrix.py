@@ -1,14 +1,10 @@
 """
-Tests para endpoints de ops/payments/driver-matrix
+Tests para endpoints de ops/payments/driver-matrix (GET /api/v1/ops/payments/driver-matrix).
 """
 import pytest
-from fastapi.testclient import TestClient
-from app.main import app
-
-client = TestClient(app)
 
 
-def test_ops_driver_matrix_endpoint_returns_200():
+def test_ops_driver_matrix_endpoint_returns_200(client):
     """Test que /api/v1/ops/payments/driver-matrix retorna 200 y JSON válido"""
     response = client.get("/api/v1/ops/payments/driver-matrix?limit=10&offset=0")
     
@@ -32,7 +28,7 @@ def test_ops_driver_matrix_endpoint_returns_200():
     assert data["meta"]["returned"] == len(data["data"])
 
 
-def test_ops_driver_matrix_only_pending_returns_200():
+def test_ops_driver_matrix_only_pending_returns_200(client):
     """Test que only_pending=true no rompe y retorna 200"""
     response = client.get("/api/v1/ops/payments/driver-matrix?only_pending=true&limit=10&offset=0")
     
@@ -48,7 +44,7 @@ def test_ops_driver_matrix_only_pending_returns_200():
     assert "returned" in data["meta"]
 
 
-def test_ops_driver_matrix_with_filters():
+def test_ops_driver_matrix_with_filters(client):
     """Test que los filtros funcionan correctamente"""
     # Test con origin_tag
     response = client.get("/api/v1/ops/payments/driver-matrix?origin_tag=cabinet&limit=10&offset=0")
@@ -63,13 +59,13 @@ def test_ops_driver_matrix_with_filters():
     assert response.status_code == 200
 
 
-def test_ops_driver_matrix_invalid_origin_tag():
+def test_ops_driver_matrix_invalid_origin_tag(client):
     """Test que origin_tag inválido retorna 400"""
     response = client.get("/api/v1/ops/payments/driver-matrix?origin_tag=invalid&limit=10&offset=0")
     assert response.status_code == 400
 
 
-def test_ops_driver_matrix_pagination():
+def test_ops_driver_matrix_pagination(client):
     """Test que la paginación funciona correctamente"""
     # Primera página
     response1 = client.get("/api/v1/ops/payments/driver-matrix?limit=10&offset=0")

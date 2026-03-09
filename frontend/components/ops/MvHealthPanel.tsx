@@ -20,17 +20,10 @@ import DataTable from '@/components/DataTable';
 import Pagination from '@/components/Pagination';
 import Badge from '@/components/Badge';
 
+import { formatDateTime } from '@/lib/format';
+
 const DEFAULT_LIMIT = 50;
 const DEFAULT_OFFSET = 0;
-
-function formatDateTime(dateStr: string | null): string {
-  if (!dateStr) return '—';
-  try {
-    return new Date(dateStr).toLocaleString('es-ES');
-  } catch {
-    return dateStr;
-  }
-}
 
 function formatSize(sizeMb: number | null): string {
   if (sizeMb === null || sizeMb === undefined) return '—';

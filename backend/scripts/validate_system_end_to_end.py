@@ -22,7 +22,7 @@ sys.path.insert(0, str(project_root / "backend"))
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 
 # Configuración
 DATABASE_URL = os.getenv(
@@ -262,22 +262,19 @@ class SystemValidator:
         results = {}
         
         jobs = [
-            "jobs.reconcile_cabinet_claims_14d",
-            "jobs.reconcile_cabinet_leads_pipeline"
+            ("jobs.seed_kpi_red_queue", "run_job"),
+            ("jobs.recover_kpi_red_leads", "run_job"),
         ]
         
-        for job_module in jobs:
+        for job_module, attr in jobs:
             try:
-                module = __import__(job_module, fromlist=[''])
-                
-                # Verificar que tiene clase principal
-                if hasattr(module, 'ReconcileCabinetClaims14d') or hasattr(module, 'ReconcileCabinetLeadsPipeline'):
-                    logger.info(f"✅ {job_module}: Importable y tiene clase principal")
+                module = __import__(job_module, fromlist=[""])
+                if hasattr(module, attr):
+                    logger.info(f"✅ {job_module}: Importable y tiene {attr}")
                     results[job_module] = True
                 else:
-                    logger.warning(f"⚠️ {job_module}: Importable pero estructura inesperada")
+                    logger.warning(f"⚠️ {job_module}: Importable pero sin {attr}")
                     results[job_module] = False
-                    
             except Exception as e:
                 logger.error(f"❌ {job_module}: Error importando - {e}")
                 results[job_module] = False

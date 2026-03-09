@@ -13,7 +13,7 @@ from sqlalchemy import and_, or_, text
 from sqlalchemy.exc import IntegrityError, PendingRollbackError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.config import PARK_ID_OBJETIVO
+from app.core.config import PARK_ID_OBJETIVO
 from app.models.canon import ConfidenceLevel, IdentityLink, IdentityRegistry
 from app.models.observational import (
     AttributionConfidence,

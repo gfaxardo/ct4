@@ -14,7 +14,7 @@ from sqlalchemy import and_, text
 from sqlalchemy.exc import DisconnectionError, OperationalError, PendingRollbackError
 from sqlalchemy.orm import Session
 
-from app.config import NAME_SIMILARITY_THRESHOLD, PARK_ID_OBJETIVO
+from app.core.config import NAME_SIMILARITY_THRESHOLD, PARK_ID_OBJETIVO
 from app.models.canon import (
     ConfidenceLevel,
     IdentityLink,

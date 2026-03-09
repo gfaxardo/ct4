@@ -10,7 +10,7 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from app.services.lead_attribution import LeadAttributionService
 from datetime import date, timedelta
 import logging

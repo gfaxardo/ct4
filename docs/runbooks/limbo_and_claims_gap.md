@@ -24,9 +24,9 @@ Este runbook documenta cómo operar y mantener el sistema auditable de Cabinet 1
 - `GET /api/v1/ops/payments/cabinet-financial-14d/limbo`: Obtener leads en limbo
 - `GET /api/v1/ops/payments/cabinet-financial-14d/claims-gap`: Obtener gaps de claims
 
-### 2.3 Jobs
-- `reconcile_cabinet_leads_pipeline`: Reconciliar leads en limbo (identity matching)
-- `reconcile_cabinet_claims_14d`: Generar claims faltantes
+### 2.3 Jobs y flujo actual
+- Los jobs `reconcile_cabinet_leads_pipeline` y `reconcile_cabinet_claims_14d` fueron eliminados.
+- Para recuperación de identity gap y validaciones: ver `docs/runbooks/identity_gap_recovery.md` y `backend/scripts/run_validations.py`.
 
 ### 2.4 Scripts de Validación
 - `validate_limbo.py`: Validar reglas duras de limbo
@@ -44,10 +44,7 @@ Este runbook documenta cómo operar y mantener el sistema auditable de Cabinet 1
 
 **Acción:**
 1. Verificar datos RAW del lead (phone, license, plate)
-2. Ejecutar matching job:
-   ```bash
-   python -m jobs.reconcile_cabinet_leads_pipeline --only-limbo --limit 500
-   ```
+2. Usar flujo de identity gap: `docs/runbooks/identity_gap_recovery.md` y scripts referenciados allí (p. ej. `setup_scheduler_identity_gap.sh`, `run_validations.py`).
 3. Si persiste, revisar `canon.identity_unmatched` para ver razón
 
 **Queries útiles:**
@@ -75,10 +72,7 @@ WHERE source_table = 'module_ct_cabinet_leads' AND source_pk = 'XXX';
 2. Si no existe, puede requerir:
    - Esperar job de drivers
    - Crear link manual si hay evidencia
-3. Re-ejecutar matching si hay nuevos drivers:
-   ```bash
-   python -m jobs.reconcile_cabinet_leads_pipeline --only-limbo --limit 500
-   ```
+3. Re-ejecutar flujo de identity/validaciones según `docs/runbooks/identity_gap_recovery.md`.
 
 ### 3.3 NO_TRIPS_14D
 **Descripción:** Lead tiene `driver_id` pero `trips_14d = 0`
@@ -108,10 +102,7 @@ WHERE source_table = 'module_ct_cabinet_leads' AND source_pk = 'XXX';
    WHERE lead_source_pk = 'XXX' 
      AND (reached_m1_14d = true OR reached_m5_14d = true OR reached_m25_14d = true);
    ```
-2. Ejecutar job de reconciliación de claims:
-   ```bash
-   python -m jobs.reconcile_cabinet_claims_14d --days-back 21 --limit 1000
-   ```
+2. Usar flujo actual de identity/validaciones (ver `docs/runbooks/identity_gap_recovery.md`, `backend/scripts/run_validations.py`).
 3. Verificar que claim se generó:
    ```sql
    SELECT * FROM canon.claims_yango_cabinet_14d 
@@ -135,10 +126,7 @@ WHERE source_table = 'module_ct_cabinet_leads' AND source_pk = 'XXX';
 **Descripción:** Milestone alcanzado pero claim no existe en `canon.claims_yango_cabinet_14d`
 
 **Acción:**
-1. Ejecutar job de reconciliación:
-   ```bash
-   python -m jobs.reconcile_cabinet_claims_14d --only-gaps --limit 1000
-   ```
+1. Usar flujo de identity gap y validaciones (ver `docs/runbooks/identity_gap_recovery.md`).
 2. Verificar que claim se generó
 
 #### NO_IDENTITY
@@ -163,50 +151,13 @@ WHERE source_table = 'module_ct_cabinet_leads' AND source_pk = 'XXX';
 
 ---
 
-## 5. EJECUCIÓN MANUAL DE JOBS
+## 5. EJECUCIÓN MANUAL (flujo actual)
 
-### 5.1 Reconciliar Leads en Limbo
+Los jobs `reconcile_cabinet_leads_pipeline` y `reconcile_cabinet_claims_14d` fueron eliminados. Para identity gap, validaciones y scheduler:
 
-```bash
-# Procesar solo leads en limbo (últimos 30 días)
-python -m jobs.reconcile_cabinet_leads_pipeline --only-limbo --limit 500
-
-# Procesar leads recientes y limbo
-python -m jobs.reconcile_cabinet_leads_pipeline --days-back 30 --limit 2000
-
-# Dry-run (solo mostrar qué se procesaría)
-python -m jobs.reconcile_cabinet_leads_pipeline --only-limbo --dry-run
-```
-
-**Parámetros:**
-- `--only-limbo`: Solo procesar leads en limbo (NO_IDENTITY, NO_DRIVER, TRIPS_NO_CLAIM)
-- `--days-back`: Días hacia atrás para leads recientes (default: 30)
-- `--limit`: Límite de leads a procesar (default: 2000)
-- `--dry-run`: Modo dry-run (no ejecuta ingestion)
-
-### 5.2 Reconciliar Claims Gap
-
-```bash
-# Procesar gaps (últimos 21 días)
-python -m jobs.reconcile_cabinet_claims_14d --days-back 21 --limit 1000
-
-# Solo gaps (claim_status=CLAIM_NOT_GENERATED)
-python -m jobs.reconcile_cabinet_claims_14d --only-gaps --limit 1000
-
-# Solo milestone M1
-python -m jobs.reconcile_cabinet_claims_14d --only-milestone 1 --limit 500
-
-# Dry-run
-python -m jobs.reconcile_cabinet_claims_14d --only-gaps --dry-run
-```
-
-**Parámetros:**
-- `--days-back`: Días hacia atrás (default: 21)
-- `--limit`: Límite de gaps a procesar (default: 1000)
-- `--only-gaps`: Solo procesar gaps (claim_status=CLAIM_NOT_GENERATED)
-- `--only-milestone`: Solo procesar un milestone (1, 5, o 25)
-- `--week-start`: Filtrar por semana (YYYY-MM-DD)
-- `--dry-run`: Modo dry-run
+- **Runbook:** `docs/runbooks/identity_gap_recovery.md`
+- **Validaciones:** `cd backend && python -m scripts.run_validations`
+- **Scheduler identity gap:** `backend/scripts/setup_scheduler_identity_gap.sh`
 
 ---
 
@@ -366,13 +317,10 @@ WHERE ec.driver_id = 'XXX';
 **Causa:** Matching job no está corriendo o fallando
 
 **Solución:**
-1. Verificar que scheduler está corriendo
-2. Ejecutar matching manual:
-   ```bash
-   python -m jobs.reconcile_cabinet_leads_pipeline --only-limbo --limit 500
-   ```
-3. Revisar logs del job
-4. Verificar datos RAW (phone, license, plate disponibles)
+1. Verificar que scheduler está corriendo (ver `docs/runbooks/identity_gap_recovery.md`).
+2. Ejecutar validaciones/identity manual: `backend/scripts/run_validations.py` o flujo en ese runbook.
+3. Revisar logs del job.
+4. Verificar datos RAW (phone, license, plate disponibles).
 
 ### 8.3 TRIPS_NO_CLAIM persistente
 
@@ -381,10 +329,7 @@ WHERE ec.driver_id = 'XXX';
 **Causa:** Claims generator no está corriendo o fallando
 
 **Solución:**
-1. Ejecutar job de reconciliación:
-   ```bash
-   python -m jobs.reconcile_cabinet_claims_14d --only-gaps --limit 1000
-   ```
+1. Usar flujo de identity/validaciones en `docs/runbooks/identity_gap_recovery.md`.
 2. Verificar que claims se generaron:
    ```sql
    SELECT COUNT(*) FROM canon.claims_yango_cabinet_14d 

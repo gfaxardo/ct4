@@ -7,7 +7,7 @@ Verifica que NO existen drivers operativos sin leads asociados (excepto en cuare
 
 import pytest
 from sqlalchemy import text
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 
 
 @pytest.fixture
