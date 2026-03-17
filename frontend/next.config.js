@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  output: 'export',
   reactStrictMode: true,
+  trailingSlash: true,
   // Configuración para evitar problemas de chunks
   webpack: (config, { isServer }) => {
     if (!isServer) {

@@ -329,7 +329,7 @@ export default function DashboardPage() {
                 {Object.entries(driversWithoutLeads.quarantine_breakdown).map(([reason, count]) => (
                   <div key={reason} className="bg-white rounded-lg p-3 border border-red-200/50">
                     <div className="text-xs text-[#ef0000] mb-1 capitalize">{reason.replace(/_/g, ' ')}</div>
-                    <div className="text-lg font-bold text-red-800">{count.toLocaleString()}</div>
+                    <div className="text-lg font-bold text-red-800">{Number(count).toLocaleString()}</div>
                   </div>
                 ))}
               </div>

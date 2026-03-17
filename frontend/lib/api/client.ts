@@ -1,7 +1,7 @@
 /**
  * Cliente HTTP base para la API.
  * En desarrollo o si la app se abre en localhost → backend local (puerto 8000).
- * En producción (build) y dominio real → NEXT_PUBLIC_API_BASE_URL (ct4.yego.pro).
+ * En producción (build) y dominio real → NEXT_PUBLIC_API_BASE_URL (api-ct4.yego.pro).
  */
 
 function getApiBaseUrl(): string {
