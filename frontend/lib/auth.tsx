@@ -8,12 +8,12 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 
-// En el navegador usamos siempre el proxy (/api/auth/login) para evitar CORS.
-// El servidor Next (route api/auth/login) reenvía a api-int.yego.pro.
+// Llamada directa a la API integral. CORS debe estar habilitado en api-int.yego.pro
+// para los orígenes: https://ct4.yego.pro y (en dev) http://localhost:3000
 const AUTH_API_URL =
-  typeof window !== 'undefined'
-    ? '/api/auth/login'
-    : (process.env.NEXT_PUBLIC_AUTH_API_URL ?? 'https://api-int.yego.pro/api/auth/login');
+  typeof process !== 'undefined' && process.env.NEXT_PUBLIC_AUTH_API_URL
+    ? process.env.NEXT_PUBLIC_AUTH_API_URL
+    : 'https://api-int.yego.pro/api/auth/login';
 
 // Types
 export interface User {
