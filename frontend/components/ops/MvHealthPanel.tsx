@@ -151,15 +151,15 @@ export default function MvHealthPanel() {
     {
       key: 'minutes_since_refresh',
       header: 'Hace',
-      render: (row: MvHealthRow) => formatMinutes(row.minutes_since_refresh),
+      render: (row: MvHealthRow) => formatMinutes(row.minutes_since_refresh ?? null),
     },
     {
       key: 'status',
       header: 'Estado',
       render: (row: MvHealthRow) => getRefreshStatusBadge(
-        row.last_refresh_status,
-        row.minutes_since_refresh,
-        row.is_populated
+        row.last_refresh_status ?? null,
+        row.minutes_since_refresh ?? null,
+        row.is_populated ?? null
       ),
     },
     {

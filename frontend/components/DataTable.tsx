@@ -58,7 +58,7 @@ function EmptyState({ message, icon }: { message: string; icon?: React.ReactNode
   );
 }
 
-export default function DataTable<T extends Record<string, unknown>>({
+export default function DataTable<T extends object>({
   data,
   columns,
   loading = false,
@@ -137,9 +137,7 @@ export default function DataTable<T extends Record<string, unknown>>({
                   >
                     {col.render
                       ? col.render(row)
-                      : typeof col.key === 'string'
-                      ? (row[col.key] as React.ReactNode) ?? <span className="text-slate-300">—</span>
-                      : (row[col.key as keyof T] as React.ReactNode) ?? <span className="text-slate-300">—</span>}
+                      : ((row as Record<string, unknown>)[col.key as string] as React.ReactNode) ?? <span className="text-slate-300">—</span>}
                   </td>
                 ))}
               </tr>

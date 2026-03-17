@@ -14,8 +14,9 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   const { isAuthenticated, isLoading } = useAuth();
   const pathname = usePathname();
 
-  // No mostrar layout en login
-  if (pathname === '/login') {
+  // No mostrar layout en login (trailingSlash puede dar /login/)
+  const isLoginPage = pathname === '/login' || pathname === '/login/';
+  if (isLoginPage) {
     return <>{children}</>;
   }
 

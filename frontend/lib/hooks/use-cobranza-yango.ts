@@ -40,7 +40,7 @@ interface WeeklyKpisFilters {
  */
 export function useCabinetFinancial(filters: CabinetFinancialFilters) {
   return useQuery({
-    queryKey: queryKeys.cabinetFinancial(filters),
+    queryKey: queryKeys.cabinetFinancial(filters as Record<string, unknown>),
     queryFn: () => getCabinetFinancial14d({
       only_with_debt: filters.only_with_debt,
       reached_milestone: filters.reached_milestone,
@@ -72,7 +72,7 @@ export function useFunnelGap() {
  */
 export function useScoutAttributionMetrics(filters: ScoutMetricsFilters) {
   return useQuery({
-    queryKey: queryKeys.scoutAttributionMetrics(filters),
+    queryKey: queryKeys.scoutAttributionMetrics(filters as Record<string, unknown>),
     queryFn: () => getCobranzaYangoScoutAttributionMetrics({
       only_with_debt: filters.only_with_debt,
       reached_milestone: filters.reached_milestone,
@@ -88,7 +88,7 @@ export function useScoutAttributionMetrics(filters: ScoutMetricsFilters) {
  */
 export function useWeeklyKpis(filters: WeeklyKpisFilters) {
   return useQuery({
-    queryKey: queryKeys.weeklyKpis(filters),
+    queryKey: queryKeys.weeklyKpis(filters as Record<string, unknown>),
     queryFn: () => getCobranzaYangoWeeklyKpis({
       only_with_debt: filters.only_with_debt,
       reached_milestone: filters.reached_milestone,

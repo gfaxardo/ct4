@@ -7,7 +7,13 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { API_BASE_URL } from '@/lib/api';
+
+// En el navegador usamos siempre el proxy (/api/auth/login) para evitar CORS.
+// El servidor Next (route api/auth/login) reenvía a api-int.yego.pro.
+const AUTH_API_URL =
+  typeof window !== 'undefined'
+    ? '/api/auth/login'
+    : (process.env.NEXT_PUBLIC_AUTH_API_URL ?? 'https://api-int.yego.pro/api/auth/login');
 
 // Types
 export interface User {
@@ -33,17 +39,18 @@ export interface LoginCredentials {
   password: string;
 }
 
-export interface LoginResponse {
-  accessToken: string;
-  user: User;
+/** Respuesta posible de la API de login (acepta snake_case o camelCase). */
+interface LoginApiResponse {
+  access_token?: string;
+  accessToken?: string;
+  token?: string;
+  user?: Partial<User> & { username?: string; email?: string; name?: string };
 }
 
 export interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
-
-const AUTH_API_URL = `${API_BASE_URL}/api/v1/auth/login`;
 
 // Storage keys
 const TOKEN_KEY = 'ct4_access_token';
@@ -95,12 +102,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Redirigir si no está autenticado
   useEffect(() => {
-    if (!state.isLoading && !state.isAuthenticated && pathname !== '/login') {
+    const isLoginPage = pathname === '/login' || pathname === '/login/';
+    if (!state.isLoading && !state.isAuthenticated && !isLoginPage) {
       router.push('/login');
     }
   }, [state.isLoading, state.isAuthenticated, pathname, router]);
 
-  // Login
+  // Login — POST a https://api-int.yego.pro/api/auth/login con { username, password }
   const login = useCallback(async (credentials: LoginCredentials): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await fetch(AUTH_API_URL, {
@@ -108,34 +116,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(credentials),
+        body: JSON.stringify({
+          username: credentials.username,
+          password: credentials.password,
+        }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        return {
-          success: false,
-          error: errorData.error || 'Credenciales incorrectas',
-        };
+        const message = errorData.error ?? errorData.message ?? errorData.detail ?? 'Credenciales incorrectas';
+        return { success: false, error: typeof message === 'string' ? message : 'Credenciales incorrectas' };
       }
 
-      const data: LoginResponse = await response.json();
+      const data = (await response.json()) as LoginApiResponse;
+      const token = data.access_token ?? data.accessToken ?? data.token;
 
-      // Guardar en localStorage
-      localStorage.setItem(TOKEN_KEY, data.accessToken);
-      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+      if (!token) {
+        return { success: false, error: 'La API no devolvió un token de acceso.' };
+      }
 
-      // Actualizar estado
+      const user: User = data.user && typeof data.user === 'object'
+        ? {
+            id: Number((data.user as Record<string, unknown>).id) || 0,
+            username: String((data.user as Record<string, unknown>).username ?? credentials.username),
+            email: String((data.user as Record<string, unknown>).email ?? ''),
+            name: String((data.user as Record<string, unknown>).name ?? credentials.username),
+            role: String((data.user as Record<string, unknown>).role ?? 'user'),
+            moduleId: typeof (data.user as Record<string, unknown>).moduleId === 'number' ? (data.user as Record<string, unknown>).moduleId as number : null,
+            active: (data.user as Record<string, unknown>).active !== false,
+            lastLogin: new Date().toISOString(),
+          }
+        : {
+            id: 0,
+            username: credentials.username,
+            email: '',
+            name: credentials.username,
+            role: 'user',
+            moduleId: null,
+            active: true,
+            lastLogin: new Date().toISOString(),
+          };
+
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+
       setState({
-        user: data.user,
-        accessToken: data.accessToken,
+        user,
+        accessToken: token,
         isAuthenticated: true,
         isLoading: false,
       });
 
-      // Redirigir al dashboard
       router.push('/dashboard');
-
       return { success: true };
     } catch (error) {
       console.error('Login error:', error);

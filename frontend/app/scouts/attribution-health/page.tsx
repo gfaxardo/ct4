@@ -136,9 +136,10 @@ export default function ScoutAttributionHealthPage() {
 
   const getHealthStatus = (): 'OK' | 'WARN' | 'FAIL' => {
     if (!metrics) return 'OK';
-    if (metrics.last_job.status === 'FAILED') return 'FAIL';
-    if (metrics.pct_scout_satisfactory < 50) return 'FAIL';
-    if (metrics.conflicts_count > 100 || metrics.persons_missing_scout > metrics.total_persons * 0.3) return 'WARN';
+    if (metrics.last_job?.status === 'FAILED') return 'FAIL';
+    if ((metrics.pct_scout_satisfactory ?? 0) < 50) return 'FAIL';
+    const total = metrics.total_persons ?? 0;
+    if ((metrics.conflicts_count ?? 0) > 100 || (metrics.persons_missing_scout ?? 0) > total * 0.3) return 'WARN';
     return 'OK';
   };
 
@@ -278,31 +279,31 @@ export default function ScoutAttributionHealthPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
             title="Scout Satisfactorio"
-            value={`${metrics.pct_scout_satisfactory.toFixed(1)}%`}
-            subtitle={`${metrics.persons_with_scout_satisfactory.toLocaleString()} de ${metrics.total_persons.toLocaleString()}`}
+            value={`${(metrics.pct_scout_satisfactory ?? 0).toFixed(1)}%`}
+            subtitle={`${(metrics.persons_with_scout_satisfactory ?? 0).toLocaleString()} de ${(metrics.total_persons ?? 0).toLocaleString()}`}
             icon={Icons.check}
-            variant={metrics.pct_scout_satisfactory >= 80 ? 'success' : metrics.pct_scout_satisfactory >= 50 ? 'warning' : 'error'}
+            variant={(metrics.pct_scout_satisfactory ?? 0) >= 80 ? 'success' : (metrics.pct_scout_satisfactory ?? 0) >= 50 ? 'warning' : 'error'}
           />
           <StatCard
             title="Missing Scout"
-            value={metrics.persons_missing_scout.toLocaleString()}
-            subtitle={`${((metrics.persons_missing_scout / metrics.total_persons) * 100).toFixed(1)}% del total`}
+            value={(metrics.persons_missing_scout ?? 0).toLocaleString()}
+            subtitle={`${(metrics.total_persons ?? 0) > 0 ? (((metrics.persons_missing_scout ?? 0) / (metrics.total_persons ?? 1)) * 100).toFixed(1) : 0}% del total`}
             icon={Icons.users}
-            variant={metrics.persons_missing_scout < metrics.total_persons * 0.2 ? 'success' : metrics.persons_missing_scout < metrics.total_persons * 0.4 ? 'warning' : 'error'}
+            variant={(metrics.persons_missing_scout ?? 0) < (metrics.total_persons ?? 0) * 0.2 ? 'success' : (metrics.persons_missing_scout ?? 0) < (metrics.total_persons ?? 0) * 0.4 ? 'warning' : 'error'}
           />
           <StatCard
             title="Conflictos"
-            value={metrics.conflicts_count.toLocaleString()}
+            value={(metrics.conflicts_count ?? 0).toLocaleString()}
             subtitle="múltiples scouts por persona"
             icon={Icons.alert}
-            variant={metrics.conflicts_count === 0 ? 'success' : metrics.conflicts_count < 50 ? 'warning' : 'error'}
+            variant={(metrics.conflicts_count ?? 0) === 0 ? 'success' : (metrics.conflicts_count ?? 0) < 50 ? 'warning' : 'error'}
           />
           <StatCard
             title="Backlog Total"
             value={(
-              metrics.backlog.a_events_without_scout +
-              metrics.backlog.d_scout_in_events_not_in_ledger +
-              metrics.backlog.c_legacy
+              (metrics.backlog?.a_events_without_scout ?? 0) +
+              (metrics.backlog?.d_scout_in_events_not_in_ledger ?? 0) +
+              (metrics.backlog?.c_legacy ?? 0)
             ).toLocaleString()}
             subtitle="pendientes por resolver"
             icon={Icons.clock}
@@ -319,7 +320,7 @@ export default function ScoutAttributionHealthPage() {
             <div className="border border-slate-200 rounded-lg p-4 hover:border-orange-300 transition-colors">
               <h3 className="font-medium text-slate-700 mb-2">A: Eventos sin Scout</h3>
               <p className="text-3xl font-bold text-orange-600 mb-1">
-                {metrics.backlog.a_events_without_scout.toLocaleString()}
+                {(metrics.backlog?.a_events_without_scout ?? 0).toLocaleString()}
               </p>
               <p className="text-sm text-slate-500 mb-3">Lead events sin scout_id</p>
               <Link href="/scouts/backlog?category=A" className="text-sm text-[#ef0000] hover:underline font-medium">
@@ -330,7 +331,7 @@ export default function ScoutAttributionHealthPage() {
             <div className="border border-slate-200 rounded-lg p-4 hover:border-slate-400 transition-colors">
               <h3 className="font-medium text-slate-700 mb-2">C: Legacy</h3>
               <p className="text-3xl font-bold text-slate-600 mb-1">
-                {metrics.backlog.c_legacy.toLocaleString()}
+                {(metrics.backlog?.c_legacy ?? 0).toLocaleString()}
               </p>
               <p className="text-sm text-slate-500 mb-3">Sin eventos ni scout</p>
               <Link href="/scouts/backlog?category=C" className="text-sm text-[#ef0000] hover:underline font-medium">
@@ -341,7 +342,7 @@ export default function ScoutAttributionHealthPage() {
             <div className="border border-slate-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
               <h3 className="font-medium text-slate-700 mb-2">D: Scout no Propagado</h3>
               <p className="text-3xl font-bold text-blue-600 mb-1">
-                {metrics.backlog.d_scout_in_events_not_in_ledger.toLocaleString()}
+                {(metrics.backlog?.d_scout_in_events_not_in_ledger ?? 0).toLocaleString()}
               </p>
               <p className="text-sm text-slate-500 mb-3">Scout en eventos no en ledger</p>
               <Link href="/scouts/backlog?category=D" className="text-sm text-[#ef0000] hover:underline font-medium">
@@ -353,18 +354,18 @@ export default function ScoutAttributionHealthPage() {
       )}
 
       {/* Trends Chart */}
-      {dailyMetrics && dailyMetrics.daily_metrics.length > 0 && (
+      {dailyMetrics && (dailyMetrics.daily_metrics?.length ?? 0) > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-5">
           <h2 className="text-lg font-semibold text-slate-900 mb-4">Tendencias (Últimos 30 días)</h2>
           <div className="h-48 flex items-end gap-1">
-            {dailyMetrics.daily_metrics.slice(0, 30).reverse().map((metric, idx) => (
+            {(dailyMetrics.daily_metrics ?? []).slice(0, 30).reverse().map((metric, idx) => (
               <div
                 key={metric.date}
                 className="flex-1 bg-[#ef0000] hover:bg-[#ef0000] rounded-t transition-colors relative group cursor-pointer"
-                style={{ height: `${Math.max(5, (metric.pct_satisfactory / 100) * 100)}%` }}
+                style={{ height: `${Math.max(5, ((metric.pct_satisfactory ?? 0) / 100) * 100)}%` }}
               >
                 <div className="hidden group-hover:block absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 bg-slate-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
-                  {new Date(metric.date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}: {metric.pct_satisfactory.toFixed(1)}%
+                  {new Date(metric.date ?? '').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}: {(metric.pct_satisfactory ?? 0).toFixed(1)}%
                 </div>
               </div>
             ))}

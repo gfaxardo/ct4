@@ -114,7 +114,7 @@ export default function CabinetLeadsUploadPage() {
         // Solo considerar corridas que iniciaron DESPUÉS del upload
         const isRecentRun = runStartTime >= uploadStartTime - 5000; // 5s de margen
         
-        if (lastRun.status === 'running' && isRecentRun) {
+        if (lastRun.status === 'RUNNING' && isRecentRun) {
           setProcessing(true);
           // Estimar paso basado en tiempo
           const elapsed = Math.floor((Date.now() - runStartTime) / 1000);
@@ -124,7 +124,7 @@ export default function CabinetLeadsUploadPage() {
           else if (elapsed < 300) setCurrentStep(4); // Poblando eventos
           else setCurrentStep(5);                     // Actualizando vistas
           
-        } else if (lastRun.status === 'completed' && isRecentRun) {
+        } else if (lastRun.status === 'COMPLETED' && isRecentRun) {
           // Procesamiento terminó
           setCurrentStep(6);
           setProcessComplete(true);
@@ -323,7 +323,7 @@ export default function CabinetLeadsUploadPage() {
           />
           <StatCard
             title="Registros"
-            value={diagnostics.table_row_count.toLocaleString()}
+            value={(diagnostics.table_row_count ?? 0).toLocaleString()}
             subtitle="en module_ct_cabinet_leads"
             icon={Icons.database}
             variant="default"
@@ -337,7 +337,7 @@ export default function CabinetLeadsUploadPage() {
           />
           <StatCard
             title="IDs Procesados"
-            value={diagnostics.processed_external_ids_count.toLocaleString()}
+            value={(diagnostics.processed_external_ids_count ?? 0).toLocaleString()}
             subtitle="external_ids únicos"
             icon={Icons.check}
             variant="success"
@@ -474,7 +474,7 @@ export default function CabinetLeadsUploadPage() {
                 <div>
                   <p className="font-medium text-amber-800">Recomendación</p>
                   <p className="text-sm text-amber-700 mt-1">
-                    Subir datos desde el <strong>{diagnostics.recommended_start_date}</strong> en adelante.
+                    Subir datos desde el <strong>{diagnostics.recommended_start_date ?? '—'}</strong> en adelante.
                     {skipAlreadyProcessed && ' Los registros anteriores se omitirán automáticamente.'}
                   </p>
                 </div>

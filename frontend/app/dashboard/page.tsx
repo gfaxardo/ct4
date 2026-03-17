@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import StatCard from '@/components/StatCard';
 import Badge from '@/components/Badge';
 import Link from 'next/link';
@@ -20,7 +20,7 @@ import {
 import { PageLoadingOverlay } from '@/components/Skeleton';
 
 // Iconos SVG
-const Icons = {
+const Icons: { users: ReactNode; warning: ReactNode; chart: ReactNode; arrow: ReactNode } = {
   users: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -137,9 +137,9 @@ export default function DashboardPage() {
     );
   }
 
-  const matchRate = stats?.conversion_rate ?? 0;
-  const totalPersons = stats?.total_persons ?? 0;
-  const totalUnmatched = stats?.total_unmatched ?? 0;
+  const matchRate = Number(stats?.conversion_rate ?? 0);
+  const totalPersons = Number(stats?.total_persons ?? 0);
+  const totalUnmatched = Number(stats?.total_unmatched ?? 0);
 
   return (
     <div className="space-y-8">
@@ -158,24 +158,24 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
           title="Personas Identificadas"
-          value={totalPersons.toLocaleString()}
+          value={String(totalPersons.toLocaleString())}
           subtitle="Registros únicos"
           variant="brand"
-          icon={Icons.users}
+          icon={Icons.users as ReactNode}
         />
         <StatCard
           title="Sin Resolver"
-          value={totalUnmatched.toLocaleString()}
+          value={String(totalUnmatched.toLocaleString())}
           subtitle="Pendientes de match"
           variant={totalUnmatched > 0 ? 'warning' : 'success'}
-          icon={Icons.warning}
+          icon={Icons.warning as ReactNode}
         />
         <StatCard
           title="Tasa de Match"
-          value={`${matchRate.toFixed(1)}%`}
+          value={String(matchRate.toFixed(1)) + '%'}
           subtitle="Conversión general"
           variant={matchRate >= 90 ? 'success' : matchRate >= 70 ? 'info' : 'warning'}
-          icon={Icons.chart}
+          icon={Icons.chart as ReactNode}
         />
       </div>
 
@@ -232,7 +232,7 @@ export default function DashboardPage() {
                          source === 'module_ct_scouting_daily' ? 'Scouting Daily' : 
                          source === 'drivers' ? 'Drivers' : source}
                       </span>
-                      <span className="font-semibold text-slate-900">{(count ?? 0).toLocaleString()}</span>
+                      <span className="font-semibold text-slate-900">{Number(count ?? 0).toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
@@ -279,7 +279,7 @@ export default function DashboardPage() {
       )}
 
       {/* Drivers Sin Leads - Análisis Detallado */}
-      {driversWithoutLeads && driversWithoutLeads.total_drivers_without_leads > 0 && (
+      {driversWithoutLeads && (driversWithoutLeads.total_drivers_without_leads ?? 0) > 0 && (
         <div className="bg-gradient-to-r from-red-50 to-blue-50 border border-red-200 rounded-xl p-6">
           <div className="flex items-start gap-4 mb-6">
             <div className="p-3 rounded-xl bg-red-100">
@@ -298,19 +298,19 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-white/80 rounded-xl p-4 border border-red-200/50">
               <div className="text-sm text-[#ef0000] mb-1">Total (incl. quarantined)</div>
-              <div className="text-2xl font-bold text-red-900">{driversWithoutLeads.total_drivers_without_leads.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-red-900">{(driversWithoutLeads.total_drivers_without_leads ?? 0).toLocaleString()}</div>
             </div>
             <div className="bg-white/80 rounded-xl p-4 border border-rose-200/50">
               <div className="text-sm text-rose-600 mb-1">En Cuarentena</div>
-              <div className="text-2xl font-bold text-rose-800">{driversWithoutLeads.drivers_quarantined_count.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-rose-800">{(driversWithoutLeads.drivers_quarantined_count ?? 0).toLocaleString()}</div>
             </div>
             <div className="bg-white/80 rounded-xl p-4 border border-amber-200/50">
               <div className="text-sm text-amber-600 mb-1">Operativos (sin leads)</div>
               <div className="text-2xl font-bold text-amber-800">
-                {driversWithoutLeads.drivers_without_leads_operativos.toLocaleString()}
+                {(driversWithoutLeads.drivers_without_leads_operativos ?? 0).toLocaleString()}
               </div>
               <div className="text-xs mt-1">
-                {driversWithoutLeads.drivers_without_leads_operativos === 0 
+                {(driversWithoutLeads.drivers_without_leads_operativos ?? 0) === 0 
                   ? <Badge variant="success" size="sm">OK</Badge>
                   : <Badge variant="warning" size="sm">Atención</Badge>
                 }
@@ -318,7 +318,7 @@ export default function DashboardPage() {
             </div>
             <div className="bg-white/80 rounded-xl p-4 border border-emerald-200/50">
               <div className="text-sm text-emerald-600 mb-1">Con Lead Events</div>
-              <div className="text-2xl font-bold text-emerald-800">{driversWithoutLeads.drivers_with_lead_events.toLocaleString()}</div>
+              <div className="text-2xl font-bold text-emerald-800">{(driversWithoutLeads.drivers_with_lead_events ?? 0).toLocaleString()}</div>
             </div>
           </div>
 
@@ -339,10 +339,10 @@ export default function DashboardPage() {
           <div className="mt-6 p-4 bg-white/60 rounded-lg">
             <p className="text-sm text-[#cc0000]">
               <strong className="text-red-800">Interpretación:</strong>{' '}
-              {driversWithoutLeads.drivers_without_leads_operativos === 0 ? (
+              {(driversWithoutLeads.drivers_without_leads_operativos ?? 0) === 0 ? (
                 <>✅ Todos los drivers sin leads están en cuarentena. El sistema funciona correctamente.</>
               ) : (
-                <>⚠️ Hay {driversWithoutLeads.drivers_without_leads_operativos.toLocaleString()} drivers operativos sin leads que requieren atención.</>
+                <>⚠️ Hay {(driversWithoutLeads.drivers_without_leads_operativos ?? 0).toLocaleString()} drivers operativos sin leads que requieren atención.</>
               )}
             </p>
           </div>
@@ -364,13 +364,13 @@ export default function DashboardPage() {
                 </div>
                 <div className="card-body">
                   <div className="space-y-3">
-                    {Object.entries(metrics.breakdowns.matched_by_rule).map(([rule, count]) => (
+                    {Object.entries(metrics.breakdowns?.matched_by_rule ?? {}).map(([rule, count]) => (
                       <div key={rule} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
                         <span className="text-sm text-slate-700 font-medium">{rule}</span>
-                        <Badge variant="success">{count.toLocaleString()}</Badge>
+                        <Badge variant="success">{Number(count).toLocaleString()}</Badge>
                       </div>
                     ))}
-                    {Object.keys(metrics.breakdowns.matched_by_rule).length === 0 && (
+                    {Object.keys(metrics.breakdowns?.matched_by_rule ?? {}).length === 0 && (
                       <p className="text-sm text-slate-400 text-center py-4">No hay matches</p>
                     )}
                   </div>
@@ -383,15 +383,15 @@ export default function DashboardPage() {
                 </div>
                 <div className="card-body">
                   <div className="space-y-3">
-                    {Object.entries(metrics.breakdowns.unmatched_by_reason)
+                    {Object.entries(metrics.breakdowns?.unmatched_by_reason ?? {})
                       .slice(0, 5)
                       .map(([reason, count]) => (
                         <div key={reason} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
                           <span className="text-sm text-slate-700 font-medium">{reason}</span>
-                          <Badge variant="warning">{count.toLocaleString()}</Badge>
+                          <Badge variant="warning">{Number(count).toLocaleString()}</Badge>
                         </div>
                       ))}
-                    {Object.keys(metrics.breakdowns.unmatched_by_reason).length === 0 && (
+                    {Object.keys(metrics.breakdowns?.unmatched_by_reason ?? {}).length === 0 && (
                       <p className="text-sm text-slate-400 text-center py-4">No hay unmatched</p>
                     )}
                   </div>
@@ -418,19 +418,19 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {metrics.weekly.map((week, idx) => (
+                    {(metrics.weekly ?? []).map((week: { week_label?: string; source_table?: string; matched?: number; unmatched?: number; match_rate?: number }, idx: number) => (
                       <tr key={idx}>
                         <td className="font-medium">{week.week_label}</td>
                         <td>
                           <Badge variant="default" size="sm">{week.source_table}</Badge>
                         </td>
-                        <td className="text-right font-semibold text-emerald-600">{week.matched.toLocaleString()}</td>
-                        <td className="text-right font-semibold text-amber-600">{week.unmatched.toLocaleString()}</td>
+                        <td className="text-right font-semibold text-emerald-600">{(week.matched ?? 0).toLocaleString()}</td>
+                        <td className="text-right font-semibold text-amber-600">{(week.unmatched ?? 0).toLocaleString()}</td>
                         <td className="text-right">
                           <Badge 
-                            variant={week.match_rate >= 90 ? 'success' : week.match_rate >= 70 ? 'info' : 'warning'}
+                            variant={(week.match_rate ?? 0) >= 90 ? 'success' : (week.match_rate ?? 0) >= 70 ? 'info' : 'warning'}
                           >
-                            {week.match_rate.toFixed(1)}%
+                            {(week.match_rate ?? 0).toFixed(1)}%
                           </Badge>
                         </td>
                       </tr>

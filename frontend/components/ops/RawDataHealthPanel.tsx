@@ -194,7 +194,7 @@ export default function RawDataHealthPanel() {
     {
       key: 'health_status' as const,
       header: 'Health Status',
-      render: (row: RawDataHealthStatusRow) => getHealthStatusBadge(row.health_status),
+      render: (row: RawDataHealthStatusRow) => getHealthStatusBadge(row.health_status ?? null),
     },
     {
       key: 'max_business_date' as const,

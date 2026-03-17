@@ -153,12 +153,12 @@ export default function YangoCabinetClaimsPage() {
   const stats = useMemo(() => {
     if (!claims.length) return { totalAmount: 0, avgDaysOverdue: 0, byMilestone: { m1: 0, m5: 0, m25: 0 } };
     
-    const totalAmount = claims.reduce((sum, c) => sum + (Number(c.expected_amount) || 0), 0);
-    const avgDaysOverdue = claims.reduce((sum, c) => sum + (c.days_overdue_yango || 0), 0) / claims.length;
+    const totalAmount = claims.reduce((sum: number, c: YangoCabinetClaimRow) => sum + (Number(c.expected_amount) || 0), 0);
+    const avgDaysOverdue = claims.reduce((sum: number, c: YangoCabinetClaimRow) => sum + (c.days_overdue_yango || 0), 0) / claims.length;
     const byMilestone = {
-      m1: claims.filter(c => c.milestone_value === 1).length,
-      m5: claims.filter(c => c.milestone_value === 5).length,
-      m25: claims.filter(c => c.milestone_value === 25).length,
+      m1: claims.filter((c: YangoCabinetClaimRow) => c.milestone_value === 1).length,
+      m5: claims.filter((c: YangoCabinetClaimRow) => c.milestone_value === 5).length,
+      m25: claims.filter((c: YangoCabinetClaimRow) => c.milestone_value === 25).length,
     };
     
     return { totalAmount, avgDaysOverdue, byMilestone };
@@ -340,7 +340,7 @@ export default function YangoCabinetClaimsPage() {
                   </td>
                 </tr>
               ) : (
-                claims.map((claim, idx) => (
+                claims.map((claim: YangoCabinetClaimRow, idx: number) => (
                   <tr
                     key={`${claim.driver_id}-${claim.milestone_value}-${idx}`}
                     onClick={() => handleRowClick(claim)}

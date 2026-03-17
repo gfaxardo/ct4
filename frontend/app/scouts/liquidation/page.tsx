@@ -74,10 +74,11 @@ export default function ScoutLiquidationPage() {
   }
 
   // Calcular KPIs
-  const totalItems = data?.pagination.total || 0;
-  const pendingCount = data?.items.filter(i => i.payment_status === 'PENDING').length || 0;
-  const blockedCount = data?.items.filter(i => i.payment_status === 'BLOCKED').length || 0;
-  const eligibleCount = data?.items.filter(i => i.payment_status === 'ELIGIBLE').length || 0;
+  const totalItems = data?.pagination?.total ?? 0;
+  const items = data?.items ?? [];
+  const pendingCount = items.filter((i: unknown) => (i as { payment_status?: string }).payment_status === 'PENDING').length;
+  const blockedCount = items.filter((i: unknown) => (i as { payment_status?: string }).payment_status === 'BLOCKED').length;
+  const eligibleCount = items.filter((i: unknown) => (i as { payment_status?: string }).payment_status === 'ELIGIBLE').length;
 
   return (
     <div className="space-y-6">
@@ -92,7 +93,7 @@ export default function ScoutLiquidationPage() {
             onClick={() => {
               if (!data) return;
               const headers = ['person_key', 'driver_id', 'scout_id', 'origin_tag', 'milestone_reached', 'amount_payable', 'payment_status', 'block_reason'];
-              const csv = [headers.join(','), ...data.items.map(i => headers.map(h => (i as Record<string, unknown>)[h] ?? '').join(','))].join('\n');
+              const csv = [headers.join(','), ...(data.items ?? []).map(i => headers.map(h => (i as Record<string, unknown>)[h] ?? '').join(','))].join('\n');
               const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
               const url = URL.createObjectURL(blob);
               const a = document.createElement('a');
@@ -136,7 +137,7 @@ export default function ScoutLiquidationPage() {
           </div>
         )}
         
-        {!data || data.items.length === 0 ? (
+        {!data || (data.items?.length ?? 0) === 0 ? (
           <div className="p-12 text-center">
             <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3 text-green-500">
               {Icons.check}
@@ -161,47 +162,47 @@ export default function ScoutLiquidationPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {data.items.map((item, idx) => (
+                  {((data.items ?? []) as Record<string, unknown>[]).map((item, idx) => (
                     <tr key={`${item.person_key || idx}`} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3 px-4 text-sm font-mono text-slate-600">
-                        {item.person_key ? item.person_key.substring(0, 8) + '...' : '—'}
+                        {item.person_key ? String(item.person_key).substring(0, 8) + '...' : '—'}
                       </td>
                       <td className="py-3 px-4 text-sm font-mono text-slate-600">
-                        {item.driver_id ? item.driver_id.substring(0, 12) + '...' : '—'}
+                        {item.driver_id ? String(item.driver_id).substring(0, 12) + '...' : '—'}
                       </td>
                       <td className="py-3 px-4 text-center">
                         {item.scout_id ? (
-                          <Badge variant="info">Scout {item.scout_id}</Badge>
+                          <Badge variant="info">Scout {String(item.scout_id)}</Badge>
                         ) : (
                           <Badge variant="error">Sin scout</Badge>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{item.origin_tag || '—'}</td>
+                      <td className="py-3 px-4 text-sm text-slate-600">{item.origin_tag != null ? String(item.origin_tag) : '—'}</td>
                       <td className="py-3 px-4 text-center">
-                        {item.milestone_reached > 0 ? (
-                          <Badge variant="success">M{item.milestone_reached}</Badge>
+                        {Number(item.milestone_reached) > 0 ? (
+                          <Badge variant="success">M{Number(item.milestone_reached)}</Badge>
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
                       <td className="py-3 px-4 text-right text-sm font-medium text-slate-700">
-                        ${item.amount_payable.toFixed(2)}
+                        ${Number(item.amount_payable || 0).toFixed(2)}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <Badge variant={
-                          item.payment_status === 'ELIGIBLE' ? 'success' :
-                          item.payment_status === 'PENDING' ? 'warning' :
-                          item.payment_status === 'BLOCKED' ? 'error' : 'default'
+                          String(item.payment_status) === 'ELIGIBLE' ? 'success' :
+                          String(item.payment_status) === 'PENDING' ? 'warning' :
+                          String(item.payment_status) === 'BLOCKED' ? 'error' : 'default'
                         }>
-                          {item.payment_status}
+                          {String(item.payment_status ?? '')}
                         </Badge>
                       </td>
                       <td className="py-3 px-4 text-sm text-slate-500">
-                        {item.block_reason || '—'}
+                        {item.block_reason != null ? String(item.block_reason) : '—'}
                       </td>
                       <td className="py-3 px-4 text-center">
                         {item.person_key ? (
-                          <Link href={`/persons/${item.person_key}`} className="text-[#ef0000] hover:underline text-sm font-medium">
+                          <Link href={`/persons/${String(item.person_key ?? '')}`} className="text-[#ef0000] hover:underline text-sm font-medium">
                             Ver →
                           </Link>
                         ) : (
@@ -215,10 +216,10 @@ export default function ScoutLiquidationPage() {
             </div>
 
             {/* Pagination */}
-            {data.pagination.total_pages > 1 && (
+            {(data.pagination?.total_pages ?? 0) > 1 && (
               <div className="border-t border-slate-200 px-4 py-3 flex items-center justify-between bg-slate-50">
                 <span className="text-sm text-slate-600">
-                  Página {page} de {data.pagination.total_pages} ({totalItems} registros)
+                  Página {page} de {data.pagination?.total_pages ?? 1} ({totalItems} registros)
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -230,7 +231,7 @@ export default function ScoutLiquidationPage() {
                   </button>
                   <button
                     onClick={() => setPage(p => p + 1)}
-                    disabled={page >= data.pagination.total_pages}
+                    disabled={page >= (data.pagination?.total_pages ?? 1)}
                     className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Siguiente →

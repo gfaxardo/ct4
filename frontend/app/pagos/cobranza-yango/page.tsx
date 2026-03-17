@@ -176,7 +176,7 @@ export default function CobranzaYangoPage() {
       options: weeklyKpis?.weeks 
         ? [
             { value: '', label: 'Todas las semanas' },
-            ...weeklyKpis.weeks.map(w => {
+            ...weeklyKpis.weeks.map((w: { week_start: string; total_rows: number }) => {
               // Usar iso_week del backend directamente si está disponible
               // o calcular con fecha UTC para evitar problemas de timezone
               const dateParts = w.week_start.split('-');
@@ -592,13 +592,13 @@ export default function CobranzaYangoPage() {
                           >
                             <td className="font-medium">{new Date(week.week_start).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
                             <td>{week.total_rows}</td>
-                            <td>{week.with_scout}</td>
-                            <td><Badge variant={week.pct_with_scout >= 90 ? 'success' : week.pct_with_scout >= 70 ? 'warning' : 'error'}>{Number(week.pct_with_scout).toFixed(1)}%</Badge></td>
-                            <td className="text-right font-semibold text-rose-600">S/ {Number(week.debt_sum).toFixed(2)}</td>
-                            <td>{week.reached_m1}</td>
-                            <td>{week.reached_m5}</td>
-                            <td>{week.reached_m25}</td>
-                            <td className="text-right font-semibold text-emerald-600">S/ {Number(week.paid_sum).toFixed(2)}</td>
+                            <td>{week.with_scout ?? 0}</td>
+                            <td><Badge variant={(week.pct_with_scout ?? 0) >= 90 ? 'success' : (week.pct_with_scout ?? 0) >= 70 ? 'warning' : 'error'}>{Number(week.pct_with_scout ?? 0).toFixed(1)}%</Badge></td>
+                            <td className="text-right font-semibold text-rose-600">S/ {Number(week.debt_sum ?? 0).toFixed(2)}</td>
+                            <td>{week.reached_m1 ?? 0}</td>
+                            <td>{week.reached_m5 ?? 0}</td>
+                            <td>{week.reached_m25 ?? 0}</td>
+                            <td className="text-right font-semibold text-emerald-600">S/ {Number(week.paid_sum ?? 0).toFixed(2)}</td>
                             <td>
                               <button className="text-[#ef0000] hover:text-red-800 text-sm underline" onClick={(e) => { e.stopPropagation(); handleWeekClick(week.week_start); }}>
                                 Filtrar

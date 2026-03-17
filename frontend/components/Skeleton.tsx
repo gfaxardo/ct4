@@ -7,14 +7,15 @@ import { ReactNode } from 'react';
 interface SkeletonProps {
   className?: string;
   children?: ReactNode;
+  style?: React.CSSProperties;
 }
 
 // Skeleton base con animación shimmer
-export default function Skeleton({ className = '' }: SkeletonProps) {
+export default function Skeleton({ className = '', style }: SkeletonProps) {
   return (
     <div
       className={`animate-pulse bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 bg-[length:200%_100%] rounded ${className}`}
-      style={{ animation: 'shimmer 1.5s infinite' }}
+      style={{ animation: 'shimmer 1.5s infinite', ...style }}
     />
   );
 }

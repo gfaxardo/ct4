@@ -117,9 +117,9 @@ function detectDerivedFlags(
   // OUT_OF_SEQUENCE
   if (paidFlag && payDate) {
     const greaterMilestones = driverRows.filter(
-      r => r.milestone_value !== null && 
-      r.milestone_value > milestoneValue && 
-      r.paid_flag && 
+      r => r.milestone_value != null &&
+      r.milestone_value > (milestoneValue ?? 0) &&
+      r.paid_flag &&
       r.pay_date
     );
     
@@ -135,11 +135,12 @@ function detectDerivedFlags(
   }
 
   // INCOMPLETE_SEQUENCE
-  if (paidFlag && milestoneValue > 1) {
-    const expectedMilestones = [1, 5, 25].filter(m => m < milestoneValue);
+  const mv = milestoneValue ?? 0;
+  if (paidFlag && mv > 1) {
+    const expectedMilestones = [1, 5, 25].filter(m => m < mv);
     const paidMilestones = driverRows
-      .filter(r => r.paid_flag && r.milestone_value !== null && expectedMilestones.includes(r.milestone_value))
-      .map(r => r.milestone_value!);
+      .filter(r => r.paid_flag && r.milestone_value != null && expectedMilestones.includes(r.milestone_value))
+      .map(r => r.milestone_value as number);
     
     const missingMilestones = expectedMilestones.filter(m => !paidMilestones.includes(m));
     if (missingMilestones.length > 0) {
@@ -676,8 +677,8 @@ export default function YangoCabinetPage() {
                                 </Badge>
                               </td>
                               <td className="py-3 px-4">
-                                <Badge variant={getReconciliationStatusVariant(row.reconciliation_status)}>
-                                  {getReconciliationStatusLabel(row.reconciliation_status)}
+                                <Badge variant={getReconciliationStatusVariant(row.reconciliation_status ?? null)}>
+                                  {getReconciliationStatusLabel(row.reconciliation_status ?? null)}
                                 </Badge>
                               </td>
                               <td className="py-3 px-4">

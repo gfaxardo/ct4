@@ -5,12 +5,12 @@
 import Badge from '@/components/Badge';
 
 interface MilestoneCellProps {
-  achieved_flag: boolean | null;
-  achieved_date: string | null;
-  expected_amount_yango: number | null;
-  yango_payment_status: string | null;
-  window_status: string | null;
-  overdue_days: number | null;
+  achieved_flag?: boolean | null;
+  achieved_date?: string | null;
+  expected_amount_yango?: number | null;
+  yango_payment_status?: string | null;
+  window_status?: string | null;
+  overdue_days?: number | null;
 }
 
 export default function MilestoneCell({
@@ -84,14 +84,14 @@ export default function MilestoneCell({
       )}
 
       {/* Overdue days */}
-      {overdue_days !== null && overdue_days > 0 && (
+      {overdue_days != null && overdue_days > 0 && (
         <div className="mb-1 text-sm text-red-600 font-semibold">
           ⚠ {overdue_days}d
         </div>
       )}
 
       {/* Expected amount */}
-      {expected_amount_yango !== null && (
+      {expected_amount_yango != null && (
         <div className="text-sm font-medium text-gray-700">
           S/ {Number(expected_amount_yango).toFixed(2)}
         </div>

@@ -276,8 +276,7 @@ export default function CabinetLimboSection({ className = '' }: CabinetLimboSect
             limit={limit}
             offset={offset}
             total={data.meta.total}
-            onLimitChange={setLimit}
-            onOffsetChange={setOffset}
+            onPageChange={setOffset}
           />
         </>
       ) : null}

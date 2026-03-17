@@ -491,6 +491,7 @@ import type {
   YangoCabinetClaimsResponse,
   YangoCabinetClaimDrilldownResponse,
   CabinetReconciliationResponse,
+  CabinetRecoveryImpactResponse,
 } from './types';
 
 export async function getYangoCabinetClaimsToCollect(params?: {
@@ -604,6 +605,7 @@ export async function getCabinetFinancial14d(params?: {
   min_debt?: number;
   reached_milestone?: 'm1' | 'm5' | 'm25';
   scout_id?: number;
+  week_start?: string;
   limit?: number;
   offset?: number;
   include_summary?: boolean;
@@ -614,6 +616,7 @@ export async function getCabinetFinancial14d(params?: {
   if (params?.min_debt !== undefined) searchParams.set('min_debt', params.min_debt.toString());
   if (params?.reached_milestone) searchParams.set('reached_milestone', params.reached_milestone);
   if (params?.scout_id !== undefined) searchParams.set('scout_id', params.scout_id.toString());
+  if (params?.week_start) searchParams.set('week_start', params.week_start);
   if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString());
   if (params?.offset !== undefined) searchParams.set('offset', params.offset.toString());
   if (params?.include_summary !== undefined) searchParams.set('include_summary', params.include_summary.toString());

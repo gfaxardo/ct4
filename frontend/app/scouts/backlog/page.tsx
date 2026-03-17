@@ -203,7 +203,7 @@ function ScoutBacklogContent() {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {!backlog || backlog.backlog.length === 0 ? (
+        {!backlog || (backlog.backlog?.length ?? 0) === 0 ? (
           <div className="p-16 text-center">
             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4 text-green-500">
               {Icons.check}
@@ -227,15 +227,15 @@ function ScoutBacklogContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {backlog.backlog.map((item) => (
+                  {(backlog.backlog ?? []).map((item) => (
                     <tr key={item.person_key} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3 px-4">
-                        <Badge variant={getCategoryVariant(item.category)}>
-                          {item.category}: {getCategoryLabel(item.category)}
+                        <Badge variant={getCategoryVariant(item.category ?? '')}>
+                          {item.category}: {getCategoryLabel(item.category ?? '')}
                         </Badge>
                       </td>
                       <td className="py-3 px-4 text-sm font-mono text-slate-600">
-                        {item.person_key.substring(0, 8)}...
+                        {(item.person_key ?? '').substring(0, 8)}...
                       </td>
                       <td className="py-3 px-4 text-center">
                         {item.scout_id ? (
@@ -245,7 +245,7 @@ function ScoutBacklogContent() {
                         )}
                       </td>
                       <td className="py-3 px-4 text-sm text-slate-600">
-                        {item.source_tables?.join(', ') || '—'}
+                        {Array.isArray(item.source_tables) ? item.source_tables.join(', ') : (item.source_tables ?? '—')}
                       </td>
                       <td className="py-3 px-4 text-center text-sm font-medium text-slate-700">
                         {item.event_count}
@@ -265,10 +265,10 @@ function ScoutBacklogContent() {
             </div>
 
             {/* Pagination */}
-            {backlog.pagination.total_pages > 1 && (
+            {(backlog.pagination?.total_pages ?? 0) > 1 && (
               <div className="border-t border-slate-200 px-4 py-3 flex items-center justify-between bg-slate-50">
                 <span className="text-sm text-slate-600">
-                  Página {page} de {backlog.pagination.total_pages} ({total} registros)
+                  Página {page} de {backlog.pagination?.total_pages ?? 1} ({total} registros)
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -280,7 +280,7 @@ function ScoutBacklogContent() {
                   </button>
                   <button
                     onClick={() => setPage(p => p + 1)}
-                    disabled={page >= backlog.pagination.total_pages}
+                    disabled={page >= (backlog.pagination?.total_pages ?? 1)}
                     className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                   >
                     Siguiente →

@@ -6,12 +6,12 @@ import Badge from '@/components/Badge';
 import { useState } from 'react';
 
 interface CompactMilestoneCellProps {
-  achieved_flag: boolean | null;
-  achieved_date: string | null;
-  expected_amount_yango: number | null;
-  yango_payment_status: string | null;
-  window_status: string | null;
-  overdue_days: number | null;
+  achieved_flag?: boolean | null;
+  achieved_date?: string | null;
+  expected_amount_yango?: number | null;
+  yango_payment_status?: string | null;
+  window_status?: string | null;
+  overdue_days?: number | null;
   label?: string;
   compact?: boolean;
 }
@@ -28,15 +28,15 @@ export default function CompactMilestoneCell({
 }: CompactMilestoneCellProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
-  // Si achieved_flag es explícitamente false o null Y no hay ningún otro dato, mostrar "—"
-  // PERO si achieved_flag es true, SIEMPRE mostrar el checkmark, incluso si los demás campos son null
+  // Si achieved_flag no es true Y no hay ningún otro dato, mostrar "—"
+  // (undefined y null se tratan igual)
   if (
     achieved_flag !== true &&
-    achieved_date === null &&
-    expected_amount_yango === null &&
-    yango_payment_status === null &&
-    window_status === null &&
-    overdue_days === null
+    (achieved_date == null || achieved_date === '') &&
+    (expected_amount_yango == null) &&
+    (yango_payment_status == null || yango_payment_status === '') &&
+    (window_status == null || window_status === '') &&
+    (overdue_days == null)
   ) {
     return <div className="text-center text-gray-400">—</div>;
   }
@@ -66,13 +66,13 @@ export default function CompactMilestoneCell({
     tooltipContent.push(`Payment status: ${yango_payment_status}`);
   }
   if (window_status) {
-    if (window_status === 'expired' && overdue_days !== null && overdue_days > 0) {
+    if (window_status === 'expired' && overdue_days != null && overdue_days > 0) {
       tooltipContent.push(`Vencido (${overdue_days}d)`);
     } else if (window_status === 'in_window') {
       tooltipContent.push('En ventana de pago');
     }
   }
-  if (expected_amount_yango !== null) {
+  if (expected_amount_yango != null) {
     tooltipContent.push(`Expected: S/ ${Number(expected_amount_yango).toFixed(2)}`);
   }
 
@@ -101,14 +101,14 @@ export default function CompactMilestoneCell({
       )}
 
       {/* Badge de vencido */}
-      {window_status === 'expired' && overdue_days !== null && overdue_days > 0 && (
+      {window_status === 'expired' && overdue_days != null && overdue_days > 0 && (
         <Badge variant="error" className="text-xs py-0 px-1">
           Venc. {overdue_days}d
         </Badge>
       )}
 
       {/* Monto a la derecha */}
-      {expected_amount_yango !== null && (
+      {expected_amount_yango != null && (
         <div className="ml-auto text-xs font-medium text-gray-700">
           S/ {Number(expected_amount_yango).toFixed(2)}
         </div>

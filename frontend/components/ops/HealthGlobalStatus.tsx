@@ -142,7 +142,8 @@ export default function HealthGlobalStatus() {
     );
   }
 
-  const styles = getStatusStyles(globalStatus.global_status);
+  const statusStr = String((globalStatus as Record<string, unknown>).global_status ?? '');
+  const styles = getStatusStyles(statusStr);
   const message = (globalStatus as { message?: string }).message;
 
   return (
@@ -155,10 +156,10 @@ export default function HealthGlobalStatus() {
           <div>
             <p className="text-sm font-medium text-slate-600">Estado Global del Sistema</p>
             <p className={`text-xl font-bold ${styles.text}`}>
-              {globalStatus.global_status === 'OK' ? 'Sistema Operativo' :
-               globalStatus.global_status === 'WARN' ? 'Advertencias Detectadas' :
-               globalStatus.global_status === 'ERROR' ? 'Errores Críticos' :
-               globalStatus.global_status}
+              {statusStr === 'OK' ? 'Sistema Operativo' :
+               statusStr === 'WARN' ? 'Advertencias Detectadas' :
+               statusStr === 'ERROR' ? 'Errores Críticos' :
+               statusStr}
             </p>
             {message && (
               <p className="text-sm text-slate-600 mt-1">{message}</p>
@@ -167,15 +168,15 @@ export default function HealthGlobalStatus() {
         </div>
         <div className="flex items-center gap-6">
           <div className="text-center">
-            <p className="text-2xl font-bold text-red-600">{globalStatus.error_count}</p>
+            <p className="text-2xl font-bold text-red-600">{Number((globalStatus as Record<string, unknown>).error_count ?? 0)}</p>
             <p className="text-xs text-slate-600">Errores</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-amber-600">{globalStatus.warn_count}</p>
+            <p className="text-2xl font-bold text-amber-600">{Number((globalStatus as Record<string, unknown>).warn_count ?? 0)}</p>
             <p className="text-xs text-slate-600">Warnings</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-emerald-600">{globalStatus.ok_count}</p>
+            <p className="text-2xl font-bold text-emerald-600">{Number((globalStatus as Record<string, unknown>).ok_count ?? 0)}</p>
             <p className="text-xs text-slate-600">OK</p>
           </div>
         </div>

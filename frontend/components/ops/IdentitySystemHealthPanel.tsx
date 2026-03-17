@@ -59,19 +59,20 @@ export default function IdentitySystemHealthPanel() {
   }
 
   // Calcular estado general (solo visual)
+  const h = health as Record<string, unknown>;
   const getOverallStatus = (): 'OK' | 'WARNING' | 'ERROR' => {
-    const hasNoAlerts = health.active_alerts_count === 0;
-    const hoursSinceLastRun = health.hours_since_last_completed_run;
-    const isRecentRun = hoursSinceLastRun === null || hoursSinceLastRun <= 24;
-    const isNotFailed = health.last_run_status !== 'FAILED';
+    const hasNoAlerts = Number(h.active_alerts_count ?? 0) === 0;
+    const hoursSinceLastRun = h.hours_since_last_completed_run;
+    const isRecentRun = hoursSinceLastRun === null || (typeof hoursSinceLastRun === 'number' && hoursSinceLastRun <= 24);
+    const isNotFailed = h.last_run_status !== 'FAILED';
     
     // ERROR: last_run_status='FAILED' OR hours_since_last_completed_run>72
-    if (health.last_run_status === 'FAILED' || (hoursSinceLastRun !== null && hoursSinceLastRun > 72)) {
+    if (h.last_run_status === 'FAILED' || (typeof hoursSinceLastRun === 'number' && hoursSinceLastRun > 72)) {
       return 'ERROR';
     }
     
     // WARNING: active_alerts_count>0 OR hours_since_last_completed_run>24
-    if (health.active_alerts_count > 0 || (hoursSinceLastRun !== null && hoursSinceLastRun > 24)) {
+    if (Number(h.active_alerts_count ?? 0) > 0 || (typeof hoursSinceLastRun === 'number' && hoursSinceLastRun > 24)) {
       return 'WARNING';
     }
     
@@ -96,36 +97,36 @@ export default function IdentitySystemHealthPanel() {
         />
         <StatCard
           title="Última Corrida"
-          value={health.last_run_id ? `#${health.last_run_id}` : '-'}
-          subtitle={health.last_run_status}
+          value={h.last_run_id != null ? `#${h.last_run_id}` : '-'}
+          subtitle={String(h.last_run_status ?? '')}
         />
         <StatCard
           title="Última Completada"
           value={
-            health.last_run_completed_at
-              ? new Date(health.last_run_completed_at).toLocaleString('es-ES')
+            h.last_run_completed_at != null
+              ? new Date(String(h.last_run_completed_at)).toLocaleString('es-ES')
               : '-'
           }
         />
         <StatCard
           title="Horas desde Última"
-          value={health.hours_since_last_completed_run !== null ? `${health.hours_since_last_completed_run}h` : '-'}
+          value={h.hours_since_last_completed_run !== null && h.hours_since_last_completed_run !== undefined ? `${h.hours_since_last_completed_run}h` : '-'}
         />
         <StatCard
           title="Alertas Activas"
-          value={health.active_alerts_count}
+          value={Number(h.active_alerts_count ?? 0)}
         />
         <StatCard
           title="Unmatched Abiertos"
-          value={health.unmatched_open_count}
+          value={Number(h.unmatched_open_count ?? 0)}
         />
         <StatCard
           title="Personas"
-          value={health.total_persons.toLocaleString()}
+          value={Number(h.total_persons ?? 0).toLocaleString()}
         />
         <StatCard
           title="Links"
-          value={health.total_links.toLocaleString()}
+          value={Number(h.total_links ?? 0).toLocaleString()}
         />
       </div>
 
@@ -134,15 +135,15 @@ export default function IdentitySystemHealthPanel() {
         {/* Alertas por severidad */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Alertas por Severidad</h2>
-          {Object.keys(health.active_alerts_by_severity).length === 0 ? (
+          {Object.keys(h.active_alerts_by_severity ?? {}).length === 0 ? (
             <p className="text-gray-500 text-sm">No hay alertas activas</p>
           ) : (
             <div className="space-y-2">
-              {Object.entries(health.active_alerts_by_severity).map(([severity, count]) => (
+              {Object.entries((h.active_alerts_by_severity as Record<string, number>) ?? {}).map(([severity, count]) => (
                 <div key={severity} className="flex justify-between items-center">
                   <span className="text-sm font-medium capitalize">{severity}</span>
                   <Badge variant={severity === 'error' ? 'error' : severity === 'warning' ? 'warning' : 'info'}>
-                    {count}
+                    {String(count)}
                   </Badge>
                 </div>
               ))}
@@ -153,14 +154,14 @@ export default function IdentitySystemHealthPanel() {
         {/* Unmatched por razón */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Unmatched por Razón</h2>
-          {Object.keys(health.unmatched_open_by_reason).length === 0 ? (
+          {Object.keys(h.unmatched_open_by_reason ?? {}).length === 0 ? (
             <p className="text-gray-500 text-sm">No hay unmatched abiertos</p>
           ) : (
             <div className="space-y-2">
-              {Object.entries(health.unmatched_open_by_reason).map(([reason, count]) => (
+              {Object.entries((h.unmatched_open_by_reason as Record<string, number>) ?? {}).map(([reason, count]) => (
                 <div key={reason} className="flex justify-between items-center">
                   <span className="text-sm font-medium">{reason}</span>
-                  <span className="text-sm text-gray-600">{count}</span>
+                  <span className="text-sm text-gray-600">{String(count)}</span>
                 </div>
               ))}
             </div>
@@ -170,14 +171,14 @@ export default function IdentitySystemHealthPanel() {
         {/* Links por fuente */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Links por Fuente</h2>
-          {Object.keys(health.links_by_source).length === 0 ? (
+          {Object.keys(h.links_by_source ?? {}).length === 0 ? (
             <p className="text-gray-500 text-sm">No hay links</p>
           ) : (
             <div className="space-y-2">
-              {Object.entries(health.links_by_source).map(([source, count]) => (
+              {Object.entries((h.links_by_source as Record<string, number>) ?? {}).map(([source, count]) => (
                 <div key={source} className="flex justify-between items-center">
                   <span className="text-sm font-medium">{source}</span>
-                  <span className="text-sm text-gray-600">{count.toLocaleString()}</span>
+                  <span className="text-sm text-gray-600">{Number(count).toLocaleString()}</span>
                 </div>
               ))}
             </div>

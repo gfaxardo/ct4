@@ -155,7 +155,7 @@ function DriverMatrixPageContent() {
   const handleExportCSV = () => {
     if (data.length === 0) { alert('No hay datos para exportar'); return; }
     const headers = ['driver_id', 'person_key', 'driver_name', 'lead_date', 'week_start', 'origin_tag', 'connected_flag', 'm1_achieved_flag', 'm1_yango_payment_status', 'm5_achieved_flag', 'm5_yango_payment_status', 'm25_achieved_flag', 'm25_yango_payment_status'];
-    const csvRows = [headers.join(','), ...data.map((row) => headers.map((h) => { const v = (row as Record<string, unknown>)[h]; return v == null ? '' : typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v).includes(',') ? `"${v}"` : String(v); }).join(','))];
+    const csvRows = [headers.join(','), ...data.map((row) => headers.map((h) => { const v = (row as unknown as Record<string, unknown>)[h]; return v == null ? '' : typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v).includes(',') ? `"${v}"` : String(v); }).join(','))];
     const blob = new Blob(['\ufeff' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

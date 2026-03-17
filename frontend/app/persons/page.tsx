@@ -268,35 +268,35 @@ export default function PersonsPage() {
               <tbody className="divide-y divide-slate-100">
                 {persons.map((person) => (
                   <tr
-                    key={person.person_key}
+                    key={String((person as Record<string, unknown>).person_key ?? '')}
                     className="hover:bg-slate-50/50 transition-colors cursor-pointer"
-                    onClick={() => router.push(`/persons/${person.person_key}`)}
+                    onClick={() => router.push(`/persons/${String((person as Record<string, unknown>).person_key ?? '')}`)}
                   >
                     <td className="py-3 px-4 text-sm font-mono text-[#ef0000] hover:underline">
-                      {person.person_key.substring(0, 8)}...
+                      {String((person as Record<string, unknown>).person_key ?? '').substring(0, 8)}...
                     </td>
                     <td className="py-3 px-4 text-sm font-medium text-slate-900">
-                      {person.primary_full_name || '—'}
+                      {String((person as Record<string, unknown>).primary_full_name ?? '') || '—'}
                     </td>
                     <td className="py-3 px-4 text-sm text-slate-600">
-                      {person.primary_phone || '—'}
+                      {String((person as Record<string, unknown>).primary_phone ?? '') || '—'}
                     </td>
                     <td className="py-3 px-4 text-sm text-slate-600">
-                      {person.primary_document || '—'}
+                      {String((person as Record<string, unknown>).primary_document ?? '') || '—'}
                     </td>
                     <td className="py-3 px-4 text-sm text-slate-600">
-                      {person.primary_license || '—'}
+                      {String((person as Record<string, unknown>).primary_license ?? '') || '—'}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <Badge variant={
-                        person.confidence_level === 'HIGH' ? 'success' :
-                        person.confidence_level === 'MEDIUM' ? 'warning' : 'error'
+                        (person as Record<string, unknown>).confidence_level === 'HIGH' ? 'success' :
+                        (person as Record<string, unknown>).confidence_level === 'MEDIUM' ? 'warning' : 'error'
                       }>
-                        {person.confidence_level}
+                        {String((person as Record<string, unknown>).confidence_level ?? '')}
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-sm text-slate-500">
-                      {new Date(person.created_at).toLocaleDateString('es-ES')}
+                      {new Date(String((person as Record<string, unknown>).created_at ?? '')).toLocaleDateString('es-ES')}
                     </td>
                   </tr>
                 ))}

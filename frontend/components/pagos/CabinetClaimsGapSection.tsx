@@ -283,8 +283,7 @@ export default function CabinetClaimsGapSection({ className = '' }: CabinetClaim
             limit={limit}
             offset={offset}
             total={data.meta.total}
-            onLimitChange={setLimit}
-            onOffsetChange={setOffset}
+            onPageChange={setOffset}
           />
         </>
       ) : null}

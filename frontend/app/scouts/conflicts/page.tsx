@@ -122,7 +122,7 @@ export default function ScoutConflictsPage() {
         />
         <StatCard
           title="Scouts Involucrados"
-          value={totalConflicts > 0 ? conflicts?.conflicts?.reduce((sum, c) => sum + (c.scout_ids?.length || 0), 0).toLocaleString() || '0' : '0'}
+          value={totalConflicts > 0 ? (conflicts?.conflicts ?? []).reduce((sum, c) => sum + (Array.isArray(c.scout_ids) ? c.scout_ids.length : 0), 0).toLocaleString() : '0'}
           subtitle="scouts en conflicto"
           icon={Icons.users}
           variant="info"
@@ -131,7 +131,7 @@ export default function ScoutConflictsPage() {
 
       {/* Content */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {!conflicts || conflicts.conflicts.length === 0 ? (
+        {!conflicts || (conflicts.conflicts?.length ?? 0) === 0 ? (
           <div className="p-16 text-center">
             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4 text-green-500">
               {Icons.check}
@@ -154,14 +154,14 @@ export default function ScoutConflictsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {conflicts.conflicts.map((conflict) => (
-                    <tr key={conflict.person_key} className="hover:bg-slate-50/50 transition-colors">
+                  {(conflicts.conflicts ?? []).map((conflict) => (
+                    <tr key={conflict.person_key ?? ''} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3 px-4 text-sm font-mono text-slate-600">
-                        {conflict.person_key.substring(0, 8)}...
+                        {(conflict.person_key ?? '').substring(0, 8)}...
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex flex-wrap gap-1">
-                          {conflict.scout_ids.map((scoutId) => (
+                          {(Array.isArray(conflict.scout_ids) ? conflict.scout_ids : []).map((scoutId) => (
                             <Badge key={scoutId} variant="warning">
                               Scout {scoutId}
                             </Badge>
@@ -169,7 +169,7 @@ export default function ScoutConflictsPage() {
                         </div>
                       </td>
                       <td className="py-3 px-4 text-sm text-slate-600">
-                        {conflict.sources?.join(', ') || '—'}
+                        {Array.isArray(conflict.sources) ? conflict.sources.join(', ') : (typeof conflict.sources === 'string' ? conflict.sources : '—')}
                       </td>
                       <td className="py-3 px-4 text-sm text-slate-600">
                         {conflict.first_event_date ? new Date(conflict.first_event_date).toLocaleDateString('es-ES') : '—'}
@@ -178,7 +178,7 @@ export default function ScoutConflictsPage() {
                         {conflict.last_event_date ? new Date(conflict.last_event_date).toLocaleDateString('es-ES') : '—'}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <Link href={`/persons/${conflict.person_key}`} className="text-[#ef0000] hover:underline text-sm font-medium">
+                        <Link href={`/persons/${conflict.person_key ?? ''}`} className="text-[#ef0000] hover:underline text-sm font-medium">
                           Resolver →
                         </Link>
                       </td>
@@ -189,10 +189,10 @@ export default function ScoutConflictsPage() {
             </div>
 
             {/* Pagination */}
-            {conflicts.pagination.total_pages > 1 && (
+            {(conflicts.pagination?.total_pages ?? 0) > 1 && (
               <div className="border-t border-slate-200 px-4 py-3 flex items-center justify-between bg-slate-50">
                 <span className="text-sm text-slate-600">
-                  Página {page} de {conflicts.pagination.total_pages}
+                  Página {page} de {conflicts.pagination?.total_pages ?? 1}
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -204,7 +204,7 @@ export default function ScoutConflictsPage() {
                   </button>
                   <button
                     onClick={() => setPage(p => p + 1)}
-                    disabled={page >= conflicts.pagination.total_pages}
+                    disabled={page >= (conflicts.pagination?.total_pages ?? 1)}
                     className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                   >
                     Siguiente →

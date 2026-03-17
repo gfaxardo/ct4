@@ -134,11 +134,12 @@ export default function UnmatchedPage() {
   const resolvedCount = unmatched.filter(u => u.status === 'RESOLVED').length;
 
   // Agrupar por razón
-  const reasonCounts = unmatched.reduce((acc, u) => {
-    acc[u.reason_code] = (acc[u.reason_code] || 0) + 1;
+  const reasonCounts = unmatched.reduce<Record<string, number>>((acc, u) => {
+    const code = String((u as Record<string, unknown>).reason_code ?? '');
+    acc[code] = (acc[code] ?? 0) + 1;
     return acc;
-  }, {} as Record<string, number>);
-  const topReason = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0];
+  }, {});
+  const topReason = (Object.entries(reasonCounts) as [string, number][]).sort((a, b) => b[1] - a[1])[0];
 
   return (
     <div className="space-y-6">
@@ -287,43 +288,45 @@ export default function UnmatchedPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {unmatched.map((record) => (
-                  <tr key={record.id} className="hover:bg-slate-50/50 transition-colors">
+                {unmatched.map((record) => {
+                  const r = record as Record<string, unknown>;
+                  return (
+                  <tr key={String(r.id ?? '')} className="hover:bg-slate-50/50 transition-colors">
                     <td className="py-3 px-4 text-sm font-medium text-slate-900">
-                      {record.id}
+                      {String(r.id ?? '')}
                     </td>
                     <td className="py-3 px-4 text-sm text-slate-600">
                       <code className="px-1.5 py-0.5 bg-slate-100 rounded text-xs">
-                        {record.source_table}
+                        {String(r.source_table ?? '')}
                       </code>
                     </td>
                     <td className="py-3 px-4 text-sm font-mono text-slate-600 max-w-xs truncate">
-                      {record.source_pk}
+                      {String(r.source_pk ?? '')}
                     </td>
                     <td className="py-3 px-4">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        record.reason_code === 'NO_CANDIDATES' 
+                        r.reason_code === 'NO_CANDIDATES' 
                           ? 'bg-red-100 text-red-700'
-                          : record.reason_code === 'WEAK_MATCH_ONLY'
+                          : r.reason_code === 'WEAK_MATCH_ONLY'
                           ? 'bg-amber-100 text-amber-700'
                           : 'bg-slate-100 text-slate-700'
                       }`}>
-                        {record.reason_code.replace(/_/g, ' ')}
+                        {String(r.reason_code ?? '').replace(/_/g, ' ')}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <Badge variant={record.status === 'OPEN' ? 'warning' : 'success'}>
-                        {record.status}
+                      <Badge variant={r.status === 'OPEN' ? 'warning' : 'success'}>
+                        {String(r.status ?? '')}
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-sm text-slate-500">
-                      {new Date(record.created_at).toLocaleDateString('es-PE')}
+                      {new Date(String(r.created_at ?? '')).toLocaleDateString('es-PE')}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      {record.status === 'OPEN' ? (
+                      {r.status === 'OPEN' ? (
                         <button
                           onClick={() => {
-                            setResolvingId(record.id);
+                            setResolvingId(Number(r.id) || 0);
                             setShowResolveModal(true);
                           }}
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium bg-[#ef0000] text-white rounded-lg hover:bg-[#cc0000] transition-colors"
@@ -336,7 +339,8 @@ export default function UnmatchedPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
