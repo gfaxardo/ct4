@@ -11,7 +11,11 @@ def _cors_origins_list() -> list[str]:
     o = (settings.cors_origins or "").strip()
     if not o or o == "*":
         return ["*"]
-    return [x.strip() for x in o.split(",") if x.strip()]
+    origins = [x.strip() for x in o.split(",") if x.strip()]
+    # En local el frontend suele ir en localhost:3000; permitirlo siempre para desarrollo.
+    if "http://localhost:3000" not in origins:
+        origins.append("http://localhost:3000")
+    return origins
 
 logging.basicConfig(
     level=logging.INFO,

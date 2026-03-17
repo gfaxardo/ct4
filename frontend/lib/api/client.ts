@@ -1,11 +1,19 @@
 /**
  * Cliente HTTP base para la API.
- * baseURL desde NEXT_PUBLIC_API_BASE_URL.
- * Todos los módulos de api/ usan fetchApi y fetchApiFormData de aquí.
+ * En desarrollo o si la app se abre en localhost → backend local (puerto 8000).
+ * En producción (build) y dominio real → NEXT_PUBLIC_API_BASE_URL (ct4.yego.pro).
  */
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+function getApiBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') return 'http://localhost:8000';
+  }
+  if (typeof process !== 'undefined' && process.env.NODE_ENV === 'development') return 'http://localhost:8000';
+  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+}
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export class ApiError extends Error {
   constructor(
@@ -22,7 +30,7 @@ export async function fetchApi<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  const url = `${getApiBaseUrl()}${path}`;
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -53,7 +61,7 @@ export async function fetchApiFormData<T>(
   path: string,
   formData: FormData
 ): Promise<T> {
-  const url = `${API_BASE_URL}${path}`;
+  const url = `${getApiBaseUrl()}${path}`;
   const response = await fetch(url, {
     method: 'POST',
     body: formData,

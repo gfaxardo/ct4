@@ -2,21 +2,53 @@
 Configuración de la aplicación (Pydantic Settings).
 
 Valores sensibles vía variables de entorno o .env.
-En producción: DATABASE_URL, CORS_ORIGINS, ENVIRONMENT=production.
+Acepta DATABASE_URL o, si no está definida, construye la URL desde DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD.
 """
 import os
 from datetime import date
+from pathlib import Path
+from urllib.parse import quote_plus
+
+from dotenv import load_dotenv
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Cargar .env para que default_factory pueda leer DB_* si no hay DATABASE_URL
+_env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(_env_path)
+
+
+def _build_database_url() -> str:
+    """Construye la URL desde DATABASE_URL o desde DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD."""
+    url = (os.getenv("DATABASE_URL") or "").strip()
+    if url:
+        return url
+    host = os.getenv("DB_HOST")
+    port = os.getenv("DB_PORT", "5432")
+    name = os.getenv("DB_NAME")
+    user = os.getenv("DB_USER")
+    raw = (os.getenv("DB_PASSWORD") or "").strip().strip('"').strip("'")
+    if host and name and user:
+        safe = quote_plus(raw)
+        return f"postgresql://{user}:{safe}@{host}:{port}/{name}"
+    return "postgresql://localhost:5432/ct4"
 
 
 class Settings(BaseSettings):
     """
-    Configuración cargada desde variables de entorno.
+    Configuración cargada desde variables de entorno o .env.
+    Base de datos: DATABASE_URL o (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD).
     """
-    database_url: str = os.getenv("DATABASE_URL", "postgresql://localhost:5432/ct4")
+    database_url: str = Field(default_factory=_build_database_url)
+    db_host: str | None = None
+    db_port: str = "5432"
+    db_name: str | None = None
+    db_user: str | None = None
+    db_password: str = ""
+
     log_level: str = "INFO"
-    environment: str = os.getenv("ENVIRONMENT", "development")
-    cors_origins: str = os.getenv("CORS_ORIGINS", "*")
+    environment: str = "development"
+    cors_origins: str = "*"
     park_id_objetivo: str = "08e20910d81d42658d4334d3f6d10ac0"
     name_similarity_threshold: float = 0.66
     admin_token: str = ""
